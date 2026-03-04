@@ -82,17 +82,6 @@ function formatDate(iso: string): string {
   }
 }
 
-function getCdnUrl(path: string | null): string | null {
-  if (!path) return null
-  if (path.startsWith("http://") || path.startsWith("https://")) {
-    return path
-  }
-  const base = process.env.NEXT_PUBLIC_BUNNY_CDN_URL
-  if (!base) return null
-  const trimmed = base.replace(/\/$/, "")
-  return `${trimmed}/${path}`
-}
-
 const MAX_VIDEO_BYTES = 5 * 1024 * 1024 * 1024 // 5 GB
 const MAX_DOC_BYTES = 50 * 1024 * 1024 // 50 MB
 
@@ -471,7 +460,7 @@ function ContentCard({
   const sizeStr = formatFileSize(item.file_size)
   const durationStr = formatDuration(item.duration)
   const status = getStatusBadgeStyle(item.upload_status as any)
-  const downloadUrl = item.type !== "video" ? getCdnUrl(item.bunny_storage_path) : null
+  const downloadUrl = item.type !== "video" ? item.bunny_storage_path : null
   return (
     <div className="group rounded-xl border border-border bg-card overflow-hidden">
       <div
@@ -540,7 +529,7 @@ function ContentRow({
   const Icon = contentTypeIcon[logicalType] ?? FileText
   const { icon: iconColor, bg: bgColor } = getContentTypeColorClasses(logicalType)
   const status = getStatusBadgeStyle(item.upload_status as any)
-  const downloadUrl = item.type !== "video" ? getCdnUrl(item.bunny_storage_path) : null
+  const downloadUrl = item.type !== "video" ? item.bunny_storage_path : null
   return (
     <div
       className={cn(
