@@ -1,0 +1,17 @@
+{
+  "name": "CoachPro",
+  "short_name": "CoachPro",
+  "description": "The All-in-One Coaching Platform",
+  "start_url": "/student",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

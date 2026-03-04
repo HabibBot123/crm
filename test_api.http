@@ -1,0 +1,10 @@
+POST https://e080-213-56-161-198.ngrok-free.app/api/content/webhook 
+# http://localhost:3000/api/content/webhook
+Content-Type: application/json
+
+{
+    "IsLiveStreamWebhook": false,
+    "VideoLibraryId": 554730,
+    "VideoGuid": "a974a9c4-d38f-4769-9142-6612302c625f",
+    "Status": 3
+}
