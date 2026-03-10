@@ -5,12 +5,13 @@ import type { LucideIcon } from "lucide-react"
 interface StatCardProps {
   title: string
   value: string
-  change: number
+  change?: number
   icon: LucideIcon
 }
 
 export function StatCard({ title, value, change, icon: Icon }: StatCardProps) {
-  const isPositive = change >= 0
+  const hasChange = typeof change === "number"
+  const isPositive = (change ?? 0) >= 0
 
   return (
     <div className="rounded-xl border border-border bg-card p-5">
@@ -21,17 +22,20 @@ export function StatCard({ title, value, change, icon: Icon }: StatCardProps) {
         </div>
       </div>
       <p className="mt-3 text-2xl font-bold text-foreground font-display">{value}</p>
-      <div className="mt-2 flex items-center gap-1.5">
-        {isPositive ? (
-          <TrendingUp className="h-3.5 w-3.5 text-success" />
-        ) : (
-          <TrendingDown className="h-3.5 w-3.5 text-destructive" />
-        )}
-        <span className={cn("text-xs font-medium", isPositive ? "text-success" : "text-destructive")}>
-          {isPositive ? "+" : ""}{change}%
-        </span>
-        <span className="text-xs text-muted-foreground">vs last month</span>
-      </div>
+      {hasChange && (
+        <div className="mt-2 flex items-center gap-1.5">
+          {isPositive ? (
+            <TrendingUp className="h-3.5 w-3.5 text-success" />
+          ) : (
+            <TrendingDown className="h-3.5 w-3.5 text-destructive" />
+          )}
+          <span className={cn("text-xs font-medium", isPositive ? "text-success" : "text-destructive")}>
+            {isPositive ? "+" : ""}
+            {change}%
+          </span>
+          <span className="text-xs text-muted-foreground">vs last month</span>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,0 +1,347 @@
+import type { SupabaseClient } from "@supabase/supabase-js"
+import type { Product } from "./products"
+
+export type BillingType = "subscription" | "one_time" | "installment"
+export type OfferStatus = "draft" | "active" | "archived"
+
+export type Offer = {
+  id: number
+  organization_id: number
+  title: string
+  description: string | null
+  billing_type: BillingType
+  price: number
+  currency: string
+  interval: "month" | "year" | null
+  installment_count: number | null
+  stripe_price_id: string | null
+  stripe_product_id: string | null
+  stripe_payment_link: string | null
+  status: OfferStatus
+  created_at: string
+  updated_at: string
+}
+
+export type OfferProduct = {
+  id: number
+  offer_id: number
+  product_id: number
+}
+
+export type OfferPaymentLink = {
+  id: number
+  offer_id: number
+  label: string | null
+  price: number | null
+  installment_count: number | null
+  stripe_price_id: string | null
+  stripe_payment_link: string | null
+  is_active: boolean
+  created_at: string
+}
+
+export type Enrollment = {
+  id: number
+  organization_id: number
+  offer_id: number
+  /** null when buyer has not yet created an account — reconciled at sign-in */
+  user_id: string | null
+  /** Email from Stripe payment — always stored for reconciliation */
+  buyer_email: string | null
+  status: "active" | "expired" | "cancelled" | "paused"
+  stripe_subscription_id: string | null
+  expires_at: string | null
+  started_at: string
+  created_at: string
+  updated_at: string
+}
+
+export type OfferProductWithProduct = OfferProduct & {
+  products: Pick<Product, "id" | "title" | "type" | "cover_image_url" | "status"> | null
+}
+
+export type OfferWithDetails = Offer & {
+  offer_products: OfferProductWithProduct[]
+  offer_payment_links: OfferPaymentLink[]
+}
+
+export type OfferListItem = Offer & {
+  offer_products: { id: number; product_id: number }[]
+}
+
+// ----------------------------------------------------------------
+// Fetch
+// ----------------------------------------------------------------
+
+export async function fetchOffersByOrganization(
+  supabase: SupabaseClient,
+  organizationId: number
+): Promise<OfferListItem[]> {
+  const { data, error } = await supabase
+    .from("offers")
+    .select("*, offer_products(id, product_id)")
+    .eq("organization_id", organizationId)
+    .order("updated_at", { ascending: false })
+
+  if (error) throw error
+  return (data ?? []) as OfferListItem[]
+}
+
+export async function fetchOfferWithDetails(
+  supabase: SupabaseClient,
+  offerId: number
+): Promise<OfferWithDetails | null> {
+  const { data, error } = await supabase
+    .from("offers")
+    .select(
+      `*,
+      offer_products(
+        id,
+        product_id,
+        products(id, title, type, cover_image_url, status)
+      ),
+      offer_payment_links(*)`
+    )
+    .eq("id", offerId)
+    .single()
+
+  if (error || !data) return null
+
+  const raw = data as Offer & {
+    offer_products: (OfferProduct & {
+      products: OfferProductWithProduct["products"] | OfferProductWithProduct["products"][] | null
+    })[]
+    offer_payment_links: OfferPaymentLink[]
+  }
+
+  return {
+    ...raw,
+    offer_products: (raw.offer_products ?? []).map((op) => ({
+      ...op,
+      products: Array.isArray(op.products) ? (op.products[0] ?? null) : (op.products ?? null),
+    })),
+    offer_payment_links: (raw.offer_payment_links ?? []).sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    ),
+  }
+}
+
+// ----------------------------------------------------------------
+// Create / Update / Delete — Offer
+// ----------------------------------------------------------------
+
+export type CreateOfferInput = {
+  organization_id: number
+  title: string
+  description?: string | null
+  billing_type: BillingType
+  price: number
+  currency?: string
+  interval?: "month" | "year" | null
+  installment_count?: number | null
+  product_ids: number[]
+}
+
+export async function createOffer(
+  supabase: SupabaseClient,
+  input: CreateOfferInput
+): Promise<Offer> {
+  const { data, error } = await supabase
+    .from("offers")
+    .insert({
+      organization_id: input.organization_id,
+      title: input.title.trim(),
+      description: input.description?.trim() || null,
+      billing_type: input.billing_type,
+      price: input.price,
+      currency: input.currency ?? "eur",
+      interval: input.interval ?? null,
+      installment_count: input.installment_count ?? null,
+      status: "draft",
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  const offer = data as Offer
+
+  if (input.product_ids.length > 0) {
+    const { error: linkError } = await supabase
+      .from("offer_products")
+      .insert(input.product_ids.map((pid) => ({ offer_id: offer.id, product_id: pid })))
+    if (linkError) throw linkError
+  }
+
+  return offer
+}
+
+export type UpdateOfferInput = {
+  title?: string
+  description?: string | null
+  price?: number
+  currency?: string
+  interval?: "month" | "year" | null
+  installment_count?: number | null
+  stripe_price_id?: string | null
+  status?: OfferStatus
+}
+
+export async function updateOffer(
+  supabase: SupabaseClient,
+  offerId: number,
+  input: UpdateOfferInput
+): Promise<Offer> {
+  const payload: Record<string, unknown> = {}
+  if (input.title !== undefined) payload.title = input.title.trim()
+  if (input.description !== undefined) payload.description = input.description?.trim() || null
+  if (input.price !== undefined) payload.price = input.price
+  if (input.currency !== undefined) payload.currency = input.currency
+  if (input.interval !== undefined) payload.interval = input.interval
+  if (input.installment_count !== undefined) payload.installment_count = input.installment_count
+  if (input.stripe_price_id !== undefined) payload.stripe_price_id = input.stripe_price_id
+  if (input.status !== undefined) payload.status = input.status
+
+  const { data, error } = await supabase
+    .from("offers")
+    .update(payload)
+    .eq("id", offerId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as Offer
+}
+
+export async function deleteOffer(
+  supabase: SupabaseClient,
+  offerId: number
+): Promise<void> {
+  const { error } = await supabase.from("offers").delete().eq("id", offerId)
+  if (error) throw error
+}
+
+// ----------------------------------------------------------------
+// Offer products
+// ----------------------------------------------------------------
+
+export async function upsertOfferProducts(
+  supabase: SupabaseClient,
+  offerId: number,
+  productIds: number[]
+): Promise<void> {
+  const { error: deleteError } = await supabase
+    .from("offer_products")
+    .delete()
+    .eq("offer_id", offerId)
+  if (deleteError) throw deleteError
+
+  if (productIds.length > 0) {
+    const { error: insertError } = await supabase
+      .from("offer_products")
+      .insert(productIds.map((pid) => ({ offer_id: offerId, product_id: pid })))
+    if (insertError) throw insertError
+  }
+}
+
+// ----------------------------------------------------------------
+// Payment links
+// ----------------------------------------------------------------
+
+export type CreateOfferPaymentLinkInput = {
+  label?: string | null
+  price?: number | null
+  installment_count?: number | null
+}
+
+export async function createOfferPaymentLink(
+  supabase: SupabaseClient,
+  offerId: number,
+  input: CreateOfferPaymentLinkInput
+): Promise<OfferPaymentLink> {
+  const { data, error } = await supabase
+    .from("offer_payment_links")
+    .insert({
+      offer_id: offerId,
+      label: input.label?.trim() || null,
+      price: input.price ?? null,
+      installment_count: input.installment_count ?? null,
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as OfferPaymentLink
+}
+
+export type UpdateOfferPaymentLinkInput = {
+  label?: string | null
+  price?: number | null
+  installment_count?: number | null
+  stripe_price_id?: string | null
+  stripe_payment_link?: string | null
+  is_active?: boolean
+}
+
+export async function updateOfferPaymentLink(
+  supabase: SupabaseClient,
+  linkId: number,
+  input: UpdateOfferPaymentLinkInput
+): Promise<OfferPaymentLink> {
+  const payload: Record<string, unknown> = {}
+  if (input.label !== undefined) payload.label = input.label?.trim() || null
+  if (input.price !== undefined) payload.price = input.price
+  if (input.installment_count !== undefined) payload.installment_count = input.installment_count
+  if (input.stripe_price_id !== undefined) payload.stripe_price_id = input.stripe_price_id
+  if (input.stripe_payment_link !== undefined) payload.stripe_payment_link = input.stripe_payment_link
+  if (input.is_active !== undefined) payload.is_active = input.is_active
+
+  const { data, error } = await supabase
+    .from("offer_payment_links")
+    .update(payload)
+    .eq("id", linkId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as OfferPaymentLink
+}
+
+export async function deleteOfferPaymentLink(
+  supabase: SupabaseClient,
+  linkId: number
+): Promise<void> {
+  const { error } = await supabase.from("offer_payment_links").delete().eq("id", linkId)
+  if (error) throw error
+}
+
+// ----------------------------------------------------------------
+// Enrollments
+// ----------------------------------------------------------------
+
+export async function fetchEnrollmentsByOffer(
+  supabase: SupabaseClient,
+  offerId: number
+): Promise<Enrollment[]> {
+  const { data, error } = await supabase
+    .from("enrollments")
+    .select("*")
+    .eq("offer_id", offerId)
+    .order("created_at", { ascending: false })
+
+  if (error) throw error
+  return (data ?? []) as Enrollment[]
+}
+
+// ----------------------------------------------------------------
+// Helpers
+// ----------------------------------------------------------------
+
+/**
+ * Derives the billing type from a list of product types.
+ * - All content → subscription
+ * - Any coaching (alone or mixed) → one_time (can be upgraded to installment by user)
+ */
+export function deriveBillingType(productTypes: ("content" | "coaching")[]): BillingType {
+  const hasCoaching = productTypes.some((t) => t === "coaching")
+  return hasCoaching ? "one_time" : "subscription"
+}

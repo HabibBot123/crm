@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 
 /** Allow only relative paths to prevent open redirect. */
@@ -16,8 +17,26 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = await createClient()
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
-    if (!error) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+
+    if (!error && data.user?.email) {
+      // Reconcile any pending enrollments (buyer paid before having an account).
+      // Uses admin client to bypass RLS — safe because we only update rows where
+      // buyer_email matches the just-authenticated user's own email.
+      // This is a no-op if no unmatched rows exist (e.g. returning user sign-in).
+      const admin = createAdminClient()
+      const email = data.user.email.toLowerCase()
+      const { error: reconcileError } = await admin
+        .from('enrollments')
+        .update({ user_id: data.user.id })
+        .is('user_id', null)
+        .eq('buyer_email', email)
+
+      if (reconcileError) {
+        // Non-fatal — log and continue. The user is still authenticated.
+        console.error('Enrollment reconciliation failed:', reconcileError.message)
+      }
+
       return NextResponse.redirect(`${origin}${next}`)
     }
   }

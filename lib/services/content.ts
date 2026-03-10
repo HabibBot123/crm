@@ -143,3 +143,40 @@ export function searchContent(
   }
 }
 
+export type FetchContentItemsForPickerOptions = {
+  limit?: number
+  offset?: number
+  search?: string
+}
+
+export type FetchContentItemsForPickerResult = {
+  items: ContentItem[]
+  hasMore: boolean
+}
+
+export async function fetchContentItemsForPicker(
+  supabase: SupabaseClient,
+  organizationId: number,
+  options: FetchContentItemsForPickerOptions = {}
+): Promise<FetchContentItemsForPickerResult> {
+  const { limit = 10, offset = 0, search } = options
+  let query = supabase
+    .from("content_items")
+    .select("id, organization_id, folder_id, type, name, file_size, duration, upload_status, created_at, updated_at")
+    .eq("organization_id", organizationId)
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit) // fetch limit+1 to know if there are more
+
+  if (search?.trim()) {
+    query = query.ilike("name", `%${search.trim()}%`)
+  }
+
+  const { data, error } = await query
+
+  if (error) throw error
+  const list = (data ?? []) as ContentItem[]
+  const hasMore = list.length > limit
+  const items = hasMore ? list.slice(0, limit) : list
+  return { items, hasMore }
+}
+
