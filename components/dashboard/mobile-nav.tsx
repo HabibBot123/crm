@@ -4,8 +4,18 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
 import {
-  LayoutDashboard, Package, Tag, DollarSign, Users,
-  Target, FileText, UserPlus, Settings, Menu, X,
+  LayoutDashboard,
+  Package,
+  Tag,
+  DollarSign,
+  Users,
+  Target,
+  FileText,
+  UserPlus,
+  Settings,
+  Menu,
+  X,
+  Palette,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -21,6 +31,7 @@ const navItems = [
   { label: "Clients", href: "/dashboard/clients", icon: Users },
   { label: "Leads", href: "/dashboard/leads", icon: Target },
   { label: "Content", href: "/dashboard/content", icon: FileText },
+  { label: "Branding", href: "/dashboard/branding", icon: Palette },
   { label: "Team", href: "/dashboard/team", icon: UserPlus },
   { label: "Settings", href: "/dashboard/settings", icon: Settings },
 ]

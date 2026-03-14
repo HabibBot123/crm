@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { useStripeConnectGuard } from "@/hooks/use-stripe-connect-guard"
+import { useCoachAccessGuard } from "@/hooks/use-access-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { createProduct, type ProductType } from "@/lib/services/products"
 import { toast } from "sonner"
@@ -18,7 +18,9 @@ export default function NewProductPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const { supabase } = useAuth()
-  const { canAccess, guardContent, currentOrganization } = useStripeConnectGuard({
+  const { canAccess, guardContent, currentOrganization } = useCoachAccessGuard({
+    requireOrg: true,
+    requireStripe: true,
     noOrgMessage: "Select an organization to create products.",
     stripeDescription:
       "To create products, you need to complete Stripe Connect onboarding for this organization.",
@@ -90,7 +92,7 @@ export default function NewProductPage() {
             <button
               type="button"
               onClick={() => {
-                setType("content")
+                setType("course")
                 setStep(2)
               }}
               className="flex flex-col items-start gap-3 rounded-xl border-2 border-border bg-card p-6 text-left transition-colors hover:border-primary/50 hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary"

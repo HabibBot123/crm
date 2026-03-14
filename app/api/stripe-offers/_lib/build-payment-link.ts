@@ -30,7 +30,8 @@ export type PaymentLinkMetadata = {
 export async function buildPaymentLinkOptions(
   stripeAccountId: string,
   offer: InstallmentOfferParams,
-  metadata: PaymentLinkMetadata
+  metadata: PaymentLinkMetadata,
+  successUrl: string
 ): Promise<{
   options: Parameters<typeof stripe.paymentLinks.create>[0]
   installmentPriceId?: string
@@ -41,12 +42,22 @@ export async function buildPaymentLinkOptions(
     offer.installmentCount > 1
 
   if (offer.billingType === "subscription") {
+    const baseOptions: Parameters<typeof stripe.paymentLinks.create>[0] = {
+      line_items: [{ price: offer.stripePriceId, quantity: 1 }],
+      subscription_data: { metadata: metadata as Record<string, string> },
+      metadata: metadata as Record<string, string>,
+    }
+
+    const options: Parameters<typeof stripe.paymentLinks.create>[0] = {
+      ...baseOptions,
+      after_completion: {
+        type: "redirect",
+        redirect: { url: successUrl },
+      } as Stripe.PaymentLinkCreateParams.AfterCompletion,
+    }
+
     return {
-      options: {
-        line_items: [{ price: offer.stripePriceId, quantity: 1 }],
-        subscription_data: { metadata: metadata as Record<string, string> },
-        metadata: metadata as Record<string, string>,
-      },
+      options,
     }
   }
 
@@ -70,27 +81,47 @@ export async function buildPaymentLinkOptions(
       { stripeAccount: stripeAccountId }
     )
 
+    const baseOptions: Parameters<typeof stripe.paymentLinks.create>[0] = {
+      line_items: [{ price: installmentPrice.id, quantity: 1 }],
+      subscription_data: {
+        metadata: {
+          ...metadata,
+          cancel_after_cycles: String(offer.installmentCount),
+          is_installment: "true",
+        } as Record<string, string>,
+      },
+      metadata: metadata as Record<string, string>,
+    }
+
+    const options: Parameters<typeof stripe.paymentLinks.create>[0] = {
+      ...baseOptions,
+      after_completion: {
+        type: "redirect",
+        redirect: { url: successUrl },
+      } as Stripe.PaymentLinkCreateParams.AfterCompletion,
+    }
+
     return {
       installmentPriceId: installmentPrice.id,
-      options: {
-        line_items: [{ price: installmentPrice.id, quantity: 1 }],
-        subscription_data: {
-          metadata: {
-            ...metadata,
-            cancel_after_cycles: String(offer.installmentCount),
-            is_installment: "true",
-          } as Record<string, string>,
-        },
-        metadata: metadata as Record<string, string>,
-      },
+      options,
     }
   }
 
   // one_time / single payment
+  const baseOptions: Parameters<typeof stripe.paymentLinks.create>[0] = {
+    line_items: [{ price: offer.stripePriceId, quantity: 1 }],
+    metadata: metadata as Record<string, string>,
+  }
+
+  const options: Parameters<typeof stripe.paymentLinks.create>[0] = {
+    ...baseOptions,
+    after_completion: {
+      type: "redirect",
+      redirect: { url: successUrl },
+    } as Stripe.PaymentLinkCreateParams.AfterCompletion,
+  }
+
   return {
-    options: {
-      line_items: [{ price: offer.stripePriceId, quantity: 1 }],
-      metadata: metadata as Record<string, string>,
-    },
+    options,
   }
 }

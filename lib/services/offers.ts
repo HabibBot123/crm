@@ -28,7 +28,7 @@ export type OfferProduct = {
   product_id: number
 }
 
-export type OfferPaymentLink = {
+export type OfferVariant = {
   id: number
   offer_id: number
   label: string | null
@@ -44,11 +44,11 @@ export type Enrollment = {
   id: number
   organization_id: number
   offer_id: number
-  /** null when buyer has not yet created an account — reconciled at sign-in */
+  offer_variant_id: number | null
   user_id: string | null
-  /** Email from Stripe payment — always stored for reconciliation */
   buyer_email: string | null
   status: "active" | "expired" | "cancelled" | "paused"
+  stripe_customer_id: string | null
   stripe_subscription_id: string | null
   expires_at: string | null
   started_at: string
@@ -62,7 +62,7 @@ export type OfferProductWithProduct = OfferProduct & {
 
 export type OfferWithDetails = Offer & {
   offer_products: OfferProductWithProduct[]
-  offer_payment_links: OfferPaymentLink[]
+  offer_variants: OfferVariant[]
 }
 
 export type OfferListItem = Offer & {
@@ -100,7 +100,7 @@ export async function fetchOfferWithDetails(
         product_id,
         products(id, title, type, cover_image_url, status)
       ),
-      offer_payment_links(*)`
+      offer_variants(*)`
     )
     .eq("id", offerId)
     .single()
@@ -111,7 +111,7 @@ export async function fetchOfferWithDetails(
     offer_products: (OfferProduct & {
       products: OfferProductWithProduct["products"] | OfferProductWithProduct["products"][] | null
     })[]
-    offer_payment_links: OfferPaymentLink[]
+    offer_variants: OfferVariant[]
   }
 
   return {
@@ -120,7 +120,7 @@ export async function fetchOfferWithDetails(
       ...op,
       products: Array.isArray(op.products) ? (op.products[0] ?? null) : (op.products ?? null),
     })),
-    offer_payment_links: (raw.offer_payment_links ?? []).sort(
+    offer_variants: (raw.offer_variants ?? []).sort(
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     ),
   }
@@ -244,22 +244,22 @@ export async function upsertOfferProducts(
 }
 
 // ----------------------------------------------------------------
-// Payment links
+// Variants
 // ----------------------------------------------------------------
 
-export type CreateOfferPaymentLinkInput = {
+export type CreateOfferVariantInput = {
   label?: string | null
   price?: number | null
   installment_count?: number | null
 }
 
-export async function createOfferPaymentLink(
+export async function createOfferVariant(
   supabase: SupabaseClient,
   offerId: number,
-  input: CreateOfferPaymentLinkInput
-): Promise<OfferPaymentLink> {
+  input: CreateOfferVariantInput
+): Promise<OfferVariant> {
   const { data, error } = await supabase
-    .from("offer_payment_links")
+    .from("offer_variants")
     .insert({
       offer_id: offerId,
       label: input.label?.trim() || null,
@@ -270,10 +270,10 @@ export async function createOfferPaymentLink(
     .single()
 
   if (error) throw error
-  return data as OfferPaymentLink
+  return data as OfferVariant
 }
 
-export type UpdateOfferPaymentLinkInput = {
+export type UpdateOfferVariantInput = {
   label?: string | null
   price?: number | null
   installment_count?: number | null
@@ -282,11 +282,11 @@ export type UpdateOfferPaymentLinkInput = {
   is_active?: boolean
 }
 
-export async function updateOfferPaymentLink(
+export async function updateOfferVariant(
   supabase: SupabaseClient,
-  linkId: number,
-  input: UpdateOfferPaymentLinkInput
-): Promise<OfferPaymentLink> {
+  variantId: number,
+  input: UpdateOfferVariantInput
+): Promise<OfferVariant> {
   const payload: Record<string, unknown> = {}
   if (input.label !== undefined) payload.label = input.label?.trim() || null
   if (input.price !== undefined) payload.price = input.price
@@ -296,21 +296,21 @@ export async function updateOfferPaymentLink(
   if (input.is_active !== undefined) payload.is_active = input.is_active
 
   const { data, error } = await supabase
-    .from("offer_payment_links")
+    .from("offer_variants")
     .update(payload)
-    .eq("id", linkId)
+    .eq("id", variantId)
     .select()
     .single()
 
   if (error) throw error
-  return data as OfferPaymentLink
+  return data as OfferVariant
 }
 
-export async function deleteOfferPaymentLink(
+export async function deleteOfferVariant(
   supabase: SupabaseClient,
-  linkId: number
+  variantId: number
 ): Promise<void> {
-  const { error } = await supabase.from("offer_payment_links").delete().eq("id", linkId)
+  const { error } = await supabase.from("offer_variants").delete().eq("id", variantId)
   if (error) throw error
 }
 
@@ -338,10 +338,10 @@ export async function fetchEnrollmentsByOffer(
 
 /**
  * Derives the billing type from a list of product types.
- * - All content → subscription
+ * - All course → subscription
  * - Any coaching (alone or mixed) → one_time (can be upgraded to installment by user)
  */
-export function deriveBillingType(productTypes: ("content" | "coaching")[]): BillingType {
+export function deriveBillingType(productTypes: ("course" | "coaching")[]): BillingType {
   const hasCoaching = productTypes.some((t) => t === "coaching")
   return hasCoaching ? "one_time" : "subscription"
 }

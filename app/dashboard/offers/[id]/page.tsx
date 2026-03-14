@@ -39,27 +39,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { useStripeConnectGuard } from "@/hooks/use-stripe-connect-guard"
+import { useCoachAccessGuard } from "@/hooks/use-access-guard"
 import { useAuth } from "@/hooks/use-auth"
 import {
   fetchOfferWithDetails,
   updateOffer,
   deleteOffer,
-  createOfferPaymentLink,
-  deleteOfferPaymentLink,
-  fetchEnrollmentsByOffer,
+  createOfferVariant,
+  deleteOfferVariant,
   type OfferWithDetails,
-  type OfferPaymentLink,
-  type Enrollment,
+  type OfferVariant,
 } from "@/lib/services/offers"
+import { buildOrgUrl } from "@/lib/services/organizations"
 import { cn } from "@/lib/utils"
 import { OFFER_CURRENCIES } from "@/lib/constants/offers"
 import { toast } from "sonner"
@@ -104,7 +95,9 @@ export default function OfferEditorPage({
   const router = useRouter()
   const queryClient = useQueryClient()
   const { supabase } = useAuth()
-  const { canAccess, guardContent, currentOrganization } = useStripeConnectGuard({
+  const { canAccess, guardContent, currentOrganization } = useCoachAccessGuard({
+    requireOrg: true,
+    requireStripe: true,
     noOrgMessage: "Select an organization to edit offers.",
     stripeDescription:
       "To edit offers, you need to complete Stripe Connect onboarding for this organization.",
@@ -112,19 +105,13 @@ export default function OfferEditorPage({
   const offerId = Number(id)
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
-  const [deleteLinkId, setDeleteLinkId] = useState<number | null>(null)
-  const [generatingLinkId, setGeneratingLinkId] = useState<number | null>(null)
+  const [deleteVariantId, setDeleteVariantId] = useState<number | null>(null)
+  const [generatingVariantId, setGeneratingVariantId] = useState<number | null>(null)
 
   const { data: offer, isLoading, error } = useQuery({
     queryKey: ["offer", offerId],
     queryFn: () => fetchOfferWithDetails(supabase, offerId),
     enabled: !!currentOrganization?.id && !Number.isNaN(offerId) && offerId > 0,
-  })
-
-  const { data: enrollments = [] } = useQuery({
-    queryKey: ["enrollments", offerId],
-    queryFn: () => fetchEnrollmentsByOffer(supabase, offerId),
-    enabled: !!offer,
   })
 
   const updateOfferMutation = useMutation({
@@ -147,9 +134,9 @@ export default function OfferEditorPage({
     onError: (err: Error) => toast.error(err.message),
   })
 
-  const addLinkMutation = useMutation({
-    mutationFn: (input: Parameters<typeof createOfferPaymentLink>[2]) =>
-      createOfferPaymentLink(supabase, offerId, input),
+  const addVariantMutation = useMutation({
+    mutationFn: (input: Parameters<typeof createOfferVariant>[2]) =>
+      createOfferVariant(supabase, offerId, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["offer", offerId] })
       toast.success("Variant added")
@@ -157,22 +144,22 @@ export default function OfferEditorPage({
     onError: (err: Error) => toast.error(err.message),
   })
 
-  const deleteLinkMutation = useMutation({
-    mutationFn: (linkId: number) => deleteOfferPaymentLink(supabase, linkId),
+  const deleteVariantMutation = useMutation({
+    mutationFn: (variantId: number) => deleteOfferVariant(supabase, variantId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["offer", offerId] })
-      setDeleteLinkId(null)
+      setDeleteVariantId(null)
       toast.success("Variant deleted")
     },
     onError: (err: Error) => {
       toast.error(err.message)
-      setDeleteLinkId(null)
+      setDeleteVariantId(null)
     },
   })
 
   const publishMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/stripe-offers/create-price", {
+      const res = await fetch("/api/stripe-connect/create-price", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ organizationId: currentOrganization!.id, offerId }),
@@ -191,10 +178,10 @@ export default function OfferEditorPage({
     onError: (err: Error) => toast.error(err.message),
   })
 
-  const generateLinkMutation = useMutation({
+  const generateVariantMutation = useMutation({
     mutationFn: async (variantId: number) => {
-      setGeneratingLinkId(variantId)
-      const res = await fetch("/api/stripe-offers/create-payment-link", {
+      setGeneratingVariantId(variantId)
+      const res = await fetch("/api/stripe-connect/create-price", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -205,16 +192,16 @@ export default function OfferEditorPage({
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || "Failed to generate payment link")
+        throw new Error(data.error || "Failed to generate Stripe price")
       }
       return res.json()
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["offer", offerId] })
-      toast.success("Payment link generated")
+      toast.success("Stripe price generated")
     },
     onError: (err: Error) => toast.error(err.message),
-    onSettled: () => setGeneratingLinkId(null),
+    onSettled: () => setGeneratingVariantId(null),
   })
 
   if (!canAccess && guardContent) {
@@ -282,7 +269,6 @@ export default function OfferEditorPage({
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="payment-links">Payment Links</TabsTrigger>
-          <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
@@ -294,19 +280,16 @@ export default function OfferEditorPage({
           />
         </TabsContent>
 
-        <TabsContent value="payment-links" className="mt-6">
-          <PaymentLinksTab
+        <TabsContent value="variants" className="mt-6">
+          <VariantsTab
             offer={offer}
-            onAddVariant={(input) => addLinkMutation.mutate(input)}
-            onDeleteVariant={(linkId) => setDeleteLinkId(linkId)}
-            onGenerateLink={(variantId) => generateLinkMutation.mutate(variantId)}
-            addPending={addLinkMutation.isPending}
-            generatingLinkId={generatingLinkId}
+            orgSlug={currentOrganization?.slug ?? undefined}
+            onAddVariant={(input) => addVariantMutation.mutate(input)}
+            onDeleteVariant={(variantId) => setDeleteVariantId(variantId)}
+            onGeneratePrice={(variantId) => generateVariantMutation.mutate(variantId)}
+            addPending={addVariantMutation.isPending}
+            generatingVariantId={generatingVariantId}
           />
-        </TabsContent>
-
-        <TabsContent value="enrollments" className="mt-6">
-          <EnrollmentsTab enrollments={enrollments} />
         </TabsContent>
 
         <TabsContent value="settings" className="mt-6">
@@ -316,7 +299,7 @@ export default function OfferEditorPage({
                 <div>
                   <p className="text-sm font-medium text-destructive">Delete offer</p>
                   <p className="text-xs text-muted-foreground">
-                    Permanently remove this offer and all its payment links. Existing
+                    Permanently remove this offer and all its variants. Existing
                     enrollments will not be affected.
                   </p>
                 </div>
@@ -341,7 +324,7 @@ export default function OfferEditorPage({
             <AlertDialogTitle>Delete offer</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete &quot;{offer.title}&quot;? This will remove
-              all payment link variants. This action cannot be undone.
+              all variants. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -357,27 +340,27 @@ export default function OfferEditorPage({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete payment link variant */}
+      {/* Delete variant */}
       <AlertDialog
-        open={deleteLinkId !== null}
-        onOpenChange={(open) => !open && setDeleteLinkId(null)}
+        open={deleteVariantId !== null}
+        onOpenChange={(open) => !open && setDeleteVariantId(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete variant</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this payment link variant? The Stripe Payment
-              Link will still exist but will no longer be tracked here.
+              Are you sure you want to delete this variant? The Stripe price will still exist
+              but will no longer be tracked here.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive hover:bg-destructive/90"
-              onClick={() => deleteLinkId !== null && deleteLinkMutation.mutate(deleteLinkId)}
-              disabled={deleteLinkMutation.isPending}
+              onClick={() => deleteVariantId !== null && deleteVariantMutation.mutate(deleteVariantId)}
+              disabled={deleteVariantMutation.isPending}
             >
-              {deleteLinkMutation.isPending ? "Deleting…" : "Delete"}
+              {deleteVariantMutation.isPending ? "Deleting…" : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -401,7 +384,7 @@ function OverviewTab({
 }) {
   const [title, setTitle] = useState(offer.title)
   const [description, setDescription] = useState(offer.description ?? "")
-  const [price, setPrice] = useState(String(offer.price))
+  const [price, setPrice] = useState(String(offer.price / 100))
   const [currency, setCurrency] = useState(offer.currency)
   const [interval, setInterval] = useState<"month" | "year">(offer.interval ?? "month")
   const [installmentCount, setInstallmentCount] = useState(
@@ -417,7 +400,7 @@ function OverviewTab({
     onSave({
       title,
       description: description || null,
-      price: parsedPrice,
+      price: Math.round(parsedPrice * 100),
       currency,
       interval: offer.billing_type === "subscription" ? interval : null,
       installment_count:
@@ -443,7 +426,7 @@ function OverviewTab({
                 key={op.id}
                 className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2"
               >
-                {op.products?.type === "content" ? (
+                {op.products?.type === "course" ? (
                   <BookOpen className="h-4 w-4 text-primary shrink-0" />
                 ) : (
                   <MessageCircle className="h-4 w-4 text-primary shrink-0" />
@@ -552,7 +535,7 @@ function OverviewTab({
           </div>
         )}
 
-        <Button type="submit" disabled={savePending || offer.status === "active"}>
+        <Button type="submit" disabled={savePending}>
           {savePending ? "Saving…" : "Save details"}
         </Button>
       </form>
@@ -561,23 +544,25 @@ function OverviewTab({
 }
 
 // ----------------------------------------------------------------
-// Payment Links Tab
+// Variants Tab
 // ----------------------------------------------------------------
 
-function PaymentLinksTab({
+function VariantsTab({
   offer,
+  orgSlug,
   onAddVariant,
   onDeleteVariant,
-  onGenerateLink,
+  onGeneratePrice,
   addPending,
-  generatingLinkId,
+  generatingVariantId,
 }: {
   offer: OfferWithDetails
+  orgSlug?: string
   onAddVariant: (input: { label?: string | null; price?: number | null; installment_count?: number | null }) => void
-  onDeleteVariant: (linkId: number) => void
-  onGenerateLink: (variantId: number) => void
+  onDeleteVariant: (variantId: number) => void
+  onGeneratePrice: (variantId: number) => void
   addPending: boolean
-  generatingLinkId: number | null
+  generatingVariantId: number | null
 }) {
   const [showNewForm, setShowNewForm] = useState(false)
   const [variantLabel, setVariantLabel] = useState("")
@@ -588,7 +573,7 @@ function PaymentLinksTab({
     e.preventDefault()
     onAddVariant({
       label: variantLabel.trim() || null,
-      price: variantPrice ? parseFloat(variantPrice) : null,
+      price: variantPrice ? Math.round(parseFloat(variantPrice) * 100) : null,
       installment_count: variantInstallments ? parseInt(variantInstallments, 10) : null,
     })
     setVariantLabel("")
@@ -597,46 +582,61 @@ function PaymentLinksTab({
     setShowNewForm(false)
   }
 
+  const baseAppUrl =
+    (typeof window !== "undefined" && window.location?.origin) ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    ""
+  const base = baseAppUrl.replace(/\/$/, "")
+  const orgBase = orgSlug ? buildOrgUrl(base || undefined, orgSlug).replace(/\/$/, "") : ""
+  const baseOfferShareUrl = orgBase
+    ? `${orgBase}/buy/${offer.id}`
+    : orgSlug
+      ? `${base}/org/${orgSlug}/buy/${offer.id}`
+      : `${base}/buy/${offer.id}`
+
   return (
     <div className="max-w-2xl space-y-3">
       <p className="text-sm text-muted-foreground">
-        Generate shareable Stripe Payment Links for this offer. You can create variants
-        with different prices or installment plans.
+        Share the links below. Each goes to your checkout page (email then Stripe).
+        You can add variants with different prices or installment plans.
       </p>
 
       {offer.status === "draft" && (
         <div className="rounded-xl border border-warning/30 bg-warning/5 p-4">
           <p className="text-sm text-warning-foreground">
-            Publish the offer first to generate payment links.
+            Publish the offer first to share variants.
           </p>
         </div>
       )}
 
-      {/* Base offer link — auto-created at publish time, stored on offer.stripe_payment_link */}
+      {/* Base offer — shareable link from offer_id */}
       <div className="rounded-xl border border-border bg-card p-3 space-y-2">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-semibold text-foreground">Base offer</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {offer.currency.toUpperCase()} {Number(offer.price).toFixed(2)}
+              {offer.currency.toUpperCase()} {(offer.price / 100).toFixed(2)}
               {offer.billing_type === "subscription" && ` / ${offer.interval}`}
-              {offer.billing_type === "installment" && offer.installment_count && ` × ${offer.installment_count}`}
+              {offer.billing_type === "installment" &&
+                offer.installment_count &&
+                ` × ${offer.installment_count}`}
             </p>
           </div>
         </div>
-        {offer.stripe_payment_link ? (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground">Link to share</p>
           <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
             <a
-              href={offer.stripe_payment_link}
+              href={baseOfferShareUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="flex-1 text-sm text-primary truncate hover:underline"
             >
-              {offer.stripe_payment_link}
+              {baseOfferShareUrl}
             </a>
-            <CopyButton text={offer.stripe_payment_link} />
+            <CopyButton text={baseOfferShareUrl} />
             <a
-              href={offer.stripe_payment_link}
+              href={baseOfferShareUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="shrink-0"
@@ -644,24 +644,25 @@ function PaymentLinksTab({
               <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
             </a>
           </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            {offer.status === "draft"
-              ? "Publish the offer to generate the base payment link."
-              : "Base payment link not yet generated."}
-          </p>
-        )}
+        </div>
       </div>
 
       {/* Variants */}
-      {offer.offer_payment_links.map((link) => (
-          <PaymentLinkCard
-            key={link.id}
-            link={link}
+      {offer.offer_variants.map((variant) => (
+          <VariantCard
+            key={variant.id}
+            variant={variant}
             offer={offer}
-            onDelete={() => onDeleteVariant(link.id)}
-            onGenerate={() => onGenerateLink(link.id)}
-            generating={generatingLinkId === link.id}
+            shareUrl={
+              orgBase
+                ? `${orgBase}/buy/${offer.id}?variantId=${variant.id}`
+                : orgSlug
+                  ? `${base}/org/${orgSlug}/buy/${offer.id}?variantId=${variant.id}`
+                  : `${base}/buy/${offer.id}?variantId=${variant.id}`
+            }
+            onDelete={() => onDeleteVariant(variant.id)}
+            onGeneratePrice={() => onGeneratePrice(variant.id)}
+            generating={generatingVariantId === variant.id}
           />
         ))}
 
@@ -694,7 +695,7 @@ function PaymentLinksTab({
                 step="0.01"
                 value={variantPrice}
                 onChange={(e) => setVariantPrice(e.target.value)}
-                placeholder={String(offer.price)}
+                placeholder={String(offer.price / 100)}
               />
             </div>
             {offer.billing_type !== "subscription" && (
@@ -739,46 +740,48 @@ function PaymentLinksTab({
   )
 }
 
-function PaymentLinkCard({
-  link,
+function VariantCard({
+  variant,
   offer,
+  shareUrl,
   onDelete,
-  onGenerate,
+  onGeneratePrice,
   generating,
 }: {
-  link: OfferPaymentLink
+  variant: OfferVariant
   offer: OfferWithDetails
+  shareUrl: string
   onDelete: () => void
-  onGenerate: () => void
+  onGeneratePrice: () => void
   generating: boolean
 }) {
-  const effectivePrice = link.price ?? offer.price
-  const effectiveInstallments = link.installment_count ?? offer.installment_count
+  const effectivePrice = variant.price ?? offer.price
+  const effectiveInstallments = variant.installment_count ?? offer.installment_count
 
   return (
     <div className="rounded-xl border border-border bg-card p-5 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-foreground">
-            {link.label ?? "Variant"}
+            {variant.label ?? "Variant"}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {offer.currency.toUpperCase()} {Number(effectivePrice).toFixed(2)}
+            {offer.currency.toUpperCase()} {(Number(effectivePrice) / 100).toFixed(2)}
             {offer.billing_type !== "subscription" && effectiveInstallments && ` × ${effectiveInstallments}`}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {!link.stripe_payment_link && (
+          {!variant.stripe_price_id && (
             <Button
               variant="outline"
               size="sm"
-              onClick={onGenerate}
+              onClick={onGeneratePrice}
               disabled={generating}
             >
               {generating ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-1" />
               ) : null}
-              Generate link
+              Generate Stripe price
             </Button>
           )}
           <Button
@@ -791,108 +794,31 @@ function PaymentLinkCard({
           </Button>
         </div>
       </div>
-      {link.stripe_payment_link && (
-        <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
-          <a
-            href={link.stripe_payment_link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-1 text-sm text-primary truncate hover:underline"
-          >
-            {link.stripe_payment_link}
-          </a>
-          <CopyButton text={link.stripe_payment_link} />
-          <a
-            href={link.stripe_payment_link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="shrink-0"
-          >
-            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-          </a>
+      {variant.stripe_price_id && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground">Link to share</p>
+          <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
+            <a
+              href={shareUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 text-sm text-primary truncate hover:underline"
+            >
+              {shareUrl}
+            </a>
+            <CopyButton text={shareUrl} />
+            <a
+              href={shareUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0"
+            >
+              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+            </a>
+          </div>
         </div>
       )}
     </div>
   )
 }
 
-// ----------------------------------------------------------------
-// Enrollments Tab
-// ----------------------------------------------------------------
-
-function EnrollmentsTab({ enrollments }: { enrollments: Enrollment[] }) {
-  const pending = enrollments.filter((e) => !e.user_id)
-
-  if (enrollments.length === 0) {
-    return (
-      <div className="max-w-2xl">
-        <p className="text-sm text-muted-foreground">
-          No enrollments yet. Share a payment link to start accepting students.
-        </p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="max-w-3xl space-y-4">
-      {pending.length > 0 && (
-        <div className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-3">
-          <p className="text-sm text-warning-foreground font-medium">
-            {pending.length} unmatched enrollment{pending.length > 1 ? "s" : ""}
-          </p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            These buyers have not yet created an account with the email used for
-            payment. Their access will be activated automatically when they sign
-            in with the same email.
-          </p>
-        </div>
-      )}
-
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Buyer</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Started</TableHead>
-              <TableHead>Expires</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {enrollments.map((enrollment) => (
-              <TableRow key={enrollment.id}>
-                <TableCell>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-sm text-foreground">
-                      {enrollment.buyer_email ?? "—"}
-                    </span>
-                    {!enrollment.user_id && (
-                      <span className="text-xs text-warning-foreground">
-                        No account yet
-                      </span>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    className={cn("text-xs capitalize", statusStyles[enrollment.status])}
-                  >
-                    {enrollment.status}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {new Date(enrollment.started_at).toLocaleDateString()}
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {enrollment.expires_at
-                    ? new Date(enrollment.expires_at).toLocaleDateString()
-                    : "—"}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    </div>
-  )
-}

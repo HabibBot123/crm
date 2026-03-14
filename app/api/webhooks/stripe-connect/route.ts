@@ -84,6 +84,9 @@ export async function POST(req: NextRequest) {
         const organizationId = session.metadata?.organization_id
           ? Number(session.metadata.organization_id)
           : null
+        const variantId = session.metadata?.variant_id
+          ? Number(session.metadata.variant_id)
+          : null
 
         if (!offerId || !organizationId) {
           console.warn(
@@ -189,8 +192,10 @@ export async function POST(req: NextRequest) {
               .update({
                 buyer_email: buyerEmail,
                 status: "active",
+                stripe_customer_id: session.customer ?? null,
                 stripe_subscription_id: session.subscription ?? null,
                 expires_at: expiresAt,
+                offer_variant_id: variantId,
               })
               .eq("id", existing.id)
             enrollError = error
@@ -201,9 +206,11 @@ export async function POST(req: NextRequest) {
               .insert({
                 organization_id: organizationId,
                 offer_id: offerId,
+                offer_variant_id: variantId,
                 user_id: userId,
                 buyer_email: buyerEmail,
                 status: "active",
+                stripe_customer_id: session.customer ?? null,
                 stripe_subscription_id: session.subscription ?? null,
                 expires_at: expiresAt,
               })
@@ -218,9 +225,11 @@ export async function POST(req: NextRequest) {
             .insert({
               organization_id: organizationId,
               offer_id: offerId,
+              offer_variant_id: variantId,
               user_id: null,
               buyer_email: buyerEmail,
               status: "active",
+              stripe_customer_id: session.customer ?? null,
               stripe_subscription_id: session.subscription ?? null,
               expires_at: expiresAt,
             })
@@ -256,7 +265,6 @@ export async function POST(req: NextRequest) {
           const { error: saleError } = await supabase.from("sales").insert({
             organization_id: organizationId,
             enrollment_id: enrollmentId,
-            offer_id: offerId,
             user_id: userId ?? null,
             buyer_email: buyerEmail,
             billing_type: billingType,
@@ -503,7 +511,6 @@ export async function POST(req: NextRequest) {
         const { error: saleError } = await supabase.from("sales").insert({
           organization_id: enrollment.organization_id,
           enrollment_id: enrollment.id,
-          offer_id: enrollment.offer_id,
           user_id: enrollment.user_id,
           buyer_email: enrollment.buyer_email,
           billing_type: "subscription",

@@ -71,11 +71,11 @@ function getInitials(display: string): string {
   return display.slice(0, 2).toUpperCase()
 }
 
-function formatCurrency(amount: number): string {
+function formatCurrency(amountCents: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "EUR",
-  }).format(amount)
+  }).format(amountCents / 100)
 }
 
 function formatDate(dateStr: string): string {

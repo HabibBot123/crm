@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { data: link, error: linkError } = await supabase
-    .from("offer_payment_links")
+    .from("offer_variants")
     .select("id, price, installment_count, stripe_price_id")
     .eq("id", paymentLinkId)
     .eq("offer_id", offerId)
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
           )
 
           await supabase
-            .from("offer_payment_links")
+            .from("offer_variants")
             .update({ stripe_price_id: variantPrice.id })
             .eq("id", variant.id)
 
@@ -130,6 +130,14 @@ export async function POST(req: NextRequest) {
       variant_id: String(variant.id),
     }
 
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+    const baseAppUrl = appUrl.replace(/\/$/, "")
+  const successUrl = `${baseAppUrl}/order-success` +
+    `?product=${encodeURIComponent(offer.title)}` +
+    `&coach=${encodeURIComponent(org.name ?? "")}` +
+    `&price=${encodeURIComponent(String(effectivePrice))}` +
+    `&currency=${encodeURIComponent(offer.currency)}`
+
     const { options } = await buildPaymentLinkOptions(
       org.stripe_account_id,
       {
@@ -141,7 +149,8 @@ export async function POST(req: NextRequest) {
         stripePriceId,
         stripeProductId: offer.stripe_product_id!,
       },
-      metadata
+      metadata,
+      successUrl
     )
 
     const paymentLink = await stripe.paymentLinks.create(options, {
@@ -149,7 +158,7 @@ export async function POST(req: NextRequest) {
     })
 
     const { error: updateError } = await supabase
-      .from("offer_payment_links")
+      .from("offer_variants")
       .update({ stripe_payment_link: paymentLink.url })
       .eq("id", variant.id)
 

@@ -1,0 +1,5 @@
+Vérifier que l'on ne peut supprimer un produuit offre content etc s'il est déjà utilisé
+
+ajouter le cname pour coached.myapp.com
+
+psossibilité de rendre en inactive des offer_variants

@@ -105,6 +105,14 @@ export async function POST(req: NextRequest) {
       organization_id: String(organizationId),
     }
 
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+    const baseAppUrl = appUrl.replace(/\/$/, "")
+  const successUrl = `${baseAppUrl}/order-success` +
+    `?product=${encodeURIComponent(offer.title)}` +
+    `&coach=${encodeURIComponent(org.name ?? "")}` +
+    `&price=${encodeURIComponent(String(offer.price))}` +
+    `&currency=${encodeURIComponent(offer.currency)}`
+
     const { options } = await buildPaymentLinkOptions(
       org.stripe_account_id,
       {
@@ -116,7 +124,8 @@ export async function POST(req: NextRequest) {
         stripePriceId: stripePrice.id,
         stripeProductId: String(stripePrice.product),
       },
-      metadata
+      metadata,
+      successUrl
     )
 
     const paymentLink = await stripe.paymentLinks.create(options, {

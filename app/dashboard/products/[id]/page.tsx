@@ -49,7 +49,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { useStripeConnectGuard } from "@/hooks/use-stripe-connect-guard"
+import { useCoachAccessGuard } from "@/hooks/use-access-guard"
 import { useAuth } from "@/hooks/use-auth"
 import {
   fetchProductWithDetails,
@@ -78,7 +78,9 @@ export default function ProductEditorPage({
   const router = useRouter()
   const queryClient = useQueryClient()
   const { supabase } = useAuth()
-  const { canAccess, guardContent, currentOrganization } = useStripeConnectGuard({
+  const { canAccess, guardContent, currentOrganization } = useCoachAccessGuard({
+    requireOrg: true,
+    requireStripe: true,
     noOrgMessage: "Select an organization to edit products.",
     stripeDescription:
       "To edit products, you need to complete Stripe Connect onboarding for this organization.",
@@ -325,7 +327,8 @@ export default function ProductEditorPage({
     const formData = new FormData()
     formData.append("file", file)
     try {
-      const res = await fetch(`/api/products/${productId}/cover`, {
+      formData.append("product_id", String(productId))
+      const res = await fetch(`/api/products/upload-cover`, {
         method: "POST",
         body: formData,
       })
@@ -379,7 +382,7 @@ export default function ProductEditorPage({
     )
   }
 
-  const defaultTab = product.type === "coaching" ? "coaching" : "content"
+  const defaultTab = product.type === "coaching" ? "coaching" : "course"
 
   return (
     <div className="p-4 lg:p-8">
@@ -414,8 +417,8 @@ export default function ProductEditorPage({
 
       <Tabs defaultValue={defaultTab} className="mt-8">
         <TabsList>
-          {product.type === "content" && (
-            <TabsTrigger value="content">Content</TabsTrigger>
+          {product.type === "course" && (
+            <TabsTrigger value="course">Course</TabsTrigger>
           )}
           {product.type === "coaching" && (
             <TabsTrigger value="coaching">Coaching</TabsTrigger>
@@ -424,8 +427,8 @@ export default function ProductEditorPage({
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
-        {product.type === "content" && (
-          <TabsContent value="content" className="mt-6">
+        {product.type === "course" && (
+          <TabsContent value="course" className="mt-6">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-foreground">

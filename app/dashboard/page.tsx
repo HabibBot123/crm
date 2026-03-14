@@ -125,7 +125,7 @@ export default function DashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Revenue"
-          value={`${stats.total_revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })} €`}
+          value={`${(stats.total_revenue / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} €`}
           change={0}
           icon={DollarSign}
         />
@@ -181,7 +181,7 @@ export default function DashboardPage() {
                       )}
                     </div>
                     <span className="text-sm font-semibold text-foreground">
-                      +{sale.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}{" "}
+                      +{(sale.amount / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}{" "}
                       {sale.currency.toUpperCase()}
                     </span>
                   </div>
@@ -201,7 +201,7 @@ export default function DashboardPage() {
               topProducts.map((product) => (
                 <div key={product.product_id} className="flex items-center gap-4">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-xs font-bold text-muted-foreground">
-                    {product.type === "content" ? "CT" : product.type === "coaching" ? "CO" : "PR"}
+                    {product.type === "course" ? "CR" : product.type === "coaching" ? "CO" : "PR"}
                   </div>
                   <div className="flex-1">
                     <p className="text-sm font-medium text-foreground">{product.title}</p>

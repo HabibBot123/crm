@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 
-export type ProductType = "content" | "coaching"
+export type ProductType = "course" | "coaching"
 export type ProductStatus = "draft" | "published" | "archived"
 export type DeliveryMode = "remote" | "in_person" | "hybrid"
 

@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useStripeConnectGuard } from "@/hooks/use-stripe-connect-guard"
+import { useCoachAccessGuard } from "@/hooks/use-access-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { fetchProductsByOrganization, type Product } from "@/lib/services/products"
 import {
@@ -33,7 +33,9 @@ export default function NewOfferPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const { supabase } = useAuth()
-  const { canAccess, guardContent, currentOrganization } = useStripeConnectGuard({
+  const { canAccess, guardContent, currentOrganization } = useCoachAccessGuard({
+    requireOrg: true,
+    requireStripe: true,
     noOrgMessage: "Select an organization to create offers.",
     stripeDescription:
       "To create offers, you need to complete Stripe Connect onboarding for this organization.",
@@ -72,7 +74,7 @@ export default function NewOfferPage() {
       : billingTypeOverride ?? autoBillingType
 
   const isBundle =
-    selectedProducts.some((p) => p.type === "content") &&
+    selectedProducts.some((p) => p.type === "course") &&
     selectedProducts.some((p) => p.type === "coaching")
 
   const createMutation = useMutation({
@@ -82,7 +84,7 @@ export default function NewOfferPage() {
         title: title.trim(),
         description: description.trim() || null,
         billing_type: effectiveBillingType!,
-        price: parseFloat(price),
+        price: Math.round(parseFloat(price) * 100),
         currency,
         interval: effectiveBillingType === "subscription" ? interval : null,
         installment_count:
@@ -186,7 +188,7 @@ export default function NewOfferPage() {
                     )}
                   >
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                      {product.type === "content" ? (
+                      {product.type === "course" ? (
                         <BookOpen className="h-5 w-5 text-primary" />
                       ) : (
                         <MessageCircle className="h-5 w-5 text-primary" />
@@ -242,7 +244,7 @@ export default function NewOfferPage() {
             <div className="flex flex-wrap gap-2 mt-1">
               {selectedProducts.map((p) => (
                 <Badge key={p.id} variant="secondary" className="gap-1.5 text-xs">
-                  {p.type === "content" ? (
+                  {p.type === "course" ? (
                     <BookOpen className="h-3 w-3" />
                   ) : (
                     <MessageCircle className="h-3 w-3" />

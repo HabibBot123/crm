@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,13 +13,20 @@ import { toast } from "sonner"
 export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { supabase } = useAuth()
+  const { supabase, user, isLoading } = useAuth()
   const next = searchParams.get("next") ?? "/dashboard"
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+
+  // If already logged in, redirect to target page
+  useEffect(() => {
+    if (!isLoading && user) {
+      router.replace(next)
+    }
+  }, [isLoading, user, next, router])
 
   async function handleEmailLogin(e: React.FormEvent) {
     e.preventDefault()

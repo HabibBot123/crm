@@ -23,7 +23,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { useStripeConnectGuard } from "@/hooks/use-stripe-connect-guard"
+import { useCoachAccessGuard } from "@/hooks/use-access-guard"
 import { useAuth } from "@/hooks/use-auth"
 import {
   fetchProductsByOrganization,
@@ -49,7 +49,9 @@ export default function ProductsPage() {
     isLoading: orgLoading,
     guardContent,
     currentOrganization,
-  } = useStripeConnectGuard({
+  } = useCoachAccessGuard({
+    requireOrg: true,
+    requireStripe: true,
     noOrgMessage: "Select an organization to view products.",
     stripeDescription:
       "To create and sell products, you need to complete Stripe Connect onboarding for this organization.",

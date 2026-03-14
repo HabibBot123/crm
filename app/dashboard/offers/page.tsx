@@ -39,7 +39,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { useStripeConnectGuard } from "@/hooks/use-stripe-connect-guard"
+import { useCoachAccessGuard } from "@/hooks/use-access-guard"
 import { useAuth } from "@/hooks/use-auth"
 import {
   fetchOffersByOrganization,
@@ -69,7 +69,7 @@ const billingTypeLabel: Record<string, string> = {
 }
 
 function formatPrice(offer: OfferListItem): string {
-  const price = `${offer.currency.toUpperCase()} ${Number(offer.price).toFixed(2)}`
+  const price = `${offer.currency.toUpperCase()} ${(offer.price / 100).toFixed(2)}`
   if (offer.billing_type === "subscription") {
     return `${price} / ${offer.interval === "year" ? "yr" : "mo"}`
   }
@@ -86,7 +86,9 @@ export default function OffersPage() {
     canAccess,
     guardContent,
     currentOrganization,
-  } = useStripeConnectGuard({
+  } = useCoachAccessGuard({
+    requireOrg: true,
+    requireStripe: true,
     noOrgMessage: "Select an organization to view offers.",
     stripeDescription:
       "To create and manage offers, you need to complete Stripe Connect onboarding for this organization.",

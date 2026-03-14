@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   Package,
@@ -15,12 +15,14 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  Palette,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { OrgSwitcher } from "@/components/org-switcher"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
+import { useAuth } from "@/hooks/use-auth"
 
 const navItems = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
@@ -30,21 +32,38 @@ const navItems = [
   { label: "Clients", href: "/dashboard/clients", icon: Users },
   { label: "Leads", href: "/dashboard/leads", icon: Target },
   { label: "Content", href: "/dashboard/content", icon: FileText },
+  { label: "Branding", href: "/dashboard/branding", icon: Palette },
   { label: "Team", href: "/dashboard/team", icon: UserPlus },
   { label: "Settings", href: "/dashboard/settings", icon: Settings },
 ]
 
 export function DashboardSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+  const { signOut } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
 
+  const handleSignOut = async () => {
+    await signOut()
+    router.push("/")
+  }
+
   return (
-    <aside
-      className={cn(
-        "hidden border-r border-sidebar-border bg-sidebar lg:flex lg:flex-col lg:transition-all lg:duration-200",
-        collapsed ? "lg:w-16" : "lg:w-64"
-      )}
-    >
+    <>
+      {/* Spacer so main content doesn't go under the sidebar */}
+      <div
+        className={cn(
+          "hidden flex-shrink-0 lg:block lg:transition-all lg:duration-200",
+          collapsed ? "lg:w-16" : "lg:w-64"
+        )}
+        aria-hidden
+      />
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-30 hidden h-screen flex-col border-r border-sidebar-border bg-sidebar lg:flex lg:transition-all lg:duration-200",
+          collapsed ? "lg:w-16" : "lg:w-64"
+        )}
+      >
       <div className="flex h-16 min-w-0 items-center justify-between gap-2 border-b border-sidebar-border px-3">
         {!collapsed && (
           <div className="min-w-0 flex-1 overflow-hidden">
@@ -61,7 +80,7 @@ export function DashboardSidebar() {
         </Button>
       </div>
 
-      <nav className="flex-1 p-3">
+      <nav className="flex-1 overflow-y-auto p-3">
         <ul className="space-y-1">
           {navItems.map((item) => {
             const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href))
@@ -89,8 +108,10 @@ export function DashboardSidebar() {
       <div className="border-t border-sidebar-border p-3">
         <div className="flex items-center justify-between">
           {!collapsed && <ThemeToggle />}
-          <Link
-            href="/"
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleSignOut}
             className={cn(
               "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
               collapsed && "justify-center px-2"
@@ -99,9 +120,10 @@ export function DashboardSidebar() {
           >
             <LogOut className="h-4 w-4 shrink-0" />
             {!collapsed && <span>Sign out</span>}
-          </Link>
+          </Button>
         </div>
       </div>
     </aside>
+    </>
   )
 }
