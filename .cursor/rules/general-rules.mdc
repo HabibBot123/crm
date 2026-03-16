@@ -1,0 +1,144 @@
+---
+alwaysApply: true
+---
+
+
+## 1. Core Principles
+
+- **Simplicity First**: Make every change as simple as possible. Impact minimal code.
+- **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
+
+---
+
+## 2. Self-Improvement Loop
+
+- After ANY correction from the user: update `/lessons.mdc` with the pattern
+- Write rules for yourself that prevent the same mistake
+- Ruthlessly iterate on these lessons until mistake rate drops
+- Review lessons at session start for relevant project
+
+---
+
+## 3. Verification Before Done
+
+- Never mark a task complete without proving it works
+- Diff behavior between main and your changes when relevant
+- Ask yourself: "Would a staff engineer approve this?"
+- Run tests, check logs, demonstrate correctness
+
+---
+
+## 4. Demand Elegance (Balanced)
+
+- For non-trivial changes: pause and ask "is there a more elegant way?"
+- If a fix feels hacky: "Knowing everything I know now, implement the elegant solution"
+- Skip this for simple, obvious fixes — don't over-engineer
+- Challenge your own work before presenting it
+
+---
+
+## 5. Autonomous Bug Fixing
+
+- When given a bug report: just fix it. Don't ask for hand-holding
+- Point at logs, errors, failing tests — then resolve them
+- Zero context switching required from the user
+- Go fix failing CI tests without being told how
+
+---
+
+## 6. Supabase + Data Access Architecture
+
+Because the project uses **Supabase with Row Level Security (RLS)**, all database access must follow a **clear and structured architecture**.
+
+### Service Layer for Queries
+
+- **Never place Supabase queries directly inside React components**
+- All database queries must live in **dedicated service files**
+- Services should be organized by domain in /lib/services and named by the concerned page or logic (/services/clients.ts, /services/organizations.ts, etc.)
+
+Responsibilities of services:
+
+- Handle all **Supabase queries**
+- Encapsulate **data access logic**
+- Ensure compatibility with **RLS policies**
+- Keep components completely unaware of database implementation
+
+Components should **only call service functions**, never Supabase directly.
+
+USE plugin-supabase-supabase if you need some confirmations about RLS, Tables, etc.
+
+---
+
+### React Query for Data Fetching
+
+All server data must be handled using **React Query**.
+
+Rules:
+
+- Queries must call **service layer functions**
+- Never call Supabase directly inside a React Query function
+- Always define **clear query keys**
+
+Example responsibility split:
+
+```
+React Component
+      ↓
+React Query Hook
+      ↓
+Service Function
+      ↓
+Supabase Query
+```
+
+---
+
+### Component Responsibility Separation
+
+Components must stay **simple and focused on UI**.
+
+Rules:
+
+- Move complex UI logic into **dedicated subcomponents**
+- Avoid large "god components"
+- Prefer **composition over complexity**
+
+Goals:
+
+- Improve readability
+- Reduce cognitive load
+- Make components easier to test and maintain
+
+---
+
+### Schema Validation
+
+- Always validate external or API data using **Zod**
+- Zod schemas must live in dedicated files
+
+Example:
+
+```
+/schemas
+  user.schema.ts
+  project.schema.ts
+```
+
+This ensures:
+
+- Runtime validation
+- Strong typing
+- Safer data transformations
+
+---
+
+## 7. Other Rules
+
+- Never typecast. Never use `as`
+- Use **React Query** for caching
+- Use **Zod** for schemas
+- Never code until the user asks or explicitly instructs you to
+- Always ask for confirmation before writing code
+- Never add unnecessary fallbacks
+- Avoid hidden logic inside components
+- Prefer explicit and predictable code over clever shortcuts

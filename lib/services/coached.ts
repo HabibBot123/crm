@@ -21,6 +21,7 @@ export type CoachedProduct = {
   cover_image_url: string | null
   completion_completed: number | null
   completion_total: number | null
+  coach_full_name: string | null
 }
 
 /** Content item with Bunny fields for course player (video embed, doc URL). */
@@ -104,7 +105,7 @@ type OrgRow = {
 }
 
 const COACHED_PRODUCTS_COLUMNS =
-  "organization_id,organization_name,organization_slug,enrollment_id,enrollment_product_id,enrollment_status,started_at,expires_at,product_id,product_title,product_type,cover_image_url,completion_completed,completion_total"
+  "organization_id,organization_name,organization_slug,enrollment_id,enrollment_product_id,enrollment_status,started_at,expires_at,product_id,product_title,product_type,cover_image_url,completion_completed,completion_total,coach_full_name"
 
 type EnrollmentRow = {
   id: number
@@ -187,14 +188,72 @@ export function coachedOrgsFromProducts(products: CoachedProduct[]): CoachedOrg[
   return orgs
 }
 
+/** Session row for coached coaching detail (past/upcoming). */
+export type CoachedCoachingSession = {
+  id: number
+  scheduled_at: string
+  completed_at: string | null
+  meeting_url: string | null
+  location: string | null
+  session_number: number | null
+  duration_minutes: number
+  delivery_mode: string | null
+}
+
+export type CoachedCoachingDetail = {
+  enrollment_product_id: number
+  organization_slug: string
+  product_title: string
+  sessions_past: CoachedCoachingSession[]
+  sessions_upcoming: CoachedCoachingSession[]
+  coach_full_name: string | null
+}
+
+/** Fetch coaching pack detail for the coached: sessions (past/upcoming) and coach info. */
+/** Fetch coaching pack detail for the coached: one view query (pack meta) + one sessions query. */
+export async function fetchCoachedCoachingDetail(
+  supabase: SupabaseClient,
+  userId: string,
+  productId: number
+): Promise<CoachedCoachingDetail | null> {
+  const { data: packRow, error: packError } = await supabase
+    .from("v_coached_products")
+    .select("enrollment_product_id, organization_slug, coach_full_name, product_title")
+    .eq("user_id", userId)
+    .eq("product_id", productId)
+    .eq("product_type", "coaching")
+    .maybeSingle()
+
+  if (packError || !packRow) return null
+  const pack = packRow as { enrollment_product_id: number; organization_slug: string; coach_full_name: string | null; product_title: string }
+
+  const { data: sessionsData, error: sessionsError } = await supabase
+    .from("coaching_sessions")
+    .select("id, scheduled_at, completed_at, meeting_url, location, session_number, duration_minutes, delivery_mode")
+    .eq("enrollment_product_id", pack.enrollment_product_id)
+    .eq("user_id", userId)
+    .order("scheduled_at", { ascending: true })
+
+  if (sessionsError) throw sessionsError
+  const allSessions = (sessionsData ?? []) as CoachedCoachingSession[]
+  const now = new Date().toISOString()
+
+  return {
+    enrollment_product_id: pack.enrollment_product_id,
+    organization_slug: pack.organization_slug,
+    product_title: pack.product_title ?? "Coaching",
+    sessions_past: allSessions.filter((s) => s.scheduled_at < now),
+    sessions_upcoming: allSessions.filter((s) => s.scheduled_at >= now),
+    coach_full_name: pack.coach_full_name ?? null,
+  }
+}
+
 /** Verify access and get enrollment_id + enrollment_product_id for a product; returns null if no access. */
 export async function getCoachedEnrollmentForProduct(
   supabase: SupabaseClient,
   userId: string,
   productId: number
 ): Promise<{ enrollment_id: number; enrollment_product_id: number; organization_slug: string } | null> {
-  type EnrollmentRow = { enrollment_id: number; enrollment_product_id: number; organization_slug: string }
-
   const { data, error } = await supabase
     .from("v_coached_products")
     .select("enrollment_id, enrollment_product_id, organization_slug")
@@ -204,7 +263,7 @@ export async function getCoachedEnrollmentForProduct(
     .maybeSingle()
 
   if (error || !data) return null
-  const row = data as EnrollmentRow
+  const row = data as { enrollment_id: number; enrollment_product_id: number; organization_slug: string }
   return {
     enrollment_id: row.enrollment_id,
     enrollment_product_id: row.enrollment_product_id,

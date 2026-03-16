@@ -1,10 +1,12 @@
 "use client"
 
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { DollarSign, Users, ShoppingCart, TrendingUp } from "lucide-react"
+import { DollarSign, Users, ShoppingCart, TrendingUp, MessageCircle } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
+import { useCurrentOrganization } from "@/components/providers/organization-provider"
 // Charts (kept for future use; currently no charts rendered)
 // import {
 //   Bar,
@@ -52,16 +54,17 @@ type DashboardOverview = {
   active_students: number
   recent_sales: RecentSale[]
   top_products: TopProduct[]
+  unassigned_coaching_count?: number
 }
 
 export default function DashboardPage() {
   const router = useRouter()
   const { user, isLoading, supabase } = useAuth()
-  const organizations = (user?.app_metadata?.organizations ?? []) as { organization_id: number }[]
-  const currentOrgId = organizations[0]?.organization_id ?? null
+  const { currentOrganization, organizations, isLoading: orgLoading } = useCurrentOrganization()
+  const currentOrgId = currentOrganization?.id ?? organizations[0]?.id ?? null
 
   useEffect(() => {
-    if (isLoading) return
+    if (isLoading || orgLoading) return
     if (!user) {
       router.replace("/login")
       return
@@ -69,7 +72,7 @@ export default function DashboardPage() {
     if (organizations.length === 0) {
       router.replace("/create-organization")
     }
-  }, [user, isLoading, organizations.length, router])
+  }, [user, isLoading, orgLoading, organizations.length, router])
 
   const { data: overview } = useQuery({
     queryKey: ["dashboard-overview", currentOrgId],
@@ -96,6 +99,7 @@ export default function DashboardPage() {
     active_students: 0,
     recent_sales: [],
     top_products: [],
+    unassigned_coaching_count: 0,
   }
 
   const recentSales = Array.isArray(stats.recent_sales) ? stats.recent_sales : []
@@ -104,7 +108,7 @@ export default function DashboardPage() {
   const conversionRate =
     stats.total_clients > 0 ? Math.round((stats.active_students / stats.total_clients) * 1000) / 10 : 0
 
-  if (isLoading || !user || organizations.length === 0) {
+  if (isLoading || !user || orgLoading || organizations.length === 0) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <p className="text-muted-foreground">Loading…</p>
@@ -120,6 +124,27 @@ export default function DashboardPage() {
           Welcome back. Here is the overview for your organization.
         </p>
       </div>
+
+      {/* CTA: coachings à assigner */}
+      {(stats.unassigned_coaching_count ?? 0) > 0 && (
+        <Link href="/dashboard/coaching">
+          <div className="mb-6 flex items-center justify-between rounded-xl border border-primary/30 bg-primary/5 p-4 transition-colors hover:bg-primary/10">
+            <div className="flex items-center gap-3">
+              <MessageCircle className="h-8 w-8 text-primary" />
+              <div>
+                <p className="font-semibold text-foreground">
+                  {stats.unassigned_coaching_count} coaching
+                  {stats.unassigned_coaching_count !== 1 ? "s" : ""} à assigner
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Assignez un coach à chaque pack pour suivre les séances
+                </p>
+              </div>
+            </div>
+            <span className="text-sm font-medium text-primary">Voir →</span>
+          </div>
+        </Link>
+      )}
 
       {/* Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

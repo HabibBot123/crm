@@ -108,7 +108,6 @@ export async function POST(req: NextRequest) {
       variant = link as VariantRow
 
       // For now we require that variant.stripe_price_id soit déjà créé (via le dashboard).
-      // On pourra, plus tard, factoriser la logique de création de prix depuis create-payment-link.
       if (!variant.stripe_price_id) {
         return NextResponse.json(
           {

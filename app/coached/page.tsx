@@ -120,48 +120,59 @@ export default function CoachingHomePage() {
             </Link>
           </div>
           <div className="space-y-2">
-            {myProducts.slice(0, 5).map((p) => (
-              <Link key={`${p.enrollment_id}-${p.product_id}`} href={`/coached/${p.organization_slug}/courses/${p.product_id}`}>
-                <Card className="border-border transition-all hover:border-primary/30 hover:shadow-sm">
-                  <CardContent className="flex items-center gap-4 p-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
-                      {p.cover_image_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.cover_image_url} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <BookOpen className="h-6 w-6 text-primary" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-semibold text-foreground line-clamp-1">{p.product_title}</p>
-                        <Badge variant="secondary" className="text-[10px] font-normal">
-                          {productTypeLabel(p.product_type)}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">with {p.organization_name}</p>
-                      {(p.completion_total != null && p.completion_total > 0) && (
-                        <p className="text-xs text-primary font-medium mt-1">
-                          {p.completion_completed ?? 0}/{p.completion_total} completed
-                        </p>
-                      )}
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1.5 text-[11px] text-muted-foreground">
-                        {p.started_at && (
-                          <span>Started {formatProductDate(p.started_at)}</span>
-                        )}
-                        {p.expires_at && (
-                          <span>Expires {formatProductDate(p.expires_at)}</span>
-                        )}
-                        {p.enrollment_status && p.enrollment_status !== "active" && (
-                          <span className="capitalize">{p.enrollment_status}</span>
+            {myProducts.slice(0, 5).map((p) => {
+              const isCoaching = p.product_type === "coaching"
+              const href = isCoaching
+                ? `/coached/${p.organization_slug}/coaching/${p.product_id}`
+                : `/coached/${p.organization_slug}/courses/${p.product_id}`
+              return (
+                <Link key={`${p.enrollment_id}-${p.product_id}`} href={href}>
+                  <Card className="border-border transition-all hover:border-primary/30 hover:shadow-sm">
+                    <CardContent className="flex items-center gap-4 p-4">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
+                        {p.cover_image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={p.cover_image_url} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <BookOpen className="h-6 w-6 text-primary" />
                         )}
                       </div>
-                    </div>
-                    <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-semibold text-foreground line-clamp-1">{p.product_title}</p>
+                          <Badge variant="secondary" className="text-[10px] font-normal">
+                            {productTypeLabel(p.product_type)}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">with {p.organization_name}</p>
+                        {(p.completion_total != null && p.completion_total > 0) && (
+                          <p className="text-xs text-primary font-medium mt-1">
+                            {p.completion_completed ?? 0}/{p.completion_total} {isCoaching ? "sessions" : "completed"}
+                          </p>
+                        )}
+                        {isCoaching && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {p.coach_full_name ? `Coach: ${p.coach_full_name}` : "No coach assigned yet"}
+                          </p>
+                        )}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1.5 text-[11px] text-muted-foreground">
+                          {p.started_at && (
+                            <span>Started {formatProductDate(p.started_at)}</span>
+                          )}
+                          {p.expires_at && (
+                            <span>Expires {formatProductDate(p.expires_at)}</span>
+                          )}
+                          {p.enrollment_status && p.enrollment_status !== "active" && (
+                            <span className="capitalize">{p.enrollment_status}</span>
+                          )}
+                        </div>
+                      </div>
+                      <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    </CardContent>
+                  </Card>
+                </Link>
+              )
+            })}
           </div>
         </div>
       )}

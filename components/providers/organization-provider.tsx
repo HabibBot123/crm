@@ -8,15 +8,15 @@ import {
   useMemo,
   useState,
 } from "react"
-import type { OrganizationDisplay } from "@/lib/services/organizations"
+import type { Organization } from "@/lib/services/organizations"
 import { useOrganizations } from "@/hooks/use-organizations"
 
 const STORAGE_KEY = "crm-sport-current-org-id"
 
 type OrganizationContextType = {
-  currentOrganization: OrganizationDisplay | null
+  currentOrganization: Organization | null
   setCurrentOrganizationId: (id: number) => void
-  organizations: OrganizationDisplay[]
+  organizations: Organization[]
   isLoading: boolean
 }
 

@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Palette,
+  MessageCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { OrgSwitcher } from "@/components/org-switcher"
@@ -30,6 +31,7 @@ const navItems = [
   { label: "Offers", href: "/dashboard/offers", icon: Tag },
   { label: "Sales", href: "/dashboard/sales", icon: DollarSign },
   { label: "Clients", href: "/dashboard/clients", icon: Users },
+  { label: "Coaching", href: "/dashboard/coaching", icon: MessageCircle },
   { label: "Leads", href: "/dashboard/leads", icon: Target },
   { label: "Content", href: "/dashboard/content", icon: FileText },
   { label: "Branding", href: "/dashboard/branding", icon: Palette },

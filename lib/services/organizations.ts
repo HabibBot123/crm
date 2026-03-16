@@ -17,6 +17,17 @@ export type OrganizationDisplay = {
   branding?: OrganizationBranding | null
 }
 
+/**
+ * Organization with current user's membership for dashboard.
+ * Merges organization_members row (id, role) with organizations row; we expose:
+ * - member_id: organization_members.id (the membership row id)
+ * - member_role: organization_members.role (e.g. "admin")
+ */
+export type Organization = OrganizationDisplay & {
+  member_id: number | null
+  member_role: string | null
+}
+
 export async function fetchOrganizationsByIds(
   supabase: SupabaseClient,
   ids: number[]
@@ -32,6 +43,44 @@ export async function fetchOrganizationsByIds(
 
   if (error) throw error
   return (data ?? []) as OrganizationDisplay[]
+}
+
+/** Fetch organizations for a user: query organization_members (user_id) + join organizations (single query). */
+export async function fetchOrganizationsWithMember(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<Organization[]> {
+  const { data, error } = await supabase
+    .from("organization_members")
+    .select(
+      `
+      id,
+      role,
+      organizations(id,name,slug,stripe_account_id,stripe_onboarding_completed)
+    `
+    )
+    .eq("user_id", userId)
+    .eq("status", "active")
+
+  if (error) throw error
+
+  const rows = (data ?? []) as {
+    id: number
+    role: string
+    organizations: OrganizationDisplay | OrganizationDisplay[] | null
+  }[]
+
+  const result: Organization[] = []
+  for (const row of rows) {
+    const org = Array.isArray(row.organizations) ? row.organizations[0] : row.organizations
+    if (!org) continue
+    result.push({
+      ...org,
+      member_id: row.id,
+      member_role: row.role,
+    })
+  }
+  return result.sort((a, b) => a.name.localeCompare(b.name))
 }
 
 // ----------------------------------------------------------------
