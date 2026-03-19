@@ -186,74 +186,36 @@ export type PublicOfferWithOrgResponse = {
   offer: PublicOfferPayload
 }
 
-export async function getPublicOfferWithOrganization(
-  supabase: SupabaseClient,
+export async function getPublicOfferWithOrg(
+  baseUrl: string,
   slug: string,
   offerId: number,
   variantId: number | null
 ): Promise<PublicOfferWithOrgResponse | null> {
-  const organization = await fetchOrganizationBySlug(supabase, slug)
-  if (!organization) return null
-
-  const { data: offerRow, error: offerError } = await supabase
-    .from("offers")
-    .select("id, title, description, price, currency, interval, billing_type, installment_count")
-    .eq("id", offerId)
-    .eq("organization_id", organization.id)
-    .eq("status", "active")
-    .maybeSingle()
-
-  if (offerError || !offerRow) return null
-
-  let variant: PublicOfferVariant | null = null
-  if (variantId != null && variantId > 0) {
-    const { data: linkRow, error: linkError } = await supabase
-      .from("offer_variants")
-      .select("id, label, price, installment_count")
-      .eq("id", variantId)
-      .eq("offer_id", offerId)
-      .maybeSingle()
-
-    if (!linkError && linkRow) {
-      const effectivePrice = linkRow.price ?? (offerRow as { price: number }).price
-      const effectiveInstallments = linkRow.installment_count ?? (offerRow as { installment_count: number | null }).installment_count
-      variant = {
-        id: linkRow.id,
-        label: linkRow.label,
-        price: Number(effectivePrice),
-        installment_count: effectiveInstallments,
-      }
-    }
+  const url = new URL(
+    `/api/public/org/${encodeURIComponent(slug)}/offer/${offerId}`,
+    baseUrl
+  )
+  if (variantId != null && Number.isFinite(variantId) && variantId > 0) {
+    url.searchParams.set("variantId", String(variantId))
   }
 
-  const offer = offerRow as {
-    id: number
-    title: string
-    description: string | null
-    price: number // stored in cents
-    currency: string
-    interval: "month" | "year" | null
-    billing_type: BillingType
-    installment_count: number | null
+  const res = await fetch(url.toString())
+
+  if (res.status === 404) {
+    return null
   }
 
-  const effectivePrice = variant ? variant.price : Number(offer.price)
-  const effectiveInstallmentCount = variant ? variant.installment_count : offer.installment_count
-
-  return {
-    organization,
-    offer: {
-      id: offer.id,
-      title: offer.title,
-      description: offer.description,
-      price: effectivePrice,
-      currency: offer.currency,
-      interval: offer.interval,
-      billing_type: offer.billing_type,
-      installment_count: effectiveInstallmentCount,
-      variant,
-    },
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    const message =
+      body && typeof (body as { error?: unknown }).error === "string"
+        ? (body as { error: string }).error
+        : "Unable to load offer. Please try again."
+    throw new Error(message)
   }
+
+  return (await res.json()) as PublicOfferWithOrgResponse
 }
 
 export type UpdateOrganizationBrandingInput = {
@@ -298,14 +260,5 @@ export async function updateOrganizationBranding(
   return updates
 }
 
-export function buildOrgUrl(appUrl: string | undefined, slug: string): string {
-  if (!slug) return ""
-
-  if (!appUrl) {
-    return `https://${slug}.localhost:3000/`
-  }
-
-  return appUrl.replace("://", `://${slug}.`)
-}
 
 

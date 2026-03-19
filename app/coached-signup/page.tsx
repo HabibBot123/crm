@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Eye, EyeOff, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,11 +13,18 @@ import { toast } from "sonner"
 export default function CoachingSignupPage() {
     const router = useRouter()
     const searchParams = useSearchParams()
-    const { supabase } = useAuth()
+    const { supabase, user, isLoading } = useAuth()
 
     // After signup, a coached user lands on their profile space
-    const next = searchParams.get("next") ?? "/coached/profile"
+    const next = searchParams.get("next") ?? "/coached"
+    const signupSource = "coached"
 
+    // If already signed in, redirect to coached space
+    useEffect(() => {
+        if (!isLoading && user) {
+            router.replace(next)
+        }
+    }, [isLoading, user, next, router])
     const [showPassword, setShowPassword] = useState(false)
     const [fullName, setFullName] = useState("")
     const [email, setEmail] = useState("")
@@ -28,7 +35,7 @@ export default function CoachingSignupPage() {
     async function handleEmailSignup(e: React.FormEvent) {
         e.preventDefault()
         setLoading(true)
-        const callbackUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`
+        const callbackUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}&signup_source=${signupSource}`
         const { error } = await supabase.auth.signUp({
             email,
             password,
@@ -49,7 +56,7 @@ export default function CoachingSignupPage() {
 
     async function handleGoogleSignup() {
         setGoogleLoading(true)
-        const callbackUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`
+        const callbackUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}&signup_source=${signupSource}`
         const { error } = await supabase.auth.signInWithOAuth({
             provider: "google",
             options: {
@@ -72,7 +79,7 @@ export default function CoachingSignupPage() {
                     <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
                         C
                     </span>
-                    <span className="text-lg font-bold text-foreground font-display">CoachPro</span>
+                    <span className="text-lg font-bold text-foreground font-display">CoachStack</span>
                 </Link>
                 <div>
                     <h2 className="text-3xl font-bold text-foreground font-display">
@@ -95,7 +102,7 @@ export default function CoachingSignupPage() {
                         ))}
                     </ul>
                 </div>
-                <p className="text-sm text-muted-foreground">Powered by CoachPro and Stripe</p>
+                <p className="text-sm text-muted-foreground">Powered by CoachStack and Stripe</p>
             </div>
 
             {/* Right panel: signup form */}
@@ -106,7 +113,7 @@ export default function CoachingSignupPage() {
                             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
                                 C
                             </span>
-                            <span className="text-lg font-bold text-foreground font-display">CoachPro</span>
+                            <span className="text-lg font-bold text-foreground font-display">CoachStack</span>
                         </div>
                         <h1 className="text-2xl font-bold text-foreground font-display">
                             Sign up to access your coaching

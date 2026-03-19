@@ -7,6 +7,7 @@ alwaysApply: true
 
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
+- **Never code alone**: Don't start coding by yourself. First, present the user what you are planing to do and then code if his ask you to do.
 
 ---
 
@@ -66,6 +67,8 @@ Responsibilities of services:
 Components should **only call service functions**, never Supabase directly.
 
 USE plugin-supabase-supabase if you need some confirmations about RLS, Tables, etc.
+
+Avoid using api call in the page. Do it via services (unless it is a very specific pages that doesn't need a entire service page)
 
 ---
 
@@ -142,3 +145,4 @@ This ensures:
 - Never add unnecessary fallbacks
 - Avoid hidden logic inside components
 - Prefer explicit and predictable code over clever shortcuts
+- Project should be in english unless specified

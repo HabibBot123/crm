@@ -85,7 +85,7 @@ export function OrgSwitcher() {
             <div className="min-w-0 flex-1 text-left">
               <div className="truncate font-medium text-foreground">{org.name}</div>
               <div className="truncate text-xs text-muted-foreground">
-                {org.slug}.coachpro.com
+                {org.slug}.coachstack.co
               </div>
             </div>
             {displayOrg?.id === org.id && (

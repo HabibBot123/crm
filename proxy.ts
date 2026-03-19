@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { updateSession } from "@/lib/supabase/middleware"
 
-const RESERVED_SUBDOMAINS = ["www", "app", "dashboard", "api", "admin"]
+const RESERVED_SUBDOMAINS = ["www", "dashboard", "api", "admin"]
 
 function getSubdomain(host: string): string | null {
   const parts = host.split(".")
@@ -22,13 +22,38 @@ function getSubdomain(host: string): string | null {
   return null
 }
 
+const COACHED_PATHS_PREFIX = "/coached"
+const COACHED_PATHS_EXACT = ["/coached-landing", "/coached-login", "/coached-signup", "/coached"]
+
+function isCoachedPath(pathname: string): boolean {
+  if (COACHED_PATHS_EXACT.includes(pathname)) return true
+  return pathname === COACHED_PATHS_PREFIX || pathname.startsWith(COACHED_PATHS_PREFIX + "/")
+}
+
+function buildAppHost(host: string, subdomain: string | null): string {
+  const [hostname, ...portParts] = host.split(":")
+  const port = portParts.length ? ":" + portParts.join(":") : ""
+  const base = hostname.replace(/^www\./, "")
+  return "app." + base + port
+}
+
 export async function proxy(request: NextRequest) {
   const host = request.headers.get("host") ?? ""
   const pathname = request.nextUrl.pathname
   const subdomain = getSubdomain(host)
 
-  // Special subdomain for coached clients: coached.* → coached landing
-  if (subdomain === "coached" && pathname === "/") {
+  // Coached pages are only served on app.* — redirect from main domain to app subdomain
+  if (subdomain !== "app" && isCoachedPath(pathname)) {
+    const proto = request.headers.get("x-forwarded-proto") ?? request.nextUrl.protocol.replace(":", "")
+    const appHost = buildAppHost(host, subdomain)
+    const url = request.nextUrl.clone()
+    url.protocol = proto === "https" ? "https:" : "http:"
+    url.host = appHost
+    return NextResponse.redirect(url.toString())
+  }
+
+  // Special subdomain for coached clients: app.* → coached landing
+  if (subdomain === "app" && pathname === "/") {
     const url = request.nextUrl.clone()
     url.pathname = "/coached-landing"
     return NextResponse.rewrite(url)

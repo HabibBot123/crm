@@ -5,6 +5,7 @@ import {
   type OrganizationBranding,
 } from "@/lib/services/organizations"
 import type { BillingType } from "@/lib/services/offers"
+import { formatAmountFromCents } from "@/lib/utils"
 
 type PageProps = {
   params: { slug: string }
@@ -123,11 +124,7 @@ export default async function PublicOrganizationPage({ params }: PageProps) {
                         className="text-xl font-bold"
                         style={{ color: primaryColor }}
                       >
-                        {offer.price.toLocaleString(undefined, {
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 2,
-                        })}{" "}
-                        {offer.currency.toUpperCase()}
+                        {formatAmountFromCents(offer.price, offer.currency) ?? "—"}
                         {offer.interval === "month" && (
                           <span className="text-sm font-normal text-muted-foreground">
                             {" "}

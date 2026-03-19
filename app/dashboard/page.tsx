@@ -4,24 +4,15 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { DollarSign, Users, ShoppingCart, TrendingUp, MessageCircle } from "lucide-react"
+import { DollarSign, Users, ShoppingCart, TrendingUp, MessageCircle, Package } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
 import { useCurrentOrganization } from "@/components/providers/organization-provider"
-// Charts (kept for future use; currently no charts rendered)
-// import {
-//   Bar,
-//   BarChart,
-//   ResponsiveContainer,
-//   XAxis,
-//   YAxis,
-//   CartesianGrid,
-//   Tooltip,
-//   Line,
-//   LineChart,
-// } from "recharts"
 import { StatCard } from "@/components/dashboard/stat-card"
-import { revenueData } from "@/lib/mock-data"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { PageHeader } from "@/components/dashboard/page-header"
+import { SectionCard } from "@/components/dashboard/section-card"
+import { GreetingBanner } from "@/components/dashboard/greeting-banner"
+import { EmptyState } from "@/components/dashboard/empty-state"
+import { UserAvatar } from "@/components/dashboard/user-avatar"
 import { Badge } from "@/components/ui/badge"
 
 type RecentSale = {
@@ -106,7 +97,9 @@ export default function DashboardPage() {
   const topProducts = Array.isArray(stats.top_products) ? stats.top_products : []
 
   const conversionRate =
-    stats.total_clients > 0 ? Math.round((stats.active_students / stats.total_clients) * 1000) / 10 : 0
+    stats.total_clients > 0
+      ? Math.round((stats.active_students / stats.total_clients) * 1000) / 10
+      : 0
 
   if (isLoading || !user || orgLoading || organizations.length === 0) {
     return (
@@ -117,132 +110,169 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-4 lg:p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground font-display">Dashboard</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Welcome back. Here is the overview for your organization.
-        </p>
-      </div>
+    <div className="space-y-6 p-4 lg:p-8">
+      <PageHeader
+        title="Overview"
+        subtitle="Your organization at a glance"
+      />
 
-      {/* CTA: coachings à assigner */}
+      <GreetingBanner />
+
+      {/* Coaching CTA — only when relevant */}
       {(stats.unassigned_coaching_count ?? 0) > 0 && (
         <Link href="/dashboard/coaching">
-          <div className="mb-6 flex items-center justify-between rounded-xl border border-primary/30 bg-primary/5 p-4 transition-colors hover:bg-primary/10">
+          <div className="flex items-center justify-between rounded-xl border border-primary/25 bg-primary/5 p-4 transition-colors hover:bg-primary/8">
             <div className="flex items-center gap-3">
-              <MessageCircle className="h-8 w-8 text-primary" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                <MessageCircle className="h-4 w-4 text-primary" />
+              </div>
               <div>
-                <p className="font-semibold text-foreground">
+                <p className="text-sm font-semibold text-foreground">
                   {stats.unassigned_coaching_count} coaching
-                  {stats.unassigned_coaching_count !== 1 ? "s" : ""} à assigner
+                  {stats.unassigned_coaching_count !== 1 ? "s" : ""} to assign
                 </p>
-                <p className="text-sm text-muted-foreground">
-                  Assignez un coach à chaque pack pour suivre les séances
+                <p className="text-xs text-muted-foreground">
+                  Assign a coach to each pack to track sessions
                 </p>
               </div>
             </div>
-            <span className="text-sm font-medium text-primary">Voir →</span>
+            <span className="text-sm font-medium text-primary">View →</span>
           </div>
         </Link>
       )}
 
-      {/* Stats Grid */}
+      {/* KPI cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Revenue"
-          value={`${(stats.total_revenue / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} €`}
+          value={`${(stats.total_revenue / 100).toLocaleString(undefined, {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2,
+          })} €`}
           change={0}
           icon={DollarSign}
+          iconColor="primary"
         />
         <StatCard
           title="Total Clients"
           value={stats.total_clients.toString()}
           change={0}
           icon={Users}
+          iconColor="success"
         />
         <StatCard
           title="Total Sales"
           value={stats.total_enrollments.toString()}
           change={0}
           icon={ShoppingCart}
+          iconColor="warning"
         />
         <StatCard
           title="Conversion Rate"
           value={`${conversionRate}%`}
           change={0}
           icon={TrendingUp}
+          iconColor="accent"
         />
       </div>
 
       {/* Recent Sales + Top Products */}
-      <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        {/* Recent sales */}
-        <div className="rounded-xl border border-border bg-card p-6">
-          <h3 className="text-sm font-semibold text-foreground">Recent Sales</h3>
-          <div className="mt-4 space-y-4">
-            {recentSales.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No sales yet.</p>
-            ) : (
-              recentSales.map((sale) => {
+      <div className="grid gap-6 lg:grid-cols-2">
+        <SectionCard
+          title="Recent Sales"
+          action={
+            <Link
+              href="/dashboard/clients"
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              View all →
+            </Link>
+          }
+        >
+          {recentSales.length === 0 ? (
+            <EmptyState
+              icon={ShoppingCart}
+              title="No sales yet"
+              description="Sales will appear here after purchases."
+            />
+          ) : (
+            <ul className="space-y-4">
+              {recentSales.map((sale) => {
                 const name = sale.user_full_name || sale.buyer_email || "Unknown client"
-                const initials = name
-                  .split(" ")
-                  .filter(Boolean)
-                  .map((n) => n[0]?.toUpperCase())
-                  .join("")
-                  .slice(0, 2)
-
                 return (
-                  <div key={sale.id} className="flex items-center gap-4">
-                    <Avatar className="h-9 w-9">
-                      <AvatarFallback className="bg-secondary text-secondary-foreground text-xs">
-                        {initials || "C"}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-foreground">{name}</p>
+                  <li key={sale.id} className="flex items-center gap-3">
+                    <UserAvatar
+                      name={sale.user_full_name}
+                      email={sale.buyer_email}
+                      size="sm"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-foreground">{name}</p>
                       {sale.offer_title && (
-                        <p className="text-xs text-muted-foreground">{sale.offer_title}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {sale.offer_title}
+                        </p>
                       )}
                     </div>
-                    <span className="text-sm font-semibold text-foreground">
-                      +{(sale.amount / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}{" "}
+                    <span className="shrink-0 text-sm font-semibold text-foreground">
+                      +{(sale.amount / 100).toLocaleString(undefined, {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 2,
+                      })}{" "}
                       {sale.currency.toUpperCase()}
                     </span>
-                  </div>
+                  </li>
                 )
-              })
-            )}
-          </div>
-        </div>
+              })}
+            </ul>
+          )}
+        </SectionCard>
 
-        {/* Top products */}
-        <div className="rounded-xl border border-border bg-card p-6">
-          <h3 className="text-sm font-semibold text-foreground">Top Products</h3>
-          <div className="mt-4 space-y-4">
-            {topProducts.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No products with enrollments yet.</p>
-            ) : (
-              topProducts.map((product) => (
-                <div key={product.product_id} className="flex items-center gap-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-xs font-bold text-muted-foreground">
-                    {product.type === "course" ? "CR" : product.type === "coaching" ? "CO" : "PR"}
+        <SectionCard
+          title="Top Products"
+          action={
+            <Link
+              href="/dashboard/products"
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              View all →
+            </Link>
+          }
+        >
+          {topProducts.length === 0 ? (
+            <EmptyState
+              icon={Package}
+              title="No enrollments yet"
+              description="Products with enrollments will appear here."
+            />
+          ) : (
+            <ul className="space-y-4">
+              {topProducts.map((product) => (
+                <li key={product.product_id} className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-xs font-bold text-primary">
+                    {product.type === "course"
+                      ? "CR"
+                      : product.type === "coaching"
+                        ? "CO"
+                        : "PR"}
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-foreground">{product.title}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {product.title}
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       {product.total_enrollments} enrollment
                       {product.total_enrollments !== 1 ? "s" : ""}
                     </p>
                   </div>
-                  <Badge variant="secondary" className="text-xs capitalize">
+                  <Badge variant="secondary" className="shrink-0 text-xs capitalize">
                     {product.type}
                   </Badge>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </SectionCard>
       </div>
     </div>
   )

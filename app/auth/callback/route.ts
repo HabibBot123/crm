@@ -1,6 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sendWelcomeEmail } from '@/lib/email/workflows/send-welcome-email'
 import { NextResponse } from 'next/server'
+
+const SIGNUP_SOURCES = ['coach', 'coached'] as const
+type SignupSource = (typeof SIGNUP_SOURCES)[number]
+
+function isSignupSource(value: string | null): value is SignupSource {
+  return value !== null && SIGNUP_SOURCES.includes(value as SignupSource)
+}
 
 /** Allow only relative paths to prevent open redirect. */
 function safeNext(next: string | null): string {
@@ -14,27 +22,48 @@ export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
   const next = safeNext(searchParams.get('next'))
+  const signupSourceParam = searchParams.get('signup_source')
 
   if (code) {
     const supabase = await createClient()
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (!error && data.user?.email) {
-      // Reconcile any pending enrollments (buyer paid before having an account).
-      // Uses admin client to bypass RLS — safe because we only update rows where
-      // buyer_email matches the just-authenticated user's own email.
-      // This is a no-op if no unmatched rows exist (e.g. returning user sign-in).
       const admin = createAdminClient()
       const email = data.user.email.toLowerCase()
-      const { error: reconcileError } = await admin
-        .from('enrollments')
-        .update({ user_id: data.user.id })
-        .is('user_id', null)
-        .eq('buyer_email', email)
+      const userId = data.user.id
+      const fullName = data.user.user_metadata?.full_name ?? null
 
-      if (reconcileError) {
-        // Non-fatal — log and continue. The user is still authenticated.
-        console.error('Enrollment reconciliation failed:', reconcileError.message)
+      if (isSignupSource(signupSourceParam)) {
+        const { error: upsertError } = await admin.from('users').upsert(
+          {
+            id: userId,
+            email,
+            full_name: fullName,
+            signup_source: signupSourceParam,
+          },
+          { onConflict: 'id' }
+        )
+        if (upsertError) {
+          console.error('Users signup_source upsert failed:', upsertError.message)
+        }
+        const { error: emailError } = await sendWelcomeEmail({
+          to: email,
+          signupSource: signupSourceParam,
+          fullName,
+        })
+        if (emailError) {
+          console.error('Welcome email failed:', emailError.message)
+        }
+      }
+
+      const { error: linkError } = await admin.rpc('link_guest_purchases_to_user', {
+        p_user_id: userId,
+        p_email: email,
+      })
+
+      if (linkError) {
+        console.error('Link guest purchases to user failed:', linkError.message)
       }
 
       return NextResponse.redirect(`${origin}${next}`)

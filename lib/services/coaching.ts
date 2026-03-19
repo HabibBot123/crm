@@ -105,19 +105,27 @@ type VCoachedProductRow = {
 
 export async function fetchCoachingEnrollmentProductsForOrg(
   supabase: SupabaseClient,
-  organizationId: number
-): Promise<CoachingEnrollmentProduct[]> {
-  const { data: viewData, error: viewError } = await supabase
+  organizationId: number,
+  page: number,
+  pageSize: number
+): Promise<{ items: CoachingEnrollmentProduct[]; total: number }> {
+  const from = Math.max(0, (page - 1) * pageSize)
+  const to = from + pageSize - 1
+
+  const { data: viewData, error: viewError, count } = await supabase
     .from("v_coached_products")
     .select(
-      "user_id, organization_id, enrollment_id, enrollment_product_id, offer_title, started_at, expires_at, enrollment_status, product_id, product_title, product_type, user_full_name, user_mail, coach_full_name, completion_total, completion_completed"
+      "user_id, organization_id, enrollment_id, enrollment_product_id, offer_title, started_at, expires_at, enrollment_status, product_id, product_title, product_type, user_full_name, user_mail, coach_full_name, completion_total, completion_completed",
+      { count: "exact" }
     )
     .eq("organization_id", organizationId)
     .eq("product_type", "coaching")
+    .order("started_at", { ascending: false })
+    .range(from, to)
 
   if (viewError) throw viewError
   const rows = (viewData ?? []) as VCoachedProductRow[]
-  return rows.map(rowToPack)
+  return { items: rows.map(rowToPack), total: count ?? 0 }
 }
 
 function rowToPack(r: VCoachedProductRow): CoachingEnrollmentProduct {
@@ -168,9 +176,14 @@ export async function fetchOrganizationMembers(
 
 export async function fetchCoachingSessionsForOrg(
   supabase: SupabaseClient,
-  organizationId: number
-): Promise<CoachingSessionRow[]> {
-  const { data, error } = await supabase
+  organizationId: number,
+  page: number,
+  pageSize: number
+): Promise<{ items: CoachingSessionRow[]; total: number }> {
+  const from = Math.max(0, (page - 1) * pageSize)
+  const to = from + pageSize - 1
+
+  const { data, error, count } = await supabase
     .from("coaching_sessions")
     .select(
       `
@@ -187,10 +200,12 @@ export async function fetchCoachingSessionsForOrg(
       completed_at,
       enrollment_products ( products ( title ), enrollments ( user_id, buyer_email, users ( full_name ) ) ),
       coaching_assignments ( organization_members ( user_id, users ( full_name ) ) )
-    `
+    `,
+      { count: "exact" }
     )
     .eq("organization_id", organizationId)
     .order("scheduled_at", { ascending: true })
+    .range(from, to)
 
   if (error) throw error
 
@@ -225,32 +240,35 @@ export async function fetchCoachingSessionsForOrg(
   }
 
   const sessions = (data ?? []) as unknown as SessionRow[]
-  return sessions.map((s) => {
-    const ep = first(s.enrollment_products)
-    const enr = first(ep?.enrollments)
-    const clientDisplay = fullNameFrom(enr?.users) ?? enr?.buyer_email ?? "—"
-    const ca = first(s.coaching_assignments)
-    const om = first(ca?.organization_members)
-    const coachDisplay = fullNameFrom(om?.users) ?? null
-    const prod = ep?.products
-    const productTitle = prod ? (Array.isArray(prod) ? prod[0]?.title : prod.title) ?? null : null
-    return {
-      id: s.id,
-      enrollment_product_id: s.enrollment_product_id,
-      coaching_assignment_id: s.coaching_assignment_id,
-      user_id: s.user_id,
-      delivery_mode: s.delivery_mode,
-      meeting_url: s.meeting_url,
-      location: s.location,
-      session_number: s.session_number,
-      scheduled_at: s.scheduled_at,
-      duration_minutes: s.duration_minutes,
-      completed_at: s.completed_at,
-      product_title: productTitle,
-      user_full_name: clientDisplay,
-      coach_display: coachDisplay,
-    }
-  })
+  return {
+    items: sessions.map((s) => {
+      const ep = first(s.enrollment_products)
+      const enr = first(ep?.enrollments)
+      const clientDisplay = fullNameFrom(enr?.users) ?? enr?.buyer_email ?? "—"
+      const ca = first(s.coaching_assignments)
+      const om = first(ca?.organization_members)
+      const coachDisplay = fullNameFrom(om?.users) ?? null
+      const prod = ep?.products
+      const productTitle = prod ? (Array.isArray(prod) ? prod[0]?.title : prod.title) ?? null : null
+      return {
+        id: s.id,
+        enrollment_product_id: s.enrollment_product_id,
+        coaching_assignment_id: s.coaching_assignment_id,
+        user_id: s.user_id,
+        delivery_mode: s.delivery_mode,
+        meeting_url: s.meeting_url,
+        location: s.location,
+        session_number: s.session_number,
+        scheduled_at: s.scheduled_at,
+        duration_minutes: s.duration_minutes,
+        completed_at: s.completed_at,
+        product_title: productTitle,
+        user_full_name: clientDisplay,
+        coach_display: coachDisplay,
+      }
+    }),
+    total: count ?? 0,
+  }
 }
 
 export async function upsertCoachingAssignment(

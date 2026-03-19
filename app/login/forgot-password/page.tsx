@@ -35,7 +35,7 @@ export default function ForgotPasswordPage() {
         <div className="text-center">
           <Link href="/" className="inline-flex items-center gap-2.5">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">C</span>
-            <span className="text-lg font-bold text-foreground font-display">CoachPro</span>
+            <span className="text-lg font-bold text-foreground font-display">CoachStack</span>
           </Link>
           <h1 className="mt-6 text-2xl font-bold font-display">Reset password</h1>
           <p className="mt-2 text-sm text-muted-foreground">

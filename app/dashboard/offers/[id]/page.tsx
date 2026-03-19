@@ -3,7 +3,7 @@
 import { use, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query"
 import {
   ArrowLeft,
   Send,
@@ -40,20 +40,22 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useCoachAccessGuard } from "@/hooks/use-access-guard"
-import { useAuth } from "@/hooks/use-auth"
 import {
-  fetchOfferWithDetails,
-  updateOffer,
-  deleteOffer,
-  createOfferVariant,
-  deleteOfferVariant,
   type OfferWithDetails,
   type OfferVariant,
 } from "@/lib/services/offers"
-import { buildOrgUrl } from "@/lib/services/organizations"
-import { cn } from "@/lib/utils"
+import { formatAmountFromCents, buildOrgUrl } from "@/lib/utils"
 import { OFFER_CURRENCIES } from "@/lib/constants/offers"
 import { toast } from "sonner"
+import {
+  useAddOfferVariant,
+  useDeleteOfferVariant,
+  useGenerateOfferVariantPrice,
+  useOffer,
+  usePublishOffer,
+  useUpdateOffer,
+} from "@/hooks/use-offers"
+import type { updateOffer } from "@/lib/services/offers"
 
 const statusStyles: Record<string, string> = {
   active: "bg-success/10 text-success",
@@ -94,7 +96,6 @@ export default function OfferEditorPage({
   const { id } = use(params)
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { supabase } = useAuth()
   const { canAccess, guardContent, currentOrganization } = useCoachAccessGuard({
     requireOrg: true,
     requireStripe: true,
@@ -104,105 +105,23 @@ export default function OfferEditorPage({
   })
   const offerId = Number(id)
 
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteVariantId, setDeleteVariantId] = useState<number | null>(null)
   const [generatingVariantId, setGeneratingVariantId] = useState<number | null>(null)
 
-  const { data: offer, isLoading, error } = useQuery({
-    queryKey: ["offer", offerId],
-    queryFn: () => fetchOfferWithDetails(supabase, offerId),
-    enabled: !!currentOrganization?.id && !Number.isNaN(offerId) && offerId > 0,
-  })
+  const { offer, isLoading, error } = useOffer(
+    offerId,
+    !!currentOrganization?.id && !Number.isNaN(offerId) && offerId > 0
+  )
 
-  const updateOfferMutation = useMutation({
-    mutationFn: (input: Parameters<typeof updateOffer>[2]) =>
-      updateOffer(supabase, offerId, input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["offer", offerId] })
-      toast.success("Offer updated")
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
+  const updateOfferMutation = useUpdateOffer(currentOrganization?.id ?? null, offerId)
 
-  const deleteOfferMutation = useMutation({
-    mutationFn: () => deleteOffer(supabase, offerId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["offers", currentOrganization?.id] })
-      router.push("/dashboard/offers")
-      toast.success("Offer deleted")
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
+  const addVariantMutation = useAddOfferVariant(offerId)
 
-  const addVariantMutation = useMutation({
-    mutationFn: (input: Parameters<typeof createOfferVariant>[2]) =>
-      createOfferVariant(supabase, offerId, input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["offer", offerId] })
-      toast.success("Variant added")
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
+  const deleteVariantMutation = useDeleteOfferVariant(offerId)
 
-  const deleteVariantMutation = useMutation({
-    mutationFn: (variantId: number) => deleteOfferVariant(supabase, variantId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["offer", offerId] })
-      setDeleteVariantId(null)
-      toast.success("Variant deleted")
-    },
-    onError: (err: Error) => {
-      toast.error(err.message)
-      setDeleteVariantId(null)
-    },
-  })
+  const publishMutation = usePublishOffer(currentOrganization?.id ?? null, offerId)
 
-  const publishMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/stripe-connect/create-price", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organizationId: currentOrganization!.id, offerId }),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || "Failed to publish offer")
-      }
-      return res.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["offer", offerId] })
-      queryClient.invalidateQueries({ queryKey: ["offers", currentOrganization?.id] })
-      toast.success("Offer published")
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
-
-  const generateVariantMutation = useMutation({
-    mutationFn: async (variantId: number) => {
-      setGeneratingVariantId(variantId)
-      const res = await fetch("/api/stripe-connect/create-price", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          organizationId: currentOrganization!.id,
-          offerId,
-          paymentLinkId: variantId,
-        }),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || "Failed to generate Stripe price")
-      }
-      return res.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["offer", offerId] })
-      toast.success("Stripe price generated")
-    },
-    onError: (err: Error) => toast.error(err.message),
-    onSettled: () => setGeneratingVariantId(null),
-  })
+  const generateVariantMutation = useGenerateOfferVariantPrice(offerId)
 
   if (!canAccess && guardContent) {
     return <div className="p-4 lg:p-8">{guardContent}</div>
@@ -268,7 +187,7 @@ export default function OfferEditorPage({
       <Tabs defaultValue="overview" className="mt-8">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="payment-links">Payment Links</TabsTrigger>
+          <TabsTrigger value="payment-links">Price Variants</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
@@ -280,65 +199,56 @@ export default function OfferEditorPage({
           />
         </TabsContent>
 
-        <TabsContent value="variants" className="mt-6">
+        <TabsContent value="payment-links" className="mt-6">
           <VariantsTab
             offer={offer}
             orgSlug={currentOrganization?.slug ?? undefined}
             onAddVariant={(input) => addVariantMutation.mutate(input)}
             onDeleteVariant={(variantId) => setDeleteVariantId(variantId)}
-            onGeneratePrice={(variantId) => generateVariantMutation.mutate(variantId)}
+            onGeneratePrice={(variantId) => {
+              if (!currentOrganization?.id) return
+              setGeneratingVariantId(variantId)
+              generateVariantMutation.mutate(
+                { organizationId: currentOrganization.id, paymentLinkId: variantId },
+                { onSettled: () => setGeneratingVariantId(null) }
+              )
+            }}
             addPending={addVariantMutation.isPending}
             generatingVariantId={generatingVariantId}
           />
         </TabsContent>
 
         <TabsContent value="settings" className="mt-6">
-          <div className="max-w-2xl">
-            <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-5">
+          <div className="max-w-2xl space-y-4">
+            <div className="rounded-xl border border-border bg-card p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-destructive">Delete offer</p>
+                  <p className="text-sm font-medium text-foreground">
+                    Archive offer
+                  </p>
                   <p className="text-xs text-muted-foreground">
-                    Permanently remove this offer and all its variants. Existing
-                    enrollments will not be affected.
+                    Archived offers are hidden from your catalog. Existing enrollments
+                    remain active, but the underlying Stripe product and prices will be
+                    deactivated.
                   </p>
                 </div>
                 <Button
-                  variant="destructive"
+                  variant="outline"
                   size="sm"
-                  onClick={() => setDeleteConfirmOpen(true)}
-                  disabled={deleteOfferMutation.isPending}
+                  onClick={() => updateOfferMutation.mutate({ status: "archived" })}
+                  disabled={updateOfferMutation.isPending || offer.status === "archived"}
                 >
-                  Delete
+                  {offer.status === "archived"
+                    ? "Archived"
+                    : updateOfferMutation.isPending
+                      ? "Archiving…"
+                      : "Archive"}
                 </Button>
               </div>
             </div>
           </div>
         </TabsContent>
       </Tabs>
-
-      {/* Delete offer */}
-      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete offer</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete &quot;{offer.title}&quot;? This will remove
-              all variants. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => deleteOfferMutation.mutate()}
-              disabled={deleteOfferMutation.isPending}
-            >
-              {deleteOfferMutation.isPending ? "Deleting…" : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Delete variant */}
       <AlertDialog
@@ -615,7 +525,7 @@ function VariantsTab({
           <div>
             <p className="text-sm font-semibold text-foreground">Base offer</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {offer.currency.toUpperCase()} {(offer.price / 100).toFixed(2)}
+              {formatAmountFromCents(offer.price, offer.currency)}
               {offer.billing_type === "subscription" && ` / ${offer.interval}`}
               {offer.billing_type === "installment" &&
                 offer.installment_count &&
@@ -766,8 +676,10 @@ function VariantCard({
             {variant.label ?? "Variant"}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {offer.currency.toUpperCase()} {(Number(effectivePrice) / 100).toFixed(2)}
-            {offer.billing_type !== "subscription" && effectiveInstallments && ` × ${effectiveInstallments}`}
+            {formatAmountFromCents(Number(effectivePrice), offer.currency)}
+            {offer.billing_type !== "subscription" &&
+              effectiveInstallments &&
+              ` × ${effectiveInstallments}`}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">

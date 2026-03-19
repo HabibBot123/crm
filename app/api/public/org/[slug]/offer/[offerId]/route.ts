@@ -1,5 +1,9 @@
 import { createAdminClient } from "@/lib/supabase/admin"
-import { getPublicOfferWithOrganization } from "@/lib/services/organizations"
+import {
+  fetchOrganizationBySlug,
+  type PublicOfferVariant,
+  type PublicOfferWithOrgResponse,
+} from "@/lib/services/organizations"
 import { notFound, jsonResponse } from "@/lib/api-helpers/api-response"
 
 const SLUG_MAX_LENGTH = 100
@@ -32,12 +36,87 @@ export async function GET(
       : null
 
   const supabase = createAdminClient()
-  const data = await getPublicOfferWithOrganization(
-    supabase,
-    normalizedSlug,
-    offerId,
-    variantId != null && Number.isFinite(variantId) ? variantId : null
-  )
+
+  const organization = await fetchOrganizationBySlug(supabase, normalizedSlug)
+  if (!organization) {
+    return notFound("Organization not found")
+  }
+
+  const effectiveVariantId =
+    variantId != null && Number.isFinite(variantId) && variantId > 0
+      ? variantId
+      : null
+
+  const { data: offerRow, error: offerError } = await supabase
+    .from("offers")
+    .select(
+      "id, title, description, price, currency, interval, billing_type, installment_count"
+    )
+    .eq("id", offerId)
+    .eq("organization_id", organization.id)
+    .eq("status", "active")
+    .maybeSingle()
+
+  if (offerError || !offerRow) {
+    return notFound("Offer not found")
+  }
+
+  let variant: PublicOfferVariant | null = null
+
+  if (effectiveVariantId != null) {
+    const { data: linkRow, error: linkError } = await supabase
+      .from("offer_variants")
+      .select("id, label, price, installment_count")
+      .eq("id", effectiveVariantId)
+      .eq("offer_id", offerId)
+      .maybeSingle()
+
+    if (!linkError && linkRow) {
+      const effectivePrice =
+        linkRow.price ?? (offerRow as { price: number }).price
+      const effectiveInstallments =
+        linkRow.installment_count ??
+        (offerRow as { installment_count: number | null }).installment_count
+
+      variant = {
+        id: linkRow.id,
+        label: linkRow.label,
+        price: Number(effectivePrice),
+        installment_count: effectiveInstallments,
+      }
+    }
+  }
+
+  const offer = offerRow as {
+    id: number
+    title: string
+    description: string | null
+    price: number
+    currency: string
+    interval: "month" | "year" | null
+    billing_type: string
+    installment_count: number | null
+  }
+
+  const effectivePrice = variant ? variant.price : Number(offer.price)
+  const effectiveInstallmentCount = variant
+    ? variant.installment_count
+    : offer.installment_count
+
+  const data: PublicOfferWithOrgResponse = {
+    organization,
+    offer: {
+      id: offer.id,
+      title: offer.title,
+      description: offer.description,
+      price: effectivePrice,
+      currency: offer.currency,
+      interval: offer.interval,
+      billing_type: offer.billing_type as any,
+      installment_count: effectiveInstallmentCount,
+      variant,
+    },
+  }
 
   if (!data) {
     return notFound("Offer not found")

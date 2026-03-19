@@ -44,7 +44,7 @@ export function Hero() {
               <div className="h-3 w-3 rounded-full bg-destructive/40" />
               <div className="h-3 w-3 rounded-full bg-warning/40" />
               <div className="h-3 w-3 rounded-full bg-success/40" />
-              <span className="ml-4 text-xs text-muted-foreground">app.coachpro.io/dashboard</span>
+              <span className="ml-4 text-xs text-muted-foreground">app.coachstack.co/dashboard</span>
             </div>
             <div className="grid grid-cols-4 gap-4 p-6">
               {[

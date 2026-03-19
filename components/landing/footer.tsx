@@ -17,7 +17,7 @@ export function Footer() {
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
                 C
               </span>
-              <span className="text-lg font-bold tracking-tight text-foreground font-display">CoachPro</span>
+              <span className="text-lg font-bold tracking-tight text-foreground font-display">CoachStack</span>
             </Link>
             <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
               The all-in-one platform for modern coaches.
@@ -42,7 +42,7 @@ export function Footer() {
 
         <div className="mt-12 border-t border-border pt-8">
           <p className="text-center text-sm text-muted-foreground">
-            2026 CoachPro. All rights reserved.
+            2026 CoachStack. All rights reserved.
           </p>
         </div>
       </div>

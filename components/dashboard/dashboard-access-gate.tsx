@@ -10,19 +10,17 @@ type Props = {
  * Wraps dashboard pages that require:
  * - authenticated coach user
  * - selected organization
- * - completed Stripe Connect onboarding
  *
- * For now this is global to the whole dashboard layout; if needed we can later
- * add props to make org/Stripe optional for some sections.
+ * Stripe Connect onboarding is enforced only on specific pages
+ * (e.g. products, offers) that explicitly opt in via `useCoachAccessGuard`.
+ *
+ * This gate is applied globally in the dashboard layout.
  */
 export function DashboardAccessGate({ children }: Props) {
   const { canAccess, isLoading, guardContent } = useCoachAccessGuard({
     requireOrg: true,
-    requireStripe: true,
+    requireStripe: false,
     noOrgMessage: "Select an organization to view your dashboard.",
-    stripeDescription:
-      "To use the dashboard to create and sell products and offers, you need to complete Stripe Connect onboarding for this organization.",
-    stripeUseRouter: true,
   })
 
   if (isLoading) {

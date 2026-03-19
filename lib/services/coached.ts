@@ -77,6 +77,20 @@ export type CoachedEnrollment = {
   stripe_customer_id: string | null
 }
 
+export type CoachedInvoice = {
+  id: number
+  organization_id: number
+  organization_name: string
+  offer_id: number | null
+  offer_title: string | null
+  amount_cents: number
+  currency: string
+  invoice_pdf_url: string | null
+  status: string
+  stripe_created_at: string | null
+  created_at: string
+}
+
 type ProductModulesRow = {
   id: number
   product_id: number
@@ -157,6 +171,52 @@ export async function fetchCoachedEnrollments(
     started_at: r.started_at,
     expires_at: r.expires_at,
     stripe_customer_id: r.stripe_customer_id,
+  }))
+}
+
+type CoachedInvoiceRow = {
+  id: number
+  organization_id: number
+  offer_id: number | null
+  amount_cents: number
+  currency: string
+  invoice_pdf_url: string | null
+  status: string
+  stripe_created_at: string | null
+  created_at: string
+  organizations: { name: string } | { name: string }[] | null
+  offers: { title: string } | { title: string }[] | null
+}
+
+/** Fetch current user's invoices (RLS filters by user_id or buyer_email). */
+export async function fetchCoachedInvoices(
+  supabase: SupabaseClient
+): Promise<CoachedInvoice[]> {
+  const { data: rows, error } = await supabase
+    .from("coached_invoices")
+    .select("id, organization_id, offer_id, amount_cents, currency, invoice_pdf_url, status, stripe_created_at, created_at, organizations(name), offers(title)")
+    .order("stripe_created_at", { ascending: false })
+
+  if (error) throw error
+
+  return (rows ?? []).map((r: CoachedInvoiceRow) => ({
+    id: r.id,
+    organization_id: r.organization_id,
+    organization_name: Array.isArray(r.organizations)
+      ? (r.organizations[0]?.name ?? "—")
+      : (r.organizations?.name ?? "—"),
+    offer_id: r.offer_id,
+    offer_title: r.offers == null
+      ? null
+      : Array.isArray(r.offers)
+        ? (r.offers[0]?.title ?? null)
+        : (r.offers?.title ?? null),
+    amount_cents: r.amount_cents,
+    currency: r.currency,
+    invoice_pdf_url: r.invoice_pdf_url,
+    status: r.status,
+    stripe_created_at: r.stripe_created_at,
+    created_at: r.created_at,
   }))
 }
 

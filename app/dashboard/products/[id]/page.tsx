@@ -3,7 +3,7 @@
 import { use, useState, useRef, useCallback, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query"
 import {
   DndContext,
   type DragEndEvent,
@@ -52,22 +52,27 @@ import {
 import { useCoachAccessGuard } from "@/hooks/use-access-guard"
 import { useAuth } from "@/hooks/use-auth"
 import {
-  fetchProductWithDetails,
-  updateProduct,
-  deleteProduct,
-  createModule,
-  updateModule,
-  deleteModule,
-  addModuleItem,
-  updateModuleItem,
-  removeModuleItem,
-  upsertProductCoaching,
   type ProductWithDetails,
   type DeliveryMode,
+  updateProduct,
 } from "@/lib/services/products"
 import { toast } from "sonner"
 import { ProductContentPicker } from "@/components/dashboard/products/product-content-picker"
 import { SortableModuleCard } from "@/components/dashboard/products/product-module-card"
+import {
+  useAddProductLesson,
+  useCreateProductModule,
+  useDeleteDraftProduct,
+  useDeleteProductModule,
+  useProductDetails,
+  useRemoveProductLesson,
+  useReorderLessons,
+  useReorderModules,
+  useUpdateProductDetails,
+  useUpdateProductLesson,
+  useUpdateProductModule,
+  useUpsertCoachingDetails,
+} from "@/hooks/use-product-editor"
 
 export default function ProductEditorPage({
   params,
@@ -92,210 +97,32 @@ export default function ProductEditorPage({
   const [deleteModuleId, setDeleteModuleId] = useState<number | null>(null)
   const coverInputRef = useRef<HTMLInputElement>(null)
 
-  const { data: product, isLoading, error } = useQuery({
-    queryKey: ["product", productId],
-    queryFn: () => fetchProductWithDetails(supabase, productId),
-    enabled: !!currentOrganization?.id && !Number.isNaN(productId) && productId > 0,
-  })
+  const { product, isLoading, error } = useProductDetails(
+    productId,
+    !!currentOrganization?.id && !Number.isNaN(productId) && productId > 0
+  )
 
-  const updateProductMutation = useMutation({
-    mutationFn: (input: Parameters<typeof updateProduct>[2]) =>
-      updateProduct(supabase, productId, input),
-    onSuccess: (_, input) => {
-      queryClient.invalidateQueries({ queryKey: ["product", productId] })
-      if (input?.status !== undefined) {
-        queryClient.invalidateQueries({ queryKey: ["products", currentOrganization?.id] })
-      }
-      toast.success("Details saved")
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
+  const updateProductMutation = useUpdateProductDetails(currentOrganization?.id ?? null, productId)
 
-  const createModuleMutation = useMutation({
-    mutationFn: (title: string) => createModule(supabase, productId, { title }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["product", productId] })
-      toast.success("Module added")
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
+  const createModuleMutation = useCreateProductModule(productId)
 
-  const updateModuleMutation = useMutation({
-    mutationFn: ({ moduleId, title }: { moduleId: number; title: string }) =>
-      updateModule(supabase, moduleId, { title }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["product", productId] })
-      toast.success("Module updated")
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
+  const updateModuleMutation = useUpdateProductModule(productId)
 
-  const addItemMutation = useMutation({
-    mutationFn: ({
-      moduleId,
-      contentItemId,
-      title,
-    }: {
-      moduleId: number
-      contentItemId: number
-      title?: string | null
-    }) =>
-      addModuleItem(supabase, moduleId, {
-        content_item_id: contentItemId,
-        title: title?.trim() || null,
-      }),
-    onSuccess: (_, { moduleId }) => {
-      queryClient.invalidateQueries({ queryKey: ["product", productId] })
-      setContentPickerModuleId(null)
-      toast.success("Lesson added")
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
+  const addItemMutation = useAddProductLesson(productId)
 
-  const removeItemMutation = useMutation({
-    mutationFn: (itemId: number) => removeModuleItem(supabase, itemId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["product", productId] })
-      toast.success("Lesson removed")
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
+  const removeItemMutation = useRemoveProductLesson(productId)
 
-  const updateModuleItemMutation = useMutation({
-    mutationFn: ({ itemId, title }: { itemId: number; title: string | null }) =>
-      updateModuleItem(supabase, itemId, { title: title || null }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["product", productId] })
-      toast.success("Lesson updated")
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
+  const updateModuleItemMutation = useUpdateProductLesson(productId)
 
-  const coachingMutation = useMutation({
-    mutationFn: (input: {
-      sessions_count: number
-      period_months: number | null
-      delivery_mode: DeliveryMode | null
-    }) => upsertProductCoaching(supabase, productId, input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["product", productId] })
-      toast.success("Coaching details saved")
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
+  const coachingMutation = useUpsertCoachingDetails(productId)
 
-  const deleteProductMutation = useMutation({
-    mutationFn: () => deleteProduct(supabase, productId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["products", currentOrganization?.id] })
-      toast.success("Product deleted")
-      router.push("/dashboard/products")
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
+  const deleteProductMutation = useDeleteDraftProduct(currentOrganization?.id ?? null, productId)
 
-  const deleteModuleMutation = useMutation({
-    mutationFn: (moduleId: number) => deleteModule(supabase, moduleId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["product", productId] })
-      setDeleteModuleId(null)
-      toast.success("Module deleted")
-    },
-    onError: (err: Error) => {
-      toast.error(err.message)
-      setDeleteModuleId(null)
-    },
-  })
+  const deleteModuleMutation = useDeleteProductModule(productId)
 
-  const reorderModulesMutation = useMutation({
-    mutationFn: async (updates: { moduleId: number; position: number }[]) => {
-      const offset = 10000
-      for (const { moduleId, position } of updates) {
-        await updateModule(supabase, moduleId, { position: position + offset })
-      }
-      for (const { moduleId, position } of updates) {
-        await updateModule(supabase, moduleId, { position })
-      }
-    },
-    onMutate: async (updates) => {
-      await queryClient.cancelQueries({ queryKey: ["product", productId] })
-      const previousProduct = queryClient.getQueryData<ProductWithDetails>([
-        "product",
-        productId,
-      ])
-      if (!previousProduct?.product_modules) return { previousProduct }
-      const orderByPos = new Map(updates.map((u) => [u.moduleId, u.position]))
-      const reordered = [...previousProduct.product_modules].sort(
-        (a, b) => (orderByPos.get(a.id) ?? a.position) - (orderByPos.get(b.id) ?? b.position)
-      )
-      queryClient.setQueryData<ProductWithDetails>(["product", productId], {
-        ...previousProduct,
-        product_modules: reordered,
-      })
-      return { previousProduct }
-    },
-    onError: (_err, _variables, context) => {
-      if (context?.previousProduct) {
-        queryClient.setQueryData(["product", productId], context.previousProduct)
-      }
-      toast.error("Failed to update order")
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["product", productId] })
-      toast.success("Order updated")
-    },
-  })
+  const reorderModulesMutation = useReorderModules(productId)
 
-  const reorderLessonsMutation = useMutation({
-    mutationFn: async ({
-      moduleId: _moduleId,
-      updates,
-    }: {
-      moduleId: number
-      updates: { itemId: number; position: number }[]
-    }) => {
-      const offset = 10000
-      for (const { itemId, position } of updates) {
-        await updateModuleItem(supabase, itemId, { position: position + offset })
-      }
-      for (const { itemId, position } of updates) {
-        await updateModuleItem(supabase, itemId, { position })
-      }
-    },
-    onMutate: async ({ moduleId, updates }) => {
-      await queryClient.cancelQueries({ queryKey: ["product", productId] })
-      const previousProduct = queryClient.getQueryData<ProductWithDetails>([
-        "product",
-        productId,
-      ])
-      if (!previousProduct?.product_modules) return { previousProduct }
-      const mod = previousProduct.product_modules.find((m) => m.id === moduleId)
-      if (!mod?.product_module_items?.length) return { previousProduct }
-      const orderByItem = new Map(updates.map((u) => [u.itemId, u.position]))
-      const reorderedItems = [...mod.product_module_items].sort(
-        (a, b) =>
-          (orderByItem.get(a.id) ?? a.position) - (orderByItem.get(b.id) ?? b.position)
-      )
-      const newModules = previousProduct.product_modules.map((m) =>
-        m.id === moduleId ? { ...m, product_module_items: reorderedItems } : m
-      )
-      queryClient.setQueryData<ProductWithDetails>(["product", productId], {
-        ...previousProduct,
-        product_modules: newModules,
-      })
-      return { previousProduct }
-    },
-    onError: (_err, _variables, context) => {
-      if (context?.previousProduct) {
-        queryClient.setQueryData(["product", productId], context.previousProduct)
-      }
-      toast.error("Failed to update order")
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["product", productId] })
-      toast.success("Order updated")
-    },
-  })
+  const reorderLessonsMutation = useReorderLessons(productId)
 
   const modules = product?.product_modules ?? []
 
@@ -515,7 +342,31 @@ export default function ProductEditorPage({
         </TabsContent>
 
         <TabsContent value="settings" className="mt-6">
-          <div className="max-w-2xl">
+          <div className="max-w-2xl space-y-4">
+            <div className="rounded-xl border border-border bg-card p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    Archive product
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Archived products are hidden from new offers but keep their existing
+                    enrollments and content.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => updateProductMutation.mutate({ status: "archived" })}
+                  disabled={
+                    updateProductMutation.isPending || product.status === "archived"
+                  }
+                >
+                  {product.status === "archived" ? "Archived" : "Archive"}
+                </Button>
+              </div>
+            </div>
+
             <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-5">
               <div className="flex items-center justify-between">
                 <div>
@@ -523,15 +374,15 @@ export default function ProductEditorPage({
                     Delete product
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Permanently remove this product and all its data (modules,
-                    lessons, coaching details).
+                    Only draft products can be deleted. This permanently removes this
+                    product and all its data (modules, lessons, coaching details).
                   </p>
                 </div>
                 <Button
                   variant="destructive"
                   size="sm"
                   onClick={() => setDeleteConfirmOpen(true)}
-                  disabled={deleteProductMutation.isPending}
+                  disabled={deleteProductMutation.isPending || product.status !== "draft"}
                 >
                   Delete
                 </Button>
@@ -546,11 +397,14 @@ export default function ProductEditorPage({
         onClose={() => setContentPickerModuleId(null)}
         onSelect={(contentItemId, title) => {
           if (contentPickerModuleId)
-            addItemMutation.mutate({
-              moduleId: contentPickerModuleId,
-              contentItemId,
-              title,
-            })
+            addItemMutation.mutate(
+              {
+                moduleId: contentPickerModuleId,
+                contentItemId,
+                title,
+              },
+              { onSettled: () => setContentPickerModuleId(null) }
+            )
         }}
         addPending={addItemMutation.isPending}
       />
@@ -569,7 +423,11 @@ export default function ProductEditorPage({
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => deleteProductMutation.mutate()}
+              onClick={() =>
+                deleteProductMutation.mutate(undefined, {
+                  onSuccess: () => router.push("/dashboard/products"),
+                })
+              }
               disabled={deleteProductMutation.isPending}
             >
               {deleteProductMutation.isPending ? "Deleting…" : "Delete"}

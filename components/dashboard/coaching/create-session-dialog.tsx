@@ -123,6 +123,11 @@ export function CreateSessionDialog({
             </p>
           )}
         </DialogHeader>
+        {preselectedPack && !userId && (
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
+            The client has not created their account yet. Sessions can only be scheduled once they have signed up.
+          </p>
+        )}
         <form onSubmit={handleSubmit} className="space-y-4">
           {assignmentLoading && (
             <p className="text-xs text-muted-foreground">Loading…</p>

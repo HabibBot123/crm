@@ -66,7 +66,7 @@ export default function CoachingLoginPage() {
                     <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
                         C
                     </span>
-                    <span className="text-lg font-bold text-foreground font-display">CoachPro</span>
+                    <span className="text-lg font-bold text-foreground font-display">CoachStack</span>
                 </Link>
                 <div>
                     <h2 className="text-3xl font-bold text-foreground font-display">Access your coaching space</h2>
@@ -88,7 +88,7 @@ export default function CoachingLoginPage() {
                             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
                                 C
                             </span>
-                            <span className="text-lg font-bold text-foreground font-display">CoachPro</span>
+                            <span className="text-lg font-bold text-foreground font-display">CoachStack</span>
                         </div>
                         <h1 className="text-2xl font-bold text-foreground font-display">
                             Sign in to your coaching

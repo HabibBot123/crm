@@ -1,5 +1,13 @@
-import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import {
+  badRequest,
+  conflict,
+  notFound,
+  ok,
+  serverError,
+  unauthorized,
+  badGateway,
+} from "@/lib/api-helpers/api-response"
 
 export async function DELETE(request: Request) {
   const supabase = await createClient()
@@ -9,19 +17,19 @@ export async function DELETE(request: Request) {
   } = await supabase.auth.getUser()
 
   if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    return unauthorized("Unauthorized", authError?.message)
   }
 
   let body: { id?: number }
   try {
     body = await request.json()
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+    return badRequest("Invalid JSON body")
   }
 
   const id = Number(body.id)
   if (!id || !Number.isFinite(id)) {
-    return NextResponse.json({ error: "id is required" }, { status: 400 })
+    return badRequest("id is required")
   }
 
   const BUNNY_STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY
@@ -36,9 +44,22 @@ export async function DELETE(request: Request) {
     .single()
 
   if (fetchError || !item) {
-    return NextResponse.json(
-      { error: fetchError?.message ?? "Content item not found" },
-      { status: 404 }
+    return notFound("Content item not found", fetchError?.message)
+  }
+
+  // Check if the content item is used in any product module
+  const { count: usageCount, error: usageError } = await supabase
+    .from("product_module_items")
+    .select("id", { count: "exact", head: true })
+    .eq("content_item_id", id)
+
+  if (usageError) {
+    return serverError("Failed to check content usage", usageError.message)
+  }
+
+  if (usageCount && usageCount > 0) {
+    return conflict(
+      "This content item is used in at least one product. Remove it from all products before deleting it."
     )
   }
 
@@ -58,10 +79,7 @@ export async function DELETE(request: Request) {
     if (!res.ok && res.status !== 404) {
       const text = await res.text().catch(() => "")
       console.error("Failed to delete Bunny video:", text)
-      return NextResponse.json(
-        { error: "Failed to delete video from Bunny Stream" },
-        { status: 502 }
-      )
+      return badGateway("Failed to delete video from Bunny Stream", text)
     }
   }
 
@@ -80,10 +98,7 @@ export async function DELETE(request: Request) {
     if (!res.ok && res.status !== 404) {
       const text = await res.text().catch(() => "")
       console.error("Failed to delete Bunny storage file:", text)
-      return NextResponse.json(
-        { error: "Failed to delete file from Bunny Storage" },
-        { status: 502 }
-      )
+      return badGateway("Failed to delete file from Bunny Storage", text)
     }
   }
 
@@ -93,9 +108,9 @@ export async function DELETE(request: Request) {
     .eq("id", id)
 
   if (deleteError) {
-    return NextResponse.json({ error: deleteError.message }, { status: 500 })
+    return serverError("Failed to delete content item", deleteError.message)
   }
 
-  return NextResponse.json({ ok: true })
+  return ok({ ok: true })
 }
 

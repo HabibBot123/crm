@@ -1,0 +1,194 @@
+Project: CoachStack
+App Name: CoachStack — "The All-in-One Coaching Platform"
+Stack: Next.js 15 (App Router), TypeScript, Supabase (with RLS), React Query, Tailwind CSS v4, Stripe, Vercel
+
+1. Folder Structure
+crm-sport/
+├── app/                    # Next.js App Router pages & API routes
+│   ├── dashboard/          # Main dashboard (protected)
+│   ├── coached/            # Student-facing portal
+│   ├── coached-login/      # Student login
+│   ├── coached-signup/     # Student signup
+│   ├── coached-landing/    # Student landing page
+│   ├── c/[coach]/[product] # Public coach product pages
+│   ├── org/[slug]/         # Public org pages (sales / buy)
+│   ├── checkout/           # Checkout flow
+│   ├── order-success/      # Post-purchase
+│   ├── create-organization/
+│   ├── invite/team/
+│   ├── login/              # Auth (login, forgot-password, reset-password)
+│   ├── signup/
+│   ├── api/                # Next.js API routes
+│   ├── layout.tsx          # Root layout
+│   ├── page.tsx            # Landing page
+│   └── globals.css         # Global CSS + CSS custom properties (token system)
+│
+├── components/
+│   ├── ui/                 # shadcn/ui primitive components (30+)
+│   ├── dashboard/          # Dashboard-specific components
+│   ├── coached/            # Student-portal components
+│   ├── landing/            # Marketing/landing page components
+│   ├── student/            # Student header/tabs
+│   ├── providers/          # React context providers
+│   ├── auth-provider.tsx
+│   ├── org-switcher.tsx
+│   ├── theme-toggle.tsx
+│   └── theme-provider.tsx
+│
+├── lib/
+│   ├── services/           # All Supabase queries (service layer)
+│   │   ├── clients.ts
+│   │   ├── coaching.ts
+│   │   ├── coached.ts
+│   │   ├── content.ts
+│   │   ├── offers.ts
+│   │   ├── organizations.ts
+│   │   └── products.ts
+│   ├── supabase/           # Supabase client instances
+│   │   ├── client.ts
+│   │   ├── server.ts
+│   │   ├── admin.ts
+│   │   └── middleware.ts
+│   ├── email/              # Email workflows (Resend/similar)
+│   ├── permissions/        # Team permission helpers
+│   ├── constants/
+│   ├── stripe.ts
+│   ├── bunny.ts            # Bunny.net video hosting
+│   └── utils.ts
+│
+├── hooks/                  # React Query + custom hooks
+│   ├── use-auth.ts
+│   ├── use-clients.ts
+│   ├── use-coaching.ts
+│   ├── use-coached.ts
+│   ├── use-offers.ts
+│   ├── use-organizations.ts
+│   ├── use-products.ts
+│   ├── use-product-editor.ts
+│   ├── use-team.ts
+│   └── content/use-content-upload.ts
+│
+└── supabase/               # DB migrations & email templates
+2. Dashboard Pages
+Route	Description
+/dashboard	Overview — KPI stat cards, recent sales, top products
+/dashboard/products	Product list
+/dashboard/products/new	Create product
+/dashboard/products/[id]	Edit/view product
+/dashboard/offers	Offer list
+/dashboard/offers/new	Create offer
+/dashboard/offers/[id]	Edit offer
+/dashboard/clients	Client management
+/dashboard/coaching	Coaching session management
+/dashboard/content	Content library
+/dashboard/branding	Organization branding
+/dashboard/team	Team management
+/dashboard/settings	Org settings
+/dashboard/account	User account (sidebar link)
+/dashboard/stripe-connect	Stripe Connect onboarding
+3. Dashboard Layout
+The layout wraps all dashboard pages with:
+
+
+layout.tsx
+Lines 1-22
+import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar"
+import { MobileNav } from "@/components/dashboard/mobile-nav"
+import { OrganizationProvider } from "@/components/providers/organization-provider"
+import { DashboardAccessGate } from "@/components/dashboard/dashboard-access-gate"
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <OrganizationProvider>
+      <DashboardAccessGate>
+        <div className="flex min-h-screen bg-background">
+          <DashboardSidebar />
+          <div className="flex flex-1 flex-col">
+            <MobileNav />
+            <main className="flex-1">
+              {children}
+            </main>
+          </div>
+        </div>
+      </DashboardAccessGate>
+    </OrganizationProvider>
+  )
+}
+OrganizationProvider — multi-org context
+DashboardAccessGate — auth/permission guard
+DashboardSidebar — collapsible left sidebar (desktop only, with OrgSwitcher and ThemeToggle)
+MobileNav — top nav bar for mobile
+Sidebar nav items (in order): Overview, Products, Offers, Clients, Coaching, Content, Branding, Team, Settings
+
+4. Main Dashboard Page (/dashboard)
+Displays an analytics overview using a Supabase RPC call (dashboard_overview):
+
+KPI grid (4 cards): Total Revenue, Total Clients, Total Sales, Conversion Rate — via the custom StatCard component
+CTA banner: Shows a prompt when there are unassigned coaching packs
+Recent Sales panel: Avatar + client name + offer title + amount
+Top Products panel: Product type icon + title + enrollment count + Badge variant
+5. Color Palette / Design System
+The project uses Tailwind CSS v4 with OKLCH color tokens defined in globals.css. It supports light/dark modes via the class strategy.
+
+Light Mode
+Token	Value	Approximate Color
+--background	oklch(0.985 0 0)	Near-white
+--foreground	oklch(0.13 0 0)	Near-black
+--card	oklch(1 0 0)	Pure white
+--primary	oklch(0.45 0.18 250)	Deep blue/indigo
+--primary-foreground	oklch(0.99 0 0)	White
+--secondary	oklch(0.96 0.005 250)	Very light blue-gray
+--muted	oklch(0.955 0 0)	Light gray
+--muted-foreground	oklch(0.50 0 0)	Mid gray
+--accent	oklch(0.70 0.15 170)	Teal/green
+--destructive	oklch(0.55 0.22 27)	Red/orange
+--success	oklch(0.60 0.18 145)	Green
+--warning	oklch(0.75 0.15 65)	Amber/yellow
+--border	oklch(0.91 0 0)	Light gray
+--sidebar	oklch(0.98 0 0)	Off-white
+--radius	0.75rem	Rounded corners
+Dark Mode
+Background shifts to oklch(0.13 0 0) (very dark), cards to oklch(0.17 0 0), primary becomes slightly brighter blue oklch(0.55 0.20 250).
+
+Typography
+Body font: Inter (Google Fonts, variable --font-inter)
+Display font: Space Grotesk (Google Fonts, variable --font-space-grotesk)
+Used via the font-display utility class on headings and stat values
+6. UI Components
+shadcn/ui Primitives (components/ui/)
+The project uses a comprehensive set of shadcn components:
+
+accordion, alert, alert-dialog, avatar, badge, breadcrumb, button, button-group, calendar, card, carousel, chart, checkbox, collapsible, command, context-menu, dialog, drawer, dropdown-menu, empty, field, form, hover-card, input, input-group, input-otp, item, kbd, label, menubar, navigation-menu, pagination, popover, progress, radio-group, resizable, scroll-area, select, separator, sheet, sidebar, skeleton, slider, sonner (toasts), spinner, switch, table, tabs, textarea, toast, toggle, toggle-group, tooltip
+
+Custom Dashboard Components (components/dashboard/)
+Component	Purpose
+DashboardSidebar	Collapsible left nav with org switcher
+MobileNav	Top navigation bar for mobile
+DashboardAccessGate	Auth/permission guard wrapper
+StatCard	KPI metric card with icon and trend indicator
+PaginationControls	Pagination UI
+PaginationSummary	"Showing X of Y" text
+products/ProductModuleCard	Product module display card
+products/ProductContentPicker	Content selection UI
+products/ContentTypeIcon	Icon for content type
+coaching/CreateSessionDialog	Dialog to create a coaching session
+content/CreateFolderDialog	Dialog to create a content folder
+content/ContentUploadSheet	Sheet panel for content upload
+Other Custom Components
+Component	Purpose
+OrgSwitcher	Organization switcher dropdown
+ThemeToggle	Light/dark mode toggle
+AuthProvider	Supabase auth session context
+OrganizationProvider	Current org context
+QueryProvider	React Query QueryClient wrapper
+Coached (Student Portal) Components (components/coached/)
+CoachedSidebar, CoachedHeader, CoachedBottomTabs, CoachedAuthGate, course player sub-components (BunnyVideoPlayer, PdfViewer, DocViewer, ContentViewer, LessonNav, CourseSidebar, CourseProgressBar)
+
+Architecture Summary
+React Component (UI only)
+      ↓
+React Query Hook (hooks/)
+      ↓
+Service Function (lib/services/)
+      ↓
+Supabase Client (lib/supabase/) + RLS
+Key integrations: Supabase (auth + DB + RLS), Stripe (payments + Connect), Bunny.net (video hosting), Vercel Analytics, Sonner (toasts), React Query (caching).

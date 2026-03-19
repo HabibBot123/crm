@@ -2,12 +2,12 @@ import { Star } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 
 const testimonials = [
-  { name: "Sarah Johnson", role: "Fitness Coach", text: "CoachPro transformed my business. I went from managing everything in spreadsheets to having a professional platform overnight. My clients love the experience.", avatar: "SJ" },
+  { name: "Sarah Johnson", role: "Fitness Coach", text: "CoachStack transformed my business. I went from managing everything in spreadsheets to having a professional platform overnight. My clients love the experience.", avatar: "SJ" },
   { name: "Michael Chen", role: "Executive Coach", text: "The multi-tenant workspace feature is a game-changer. I manage three different coaching brands from one account. Revenue is up 40% since switching.", avatar: "MC" },
   { name: "Emily Davis", role: "Wellness Coach", text: "Finally, a platform that understands coaches. The content builder is intuitive, and the client management tools save me hours every week.", avatar: "ED" },
-  { name: "James Wilson", role: "Business Coach", text: "I've tried Kajabi, Teachable, and Thinkific. CoachPro is the only platform that truly feels like it was built for coaching businesses.", avatar: "JW" },
+  { name: "James Wilson", role: "Business Coach", text: "I've tried Kajabi, Teachable, and Thinkific. CoachStack is the only platform that truly feels like it was built for coaching businesses.", avatar: "JW" },
   { name: "Lisa Park", role: "Life Coach", text: "The PWA app is incredible. My students can access their courses on mobile like a native app. It's been a huge selling point.", avatar: "LP" },
-  { name: "David Brown", role: "Health Coach", text: "From zero to $10K/month in 3 months using CoachPro. The sales pages convert really well and the analytics help me optimize.", avatar: "DB" },
+  { name: "David Brown", role: "Health Coach", text: "From zero to $10K/month in 3 months using CoachStack. The sales pages convert really well and the analytics help me optimize.", avatar: "DB" },
 ]
 
 export function Testimonials() {

@@ -1,13 +1,15 @@
 "use client"
 
-import { use, useState, useEffect } from "react"
+import { use, useState } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
+import { useQuery } from "@tanstack/react-query"
 import { Lock, ArrowLeft, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { type PublicOfferWithOrgResponse } from "@/lib/services/organizations"
+import { getPublicOfferWithOrg, type PublicOfferWithOrgResponse } from "@/lib/services/organizations"
+import { formatAmountFromCents } from "@/lib/utils"
 
 type PageProps = {
   params: Promise<{ slug: string; offerId: string }>
@@ -18,56 +20,45 @@ export default function BuyOfferPage({ params }: PageProps) {
   const searchParams = useSearchParams()
   const variantId = searchParams.get("variantId")
 
-  const [data, setData] = useState<PublicOfferWithOrgResponse | null>(null)
-  const [dataLoading, setDataLoading] = useState(true)
-  const [dataError, setDataError] = useState<string | null>(null)
-
   const [email, setEmail] = useState("")
   const [fullName, setFullName] = useState("")
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
-    if (!slug || !offerId) {
-      setDataLoading(false)
-      setDataError("Use the link shared by your coach to access this page.")
-      return
-    }
+  const {
+    data,
+    isLoading: dataLoading,
+    error,
+  } = useQuery<PublicOfferWithOrgResponse | null>({
+    queryKey: ["public-offer", slug, offerId, variantId],
+    enabled: !!slug && !!offerId,
+    queryFn: async () => {
+      const numericOfferId = Number(offerId)
+      const numericVariantId = variantId ? Number(variantId) : null
+      if (typeof window === "undefined") return null
+      if (!slug || !Number.isFinite(numericOfferId) || numericOfferId <= 0) {
+        return null
+      }
+      return getPublicOfferWithOrg(
+        window.location.origin,
+        slug,
+        numericOfferId,
+        numericVariantId
+      )
+    },
+  })
 
-    let cancelled = false
-    const url = new URL(
-      `/api/public/org/${encodeURIComponent(slug)}/offer/${offerId}`,
-      window.location.origin
-    )
-    if (variantId) url.searchParams.set("variantId", variantId)
-
-    fetch(url.toString())
-      .then((res) => {
-        if (cancelled) return
-        if (!res.ok) {
-          if (res.status === 404) setDataError("Offer not found.")
-          else setDataError("Unable to load offer. Please try again.")
-          return
-        }
-        return res.json() as Promise<PublicOfferWithOrgResponse>
-      })
-      .then((payload) => {
-        if (!cancelled && payload) setData(payload)
-      })
-      .catch(() => {
-        if (!cancelled) setDataError("Unable to load offer. Please try again.")
-      })
-      .finally(() => {
-        if (!cancelled) setDataLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [slug, offerId, variantId])
+  const dataError =
+    !slug || !offerId
+      ? "Use the link shared by your coach to access this page."
+      : error
+        ? "Unable to load offer. Please try again."
+        : data === null
+          ? "Offer not found."
+          : null
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!email.trim()) return
+    if (!email.trim() || !fullName.trim()) return
 
     setLoading(true)
     try {
@@ -150,13 +141,14 @@ export default function BuyOfferPage({ params }: PageProps) {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="fullName" className="text-xs font-medium uppercase tracking-wide">
-                      Full name <span className="normal-case text-muted-foreground">(optional)</span>
+                      Full name
                     </Label>
                     <Input
                       id="fullName"
                       placeholder="John Smith"
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
+                      required
                     />
                   </div>
                   <div className="space-y-2">
@@ -243,11 +235,6 @@ export default function BuyOfferPage({ params }: PageProps) {
                     <p className="text-sm font-semibold text-foreground">
                       {data.organization.name}
                     </p>
-                    {data.organization.branding?.description && (
-                      <p className="text-xs text-muted-foreground">
-                        {data.organization.branding.description}
-                      </p>
-                    )}
                   </div>
                 </div>
 
@@ -267,13 +254,7 @@ export default function BuyOfferPage({ params }: PageProps) {
 
                 <div className="flex flex-wrap items-baseline gap-2">
                   <p className="text-2xl font-semibold text-foreground">
-                    {(data.offer.price / 100).toLocaleString(undefined, {
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 2,
-                    })}{" "}
-                    <span className="text-base font-medium">
-                      {data.offer.currency.toUpperCase()}
-                    </span>
+                    {formatAmountFromCents(data.offer.price, data.offer.currency) ?? "—"}
                   </p>
                   {data.offer.billing_type === "subscription" && data.offer.interval === "month" && (
                     <span className="text-sm text-muted-foreground">/ month</span>
@@ -294,14 +275,11 @@ export default function BuyOfferPage({ params }: PageProps) {
                       {data.offer.installment_count > 1 ? "s" : ""} over{" "}
                       {data.offer.installment_count} month
                       {data.offer.installment_count > 1 ? "s" : ""} —{" "}
-                      {(data.offer.price / 100 / data.offer.installment_count).toLocaleString(
-                        undefined,
-                        {
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 2,
-                        }
+                      {formatAmountFromCents(
+                        Math.round(data.offer.price / data.offer.installment_count),
+                        data.offer.currency
                       )}{" "}
-                      {data.offer.currency.toUpperCase()} per payment
+                      per payment
                     </p>
                   ))}
               </div>

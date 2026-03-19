@@ -3,3 +3,34 @@ Vérifier que l'on ne peut supprimer un produuit offre content etc s'il est déj
 ajouter le cname pour coached.myapp.com
 
 psossibilité de rendre en inactive des offer_variants
+
+Avec Cloudflare pour coachstack.co, voici comment exposer app pour les pages coached :
+
+1. Enregistrement DNS dans Cloudflare
+Ouvre Cloudflare Dashboard → domaine coachstack.co → DNS → Records.
+Add record :
+Type : CNAME
+Name : app (sous-domaine uniquement)
+Target : l’host de ton app :
+Si l’app est sur Vercel : cname.vercel-dns.com
+(ou le domaine personnalisé indiqué par Vercel pour ce projet, ex. coachstack.vercel.app si Vercel te le demande).
+Si l’app est ailleurs : le domaine ou sous-domaine fourni par l’hébergeur (ex. ton-app.pages.dev, ou ton domaine principal si tout est sur le même serveur).
+Proxy status : Proxied (nuage orange) pour passer par Cloudflare (cache, DDoS, SSL).
+Enregistre.
+Après propagation, app.coachstack.co pointe vers la même app que le reste du site.
+
+2. Côté hébergeur (ex. Vercel)
+Dans le projet (ex. Vercel) : Settings → Domains.
+Ajoute app.coachstack.co.
+Vercel validera le domaine dès que le CNAME sera actif chez Cloudflare.
+3. Variable d’environnement
+En production, définis :
+
+NEXT_PUBLIC_APP_URL=https://app.coachstack.co
+(avec https:// pour que les liens générés soient en HTTPS.)
+
+4. Résumé Cloudflare
+Type	Name	Target	Proxy
+CNAME	app	cname.vercel-dns.com (ou l’host donné par ton hébergeur)	Proxied (orange)
+Si tu me dis sur quel hébergeur tourne l’app (Vercel, autre), je peux te donner la Target exacte à mettre dans Cloudflare.
+

@@ -22,7 +22,6 @@ export default function StripeConnectPage() {
   const [status, setStatus] = useState<StripeStatusResponse | null>(null)
   const [isFetchingStatus, setIsFetchingStatus] = useState(false)
   const [isProcessingAction, setIsProcessingAction] = useState(false)
-  const [businessType, setBusinessType] = useState<"individual" | "company">("individual")
   const [error, setError] = useState<string | null>(null)
   const [orgTimeout, setOrgTimeout] = useState(false)
 
@@ -86,47 +85,7 @@ export default function StripeConnectPage() {
     setIsProcessingAction(true)
     setError(null)
     try {
-      let stripeAccountId = status?.stripeAccountId
-
-      // Step 1: create the Stripe account if it does not exist yet
-      if (!stripeAccountId) {
-        const createRes = await fetch("/api/stripe-connect/create-account", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            organizationId: currentOrganization.id,
-            businessType,
-          }),
-        })
-
-        const createData = (await createRes.json()) as {
-          stripeAccountId?: string
-          stripeOnboardingCompleted?: boolean
-          error?: string
-        }
-
-        if (!createRes.ok || !createData.stripeAccountId) {
-          setError(
-            createData.error ??
-              "Unable to create the Stripe Connect account. Please try again or contact support."
-          )
-          return
-        }
-
-        stripeAccountId = createData.stripeAccountId
-
-        // Optimistically update local status so the UI reflects the new account
-        setStatus((prev) => ({
-          stripeAccountId: stripeAccountId ?? null,
-          payoutsEnabled: prev?.payoutsEnabled ?? false,
-          chargesEnabled: prev?.chargesEnabled ?? false,
-          detailsSubmitted: prev?.detailsSubmitted ?? false,
-          onboardingCompleted: prev?.onboardingCompleted ?? false,
-        }))
-      }
-
-      // Step 2: create the onboarding link for the (now existing) account
-      const res = await fetch("/api/stripe-connect/account-link", {
+      const res = await fetch("/api/stripe-connect/oauth-start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ organizationId: currentOrganization.id }),
@@ -135,7 +94,7 @@ export default function StripeConnectPage() {
       const data = (await res.json()) as { url?: string; error?: string }
 
       if (!res.ok || !data.url) {
-        setError(data.error ?? "Unable to create Stripe onboarding link.")
+        setError(data.error ?? "Unable to start Stripe connection. Please try again or contact support.")
         return
       }
 
@@ -223,43 +182,7 @@ export default function StripeConnectPage() {
           </div>
         )}
 
-        {/* Business type selection (only when account does not exist yet) */}
-        {!status?.stripeAccountId && (
-          <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-4 text-sm">
-            <p className="font-medium text-foreground">Who will receive payouts?</p>
-            <div className="mt-2 grid gap-3 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => setBusinessType("individual")}
-                className={`rounded-md border px-3 py-2 text-left text-sm transition-colors ${
-                  businessType === "individual"
-                    ? "border-primary bg-primary/5 text-foreground"
-                    : "border-border bg-background text-muted-foreground hover:bg-muted/40"
-                }`}
-              >
-                <span className="block font-medium text-foreground">Entrepreneur (individual)</span>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  Use this if payouts go to you as an individual (freelancer, self-employed coach).
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setBusinessType("company")}
-                className={`rounded-md border px-3 py-2 text-left text-sm transition-colors ${
-                  businessType === "company"
-                    ? "border-primary bg-primary/5 text-foreground"
-                    : "border-border bg-background text-muted-foreground hover:bg-muted/40"
-                }`}
-              >
-                <span className="block font-medium text-foreground">Company</span>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  Use this only if you have a registered company that will receive payouts.
-                </span>
-              </button>
-            </div>
-          </div>
-        )}
+        {/* In Standard mode, Stripe handles business type selection during their own onboarding flow. */}
 
         <div className="space-y-3 rounded-lg border border-border bg-muted/40 p-4 text-sm">
           <p className="font-medium text-foreground">

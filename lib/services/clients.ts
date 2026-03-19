@@ -1,5 +1,37 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 
+/** One row from v_organization_clients (list endpoint). */
+export type ClientSummary = {
+  organization_id: number
+  client_key: string
+  user_id: string | null
+  buyer_email: string | null
+  client_display: string
+  client_email: string | null
+  total_spent: number
+  enrollment_count: number
+  first_enrollment_started_at: string | null
+  last_enrollment_expires_at: string | null
+  status: "active" | "expired" | "cancelled" | "paused"
+}
+
+export type ClientsPage = {
+  items: ClientSummary[]
+  total: number
+}
+
+export type FetchClientsPageParams = {
+  organizationId: number
+  page: number
+  pageSize: number
+  search?: string
+}
+
+export type FetchClientDetailParams = {
+  organizationId: number
+  clientKey: string
+}
+
 /** One row from the organization_client_enrollments view (one enrollment per row). */
 export type ClientEnrollmentRow = {
   organization_id: number
@@ -97,6 +129,7 @@ export function groupClientEnrollmentRows(
       })
     } else {
       existing.enrollments.push(enrollment)
+      existing.total_spent += Number(row.total_spent)
       existing.status = deriveClientStatus(
         existing.enrollments.map((e) => e.enrollment_status)
       )
@@ -120,6 +153,59 @@ export async function fetchClientsByOrganization(
     organizationId
   )
   return groupClientEnrollmentRows(rows)
+}
+
+/** Fetch paginated clients list via API (uses v_organization_clients in API with admin). */
+export async function fetchClientsPage(
+  params: FetchClientsPageParams
+): Promise<ClientsPage> {
+  const { organizationId, page, pageSize, search } = params
+  const searchParams = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+  })
+  if (search?.trim()) searchParams.set("search", search.trim())
+
+  const res = await fetch(
+    `/api/organizations/${organizationId}/clients?${searchParams.toString()}`,
+    { method: "GET" }
+  )
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    const message =
+      body && typeof (body as { error?: unknown }).error === "string"
+        ? (body as { error: string }).error
+        : "Failed to load clients"
+    throw new Error(message)
+  }
+
+  return res.json() as Promise<ClientsPage>
+}
+
+/** Fetch one client's detail (enrollments) via API. */
+export async function fetchClientDetail(
+  params: FetchClientDetailParams
+): Promise<ClientWithEnrollments | null> {
+  const { organizationId, clientKey } = params
+  const searchParams = new URLSearchParams({ clientKey })
+
+  const res = await fetch(
+    `/api/organizations/${organizationId}/clients?${searchParams.toString()}`,
+    { method: "GET" }
+  )
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    const message =
+      body && typeof (body as { error?: unknown }).error === "string"
+        ? (body as { error: string }).error
+        : "Failed to load client detail"
+    throw new Error(message)
+  }
+
+  const data = (await res.json()) as { client: ClientWithEnrollments | null }
+  return data.client
 }
 
 function deriveClientStatus(

@@ -16,7 +16,7 @@ export function CoachedBottomTabs() {
   const pathname = usePathname()
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card/95 backdrop-blur-sm safe-area-bottom lg:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card/95 backdrop-blur-sm safe-area-bottom md:hidden">
       <div className="flex items-center justify-around py-2">
         {tabs.map((tab) => {
           const isActive = pathname === tab.href || (tab.href !== "/coached" && pathname.startsWith(tab.href))

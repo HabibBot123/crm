@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter, Space_Grotesk } from 'next/font/google'
+import { Inter, Geist } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { AuthProvider } from '@/components/auth-provider'
 import { QueryProvider } from '@/components/providers/query-provider'
@@ -8,11 +8,11 @@ import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
-const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space-grotesk" })
+const geist = Geist({ subsets: ["latin"], variable: "--font-geist" })
 
 export const metadata: Metadata = {
-  title: 'CoachPro - The All-in-One Coaching Platform',
-  description: 'Sell courses, ebooks, and coaching programs. Manage clients, leads, and your team from one premium platform.',
+  title: 'CoachStack - The All-in-One Coaching Platform',
+  description: 'CoachStack helps you sell courses, ebooks, and coaching programs while managing clients, leads, and your team from one premium platform.',
   generator: 'v0.app',
   manifest: '/manifest.json',
   icons: {
@@ -43,7 +43,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} ${spaceGrotesk.variable} font-sans antialiased`}>
+      <body className={`${inter.variable} ${geist.variable} font-sans antialiased`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="light"

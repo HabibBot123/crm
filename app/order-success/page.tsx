@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { CheckCircle, ArrowRight, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { formatAmountFromCents } from "@/lib/utils"
 
 export default function OrderSuccessPage() {
   const searchParams = useSearchParams()
@@ -14,12 +15,8 @@ export default function OrderSuccessPage() {
   const price = searchParams.get("price")
   const currency = searchParams.get("currency")?.toUpperCase() ?? ""
 
-  const amountLabel = price
-    ? `${Number(price).toLocaleString(undefined, {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2,
-      })} ${currency}`
-    : null
+  const amountValue = price ? Number(price) : null
+  const amountLabel = amountValue !== null ? formatAmountFromCents(amountValue, currency) : null
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-6">

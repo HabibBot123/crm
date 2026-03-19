@@ -18,7 +18,7 @@ export function CoachedHeader() {
   const pathname = usePathname()
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur-sm lg:hidden">
+    <header className="sticky top-0 z-40 hidden border-b border-border bg-card/95 backdrop-blur-sm md:block lg:hidden">
       <div className="flex h-14 w-full items-center justify-between px-4">
         <Link href="/coached" className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">

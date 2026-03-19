@@ -3,21 +3,18 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft, BookOpen, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useCoachAccessGuard } from "@/hooks/use-access-guard"
-import { useAuth } from "@/hooks/use-auth"
-import { createProduct, type ProductType } from "@/lib/services/products"
+import type { ProductType } from "@/lib/services/products"
 import { toast } from "sonner"
+import { useCreateProduct } from "@/hooks/use-products"
 
 export default function NewProductPage() {
   const router = useRouter()
-  const queryClient = useQueryClient()
-  const { supabase } = useAuth()
   const { canAccess, guardContent, currentOrganization } = useCoachAccessGuard({
     requireOrg: true,
     requireStripe: true,
@@ -28,28 +25,9 @@ export default function NewProductPage() {
   const [step, setStep] = useState<1 | 2>(1)
   const [type, setType] = useState<ProductType | null>(null)
   const [title, setTitle] = useState("")
-  const [slug, setSlug] = useState("")
   const [description, setDescription] = useState("")
 
-  const createMutation = useMutation({
-    mutationFn: () =>
-      createProduct(supabase, {
-        organization_id: currentOrganization!.id,
-        type: type!,
-        title: title.trim(),
-        slug: slug.trim() || null,
-        description: description.trim() || null,
-        status: "draft",
-      }),
-    onSuccess: (product) => {
-      queryClient.invalidateQueries({
-        queryKey: ["products", currentOrganization?.id],
-      })
-      toast.success("Product created")
-      router.push(`/dashboard/products/${product.id}`)
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
+  const createMutation = useCreateProduct(currentOrganization?.id ?? null)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -58,7 +36,18 @@ export default function NewProductPage() {
       return
     }
     if (!type) return
-    createMutation.mutate()
+    createMutation.mutate(
+      {
+        organization_id: currentOrganization!.id,
+        type: type!,
+        title: title.trim(),
+        description: description.trim() || null,
+        status: "draft",
+      },
+      {
+        onSuccess: (product) => router.push(`/dashboard/products/${product.id}`),
+      }
+    )
   }
 
   if (!canAccess && guardContent) {
@@ -145,27 +134,9 @@ export default function NewProductPage() {
               value={title}
               onChange={(e) => {
                 setTitle(e.target.value)
-                if (!slug && step === 2)
-                  setSlug(
-                    e.target.value
-                      .trim()
-                      .toLowerCase()
-                      .replace(/\s+/g, "-")
-                      .replace(/[^a-z0-9-]/g, "")
-                  )
               }}
               placeholder="e.g. Complete Fitness Program"
               required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="slug">Slug (optional)</Label>
-            <Input
-              id="slug"
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              placeholder="e.g. complete-fitness-program"
-              className="font-mono text-sm"
             />
           </div>
           <div className="space-y-2">

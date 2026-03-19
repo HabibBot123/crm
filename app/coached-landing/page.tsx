@@ -8,7 +8,7 @@ export default function CoachedLandingPage() {
               C
             </span>
             <span className="text-lg font-bold text-foreground font-display">
-              CoachPro
+              CoachStack
             </span>
           </div>
         </header>
@@ -62,7 +62,7 @@ export default function CoachedLandingPage() {
                 </li>
                 <li className="flex gap-2">
                   <span className="mt-0.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary" />
-                  A single login for all your coaches using CoachPro
+                  A single login for all your coaches using CoachStack
                 </li>
               </ul>
               <p className="mt-5 text-xs text-muted-foreground">

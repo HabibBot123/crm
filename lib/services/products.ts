@@ -9,7 +9,6 @@ export type Product = {
   organization_id: number
   type: ProductType
   title: string
-  slug: string | null
   description: string | null
   status: ProductStatus
   cover_image_url: string | null
@@ -61,18 +60,32 @@ export type ProductWithDetails = Product & {
   product_modules?: ProductModuleWithItems[]
 }
 
+export type ProductsPage = {
+  items: Product[]
+  total: number
+}
+
 export async function fetchProductsByOrganization(
   supabase: SupabaseClient,
-  organizationId: number
-): Promise<Product[]> {
-  const { data, error } = await supabase
+  organizationId: number,
+  page: number,
+  pageSize: number
+): Promise<ProductsPage> {
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+
+  const { data, error, count } = await supabase
     .from("products")
-    .select("*")
+    .select("*", { count: "exact" })
     .eq("organization_id", organizationId)
     .order("updated_at", { ascending: false })
+    .range(from, to)
 
   if (error) throw error
-  return (data ?? []) as Product[]
+  return {
+    items: (data ?? []) as Product[],
+    total: count ?? 0,
+  }
 }
 
 export async function fetchProductWithDetails(
@@ -143,7 +156,6 @@ export async function fetchProductWithDetails(
     organization_id: p.organization_id,
     type: p.type,
     title: p.title,
-    slug: p.slug,
     description: p.description,
     status: p.status,
     cover_image_url: p.cover_image_url,
@@ -158,7 +170,6 @@ export type CreateProductInput = {
   organization_id: number
   type: ProductType
   title: string
-  slug?: string | null
   description?: string | null
   status?: ProductStatus
 }
@@ -173,7 +184,7 @@ export async function createProduct(
       organization_id: input.organization_id,
       type: input.type,
       title: input.title.trim(),
-      slug: input.slug?.trim() || null,
+      slug: null,
       description: input.description?.trim() || null,
       status: input.status ?? "draft",
     })
@@ -197,7 +208,6 @@ export async function createProduct(
 
 export type UpdateProductInput = {
   title?: string
-  slug?: string | null
   description?: string | null
   status?: ProductStatus
   cover_image_url?: string | null
@@ -208,9 +218,39 @@ export async function updateProduct(
   productId: number,
   input: UpdateProductInput
 ): Promise<Product> {
+  // If status is being updated, enforce business rules around archiving
+  if (input.status !== undefined) {
+    const { data: existing, error: existingError } = await supabase
+      .from("products")
+      .select("id, status")
+      .eq("id", productId)
+      .single()
+
+    if (existingError || !existing) {
+      throw existingError ?? new Error("Product not found")
+    }
+
+    // Prevent archiving when the product is part of at least one offer
+    if (input.status === "archived") {
+      const { count: offerLinkCount, error: offerLinkError } = await supabase
+        .from("offer_products")
+        .select("id", { count: "exact", head: true })
+        .eq("product_id", productId)
+
+      if (offerLinkError) {
+        throw offerLinkError
+      }
+
+      if (offerLinkCount && offerLinkCount > 0) {
+        throw new Error(
+          "This product is attached to at least one offer and cannot be archived. Remove it from all offers first."
+        )
+      }
+    }
+  }
+
   const payload: Record<string, unknown> = {}
   if (input.title !== undefined) payload.title = input.title.trim()
-  if (input.slug !== undefined) payload.slug = input.slug?.trim() || null
   if (input.description !== undefined)
     payload.description = input.description?.trim() || null
   if (input.status !== undefined) payload.status = input.status
@@ -232,6 +272,40 @@ export async function deleteProduct(
   supabase: SupabaseClient,
   productId: number
 ): Promise<void> {
+  // 1) Ensure the product exists and is still in draft
+  const { data: product, error: productError } = await supabase
+    .from("products")
+    .select("id, status")
+    .eq("id", productId)
+    .single()
+
+  if (productError || !product) {
+    throw productError ?? new Error("Product not found")
+  }
+
+  if (product.status !== "draft") {
+    throw new Error(
+      "Only draft products can be deleted. Archive the product instead."
+    )
+  }
+
+  // 2) Ensure the product is not linked to any offer
+  const { count: offerLinkCount, error: offerLinkError } = await supabase
+    .from("offer_products")
+    .select("id", { count: "exact", head: true })
+    .eq("product_id", productId)
+
+  if (offerLinkError) {
+    throw offerLinkError
+  }
+
+  if (offerLinkCount && offerLinkCount > 0) {
+    throw new Error(
+      "This product is attached to at least one offer and cannot be deleted. Remove it from all offers first."
+    )
+  }
+
+  // 3) Delete the product row (modules, items, etc. are handled by DB constraints)
   const { error } = await supabase.from("products").delete().eq("id", productId)
   if (error) throw error
 }

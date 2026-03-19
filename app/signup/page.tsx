@@ -15,6 +15,7 @@ export default function SignupPage() {
   const searchParams = useSearchParams()
   const { supabase } = useAuth()
   const next = searchParams.get("next") ?? "/create-organization"
+  const signupSource = "coach"
   const [showPassword, setShowPassword] = useState(false)
   const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
@@ -25,7 +26,7 @@ export default function SignupPage() {
   async function handleEmailSignup(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
-    const callbackUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`
+    const callbackUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}&signup_source=${signupSource}`
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -46,7 +47,7 @@ export default function SignupPage() {
 
   async function handleGoogleSignup() {
     setGoogleLoading(true)
-    const callbackUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`
+    const callbackUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}&signup_source=${signupSource}`
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -66,12 +67,12 @@ export default function SignupPage() {
       <div className="hidden w-1/2 bg-primary/5 lg:flex lg:flex-col lg:justify-between lg:p-12">
         <Link href="/" className="flex items-center gap-2.5">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">C</span>
-          <span className="text-lg font-bold text-foreground font-display">CoachPro</span>
+          <span className="text-lg font-bold text-foreground font-display">CoachStack</span>
         </Link>
         <div>
           <h2 className="text-3xl font-bold text-foreground font-display">Start building your empire</h2>
           <p className="mt-3 text-muted-foreground leading-relaxed">
-            Join 2,000+ coaches who use CoachPro to sell courses, manage clients, and grow their business.
+            Join 2,000+ coaches who use CoachStack to sell courses, manage clients, and grow their business.
           </p>
           <ul className="mt-8 space-y-3">
             {["Free plan available", "No credit card required", "Set up in 5 minutes"].map((item) => (
@@ -90,7 +91,7 @@ export default function SignupPage() {
           <div className="mb-8 text-center lg:text-left">
             <div className="mb-6 flex items-center justify-center gap-2.5 lg:hidden">
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">C</span>
-              <span className="text-lg font-bold text-foreground font-display">CoachPro</span>
+              <span className="text-lg font-bold text-foreground font-display">CoachStack</span>
             </div>
             <h1 className="text-2xl font-bold text-foreground font-display">Create your account</h1>
             <p className="mt-2 text-sm text-muted-foreground">

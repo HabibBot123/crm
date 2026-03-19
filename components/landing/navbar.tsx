@@ -22,7 +22,7 @@ export function LandingNavbar() {
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
             C
           </span>
-          <span className="text-lg font-bold tracking-tight text-foreground font-display">CoachPro</span>
+          <span className="text-lg font-bold tracking-tight text-foreground font-display">CoachStack</span>
         </Link>
 
         <div className="hidden items-center gap-8 md:flex">

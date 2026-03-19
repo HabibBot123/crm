@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Plus, MoreHorizontal, Pencil, Trash2, Archive } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -23,16 +22,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { PaginationControls } from "@/components/dashboard/pagination-controls"
+import { PaginationSummary } from "@/components/dashboard/pagination-summary"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useCoachAccessGuard } from "@/hooks/use-access-guard"
-import { useAuth } from "@/hooks/use-auth"
-import {
-  fetchProductsByOrganization,
-  updateProduct,
-  deleteProduct,
-  type Product,
-} from "@/lib/services/products"
+import type { Product } from "@/lib/services/products"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import { useArchiveProduct, useDeleteProduct, useProducts } from "@/hooks/use-products"
 
 const statusStyles: Record<string, string> = {
   published: "bg-success/10 text-success",
@@ -40,10 +37,10 @@ const statusStyles: Record<string, string> = {
   archived: "bg-muted text-muted-foreground",
 }
 
+const DEFAULT_PAGE_SIZE = 10
+
 export default function ProductsPage() {
   const router = useRouter()
-  const queryClient = useQueryClient()
-  const { supabase } = useAuth()
   const {
     canAccess,
     isLoading: orgLoading,
@@ -58,44 +55,25 @@ export default function ProductsPage() {
     stripeUseRouter: true,
   })
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
+  const [page, setPage] = useState(1)
 
-  const { data: products = [], isLoading, error } = useQuery({
-    queryKey: ["products", currentOrganization?.id],
-    queryFn: () =>
-      fetchProductsByOrganization(supabase, currentOrganization!.id),
-    enabled: !!currentOrganization?.id,
-  })
+  const { data, isLoading, error } = useProducts(
+    currentOrganization?.id ?? null,
+    page,
+    DEFAULT_PAGE_SIZE
+  )
 
   useEffect(() => {
     if (error) toast.error((error as Error).message)
   }, [error])
 
-  const archiveMutation = useMutation({
-    mutationFn: ({ productId }: { productId: number }) =>
-      updateProduct(supabase, productId, { status: "archived" }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["products", currentOrganization?.id],
-      })
-      toast.success("Product archived")
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
+  const archiveMutation = useArchiveProduct(currentOrganization?.id ?? null)
 
-  const deleteMutation = useMutation({
-    mutationFn: (productId: number) => deleteProduct(supabase, productId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["products", currentOrganization?.id],
-      })
-      setDeleteTarget(null)
-      toast.success("Product deleted")
-    },
-    onError: (err: Error) => {
-      toast.error(err.message)
-      setDeleteTarget(null)
-    },
-  })
+  const deleteMutation = useDeleteProduct(currentOrganization?.id ?? null)
+
+  const total = data.total
+  const pageSize = DEFAULT_PAGE_SIZE
+  const paginatedProducts = data.items
 
   if (!canAccess && guardContent) {
     return (
@@ -113,7 +91,7 @@ export default function ProductsPage() {
             Products
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {products.length} product{products.length !== 1 ? "s" : ""} total
+            {total} product{total !== 1 ? "s" : ""} total
           </p>
         </div>
         <Link href="/dashboard/products/new">
@@ -125,22 +103,26 @@ export default function ProductsPage() {
       </div>
 
       {isLoading ? (
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => (
+        <div className="mt-8 space-y-3">
+          {Array.from({ length: 4 }).map((_, idx) => (
             <div
-              key={i}
-              className="overflow-hidden rounded-xl border border-border bg-card"
+              key={`product-skeleton-${idx}`}
+              className="flex items-center gap-4 rounded-xl border border-border bg-card p-4"
             >
-              <div className="aspect-[16/9] bg-muted animate-pulse" />
-              <div className="p-5 space-y-3">
-                <div className="h-5 bg-muted rounded w-1/3 animate-pulse" />
-                <div className="h-4 bg-muted rounded w-full animate-pulse" />
-                <div className="h-4 bg-muted rounded w-2/3 animate-pulse" />
+              <div className="h-16 w-24 rounded-lg bg-muted-foreground/20 animate-pulse" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-3 w-64" />
+                <Skeleton className="h-3 w-32" />
+              </div>
+              <div className="flex flex-col items-end gap-2">
+                <Skeleton className="h-6 w-20 rounded-full" />
+                <Skeleton className="h-6 w-16 rounded-full" />
               </div>
             </div>
           ))}
         </div>
-      ) : products.length === 0 ? (
+      ) : total === 0 ? (
         <div className="mt-8 flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card py-16 px-6">
           <p className="text-sm text-muted-foreground text-center">
             No products yet. Create your first product to get started.
@@ -153,34 +135,66 @@ export default function ProductsPage() {
           </Button>
         </div>
       ) : (
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {products.map((product) => (
-            <div
-              key={product.id}
-              className="group overflow-hidden rounded-xl border border-border bg-card transition-all hover:shadow-lg hover:shadow-primary/5"
-            >
-              <div className="aspect-[16/9] bg-muted relative">
-                {product.cover_image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={product.cover_image_url}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                    <span className="text-2xl font-bold opacity-20">
-                      {product.type.toUpperCase()}
-                    </span>
+        <>
+          <div className="mt-8 space-y-3">
+            {paginatedProducts.map((product) => (
+              <div
+                key={product.id}
+                className="group flex items-center gap-4 rounded-xl border border-border bg-card p-4 transition-all hover:shadow-lg hover:shadow-primary/5"
+              >
+                <div className="relative h-16 w-24 rounded-lg bg-muted overflow-hidden">
+                  {product.cover_image_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={product.cover_image_url}
+                      alt={product.title}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                      <span className="text-xs font-semibold opacity-40">
+                        {product.type.toUpperCase()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      className={cn(
+                        "text-xs capitalize",
+                        statusStyles[product.status]
+                      )}
+                    >
+                      {product.status}
+                    </Badge>
+                    <Badge variant="secondary" className="text-xs capitalize">
+                      {product.type}
+                    </Badge>
                   </div>
-                )}
-                <div className="absolute right-3 top-3">
+                  <Link href={`/dashboard/products/${product.id}`}>
+                    <h3 className="mt-1 text-sm font-semibold text-foreground hover:text-primary transition-colors truncate">
+                      {product.title}
+                    </h3>
+                  </Link>
+                  <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground leading-relaxed">
+                    {product.description || "No description"}
+                  </p>
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  <span className="text-[11px] text-muted-foreground">
+                    {new Date(product.updated_at).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </span>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
-                        variant="secondary"
+                        variant="ghost"
                         size="icon"
-                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="h-8 w-8"
                       >
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
@@ -207,55 +221,32 @@ export default function ProductsPage() {
                           Archive
                         </DropdownMenuItem>
                       )}
-                      <DropdownMenuItem
-                        className="gap-2 text-destructive focus:text-destructive"
-                        onClick={() => setDeleteTarget(product)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Delete
-                      </DropdownMenuItem>
+                      {product.status === "draft" && (
+                        <DropdownMenuItem
+                          className="gap-2 text-destructive focus:text-destructive"
+                          onClick={() => setDeleteTarget(product)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
               </div>
-              <div className="p-5">
-                <div className="flex items-center gap-2">
-                  <Badge
-                    className={cn(
-                      "text-xs capitalize",
-                      statusStyles[product.status]
-                    )}
-                  >
-                    {product.status}
-                  </Badge>
-                  <Badge variant="secondary" className="text-xs capitalize">
-                    {product.type}
-                  </Badge>
-                </div>
-                <Link href={`/dashboard/products/${product.id}`}>
-                  <h3 className="mt-3 text-sm font-semibold text-foreground hover:text-primary transition-colors">
-                    {product.title}
-                  </h3>
-                </Link>
-                <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground leading-relaxed">
-                  {product.description || "No description"}
-                </p>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
 
-          <Link
-            href="/dashboard/products/new"
-            className="flex aspect-auto min-h-[280px] items-center justify-center rounded-xl border border-dashed border-border bg-card transition-colors hover:border-primary/30 hover:bg-primary/5"
-          >
-            <div className="flex flex-col items-center gap-3 text-muted-foreground">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full border border-dashed border-border">
-                <Plus className="h-5 w-5" />
-              </div>
-              <span className="text-sm font-medium">Add new product</span>
-            </div>
-          </Link>
-        </div>
+          <div className="mt-4 flex items-center justify-between">
+            <PaginationSummary page={page} pageSize={pageSize} total={total} />
+            <PaginationControls
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              onPageChange={setPage}
+            />
+          </div>
+        </>
       )}
 
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
@@ -273,7 +264,10 @@ export default function ProductsPage() {
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() =>
-                deleteTarget && deleteMutation.mutate(deleteTarget.id)
+                deleteTarget &&
+                deleteMutation.mutate(deleteTarget.id, {
+                  onSettled: () => setDeleteTarget(null),
+                })
               }
               disabled={deleteMutation.isPending}
             >

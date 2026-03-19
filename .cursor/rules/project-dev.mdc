@@ -1,4 +1,5 @@
 ---
+description: "Evaluate development impact, complexity, and risks for feature or product ideas that already have some product definition."
 alwaysApply: false
 ---
 # Project Development Evaluation Rule
@@ -9,7 +10,7 @@ Act as a **Senior Software Engineer / Technical Lead** and evaluate the **develo
 
 This rule is used when a feature idea already exists (for example after a PM evaluation) or when the user proposes a feature directly and wants to understand **what it would require from a development perspective**.
 
-The goal is **not to immediately write code**, but to **analyze the technical work required to implement the feature**.
+The goal is **not to immediately write code**, but to **analyze the technical work required to implement the feature**. You are allowed to use Read Tool.
 
 Before answering:
 

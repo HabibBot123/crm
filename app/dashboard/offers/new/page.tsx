@@ -1,9 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type FormEvent } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft, BookOpen, MessageCircle, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,21 +17,19 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useCoachAccessGuard } from "@/hooks/use-access-guard"
-import { useAuth } from "@/hooks/use-auth"
-import { fetchProductsByOrganization, type Product } from "@/lib/services/products"
+import { type Product } from "@/lib/services/products"
 import {
-  createOffer,
   deriveBillingType,
   type BillingType,
 } from "@/lib/services/offers"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { OFFER_CURRENCIES } from "@/lib/constants/offers"
+import { useCreateOffer } from "@/hooks/use-offers"
+import { useProducts } from "@/hooks/use-products"
 
 export default function NewOfferPage() {
   const router = useRouter()
-  const queryClient = useQueryClient()
-  const { supabase } = useAuth()
   const { canAccess, guardContent, currentOrganization } = useCoachAccessGuard({
     requireOrg: true,
     requireStripe: true,
@@ -51,13 +48,15 @@ export default function NewOfferPage() {
   const [billingTypeOverride, setBillingTypeOverride] = useState<"one_time" | "installment" | null>(null)
   const [installmentCount, setInstallmentCount] = useState("3")
 
-  const { data: products = [], isLoading: productsLoading } = useQuery({
-    queryKey: ["products", currentOrganization?.id],
-    queryFn: () => fetchProductsByOrganization(supabase, currentOrganization!.id),
-    enabled: !!currentOrganization?.id,
-  })
+  // This page is a “product picker” for offer creation; we still keep it bounded.
+  const PRODUCTS_PICKER_PAGE_SIZE = 200
+  const { data: productsPage, isLoading: productsLoading } = useProducts(
+    currentOrganization?.id ?? null,
+    1,
+    PRODUCTS_PICKER_PAGE_SIZE
+  )
 
-  const publishedProducts = products.filter((p) => p.status === "published")
+  const publishedProducts = productsPage.items.filter((p) => p.status === "published")
 
   const selectedProducts = publishedProducts.filter((p) =>
     selectedProductIds.includes(p.id)
@@ -77,33 +76,9 @@ export default function NewOfferPage() {
     selectedProducts.some((p) => p.type === "course") &&
     selectedProducts.some((p) => p.type === "coaching")
 
-  const createMutation = useMutation({
-    mutationFn: () =>
-      createOffer(supabase, {
-        organization_id: currentOrganization!.id,
-        title: title.trim(),
-        description: description.trim() || null,
-        billing_type: effectiveBillingType!,
-        price: Math.round(parseFloat(price) * 100),
-        currency,
-        interval: effectiveBillingType === "subscription" ? interval : null,
-        installment_count:
-          effectiveBillingType === "installment"
-            ? parseInt(installmentCount, 10)
-            : null,
-        product_ids: selectedProductIds,
-      }),
-    onSuccess: (offer) => {
-      queryClient.invalidateQueries({
-        queryKey: ["offers", currentOrganization?.id],
-      })
-      toast.success("Offer created")
-      router.push(`/dashboard/offers/${offer.id}`)
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
+  const createMutation = useCreateOffer(currentOrganization?.id ?? null)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
     if (!title.trim()) {
       toast.error("Title is required")
@@ -121,7 +96,27 @@ export default function NewOfferPage() {
         return
       }
     }
-    createMutation.mutate()
+    createMutation.mutate(
+      {
+        organization_id: currentOrganization!.id,
+        title: title.trim(),
+        description: description.trim() || null,
+        billing_type: effectiveBillingType!,
+        price: Math.round(parseFloat(price) * 100),
+        currency,
+        interval: effectiveBillingType === "subscription" ? interval : null,
+        installment_count:
+          effectiveBillingType === "installment"
+            ? parseInt(installmentCount, 10)
+            : null,
+        product_ids: selectedProductIds,
+      },
+      {
+        onSuccess: (offer) => {
+          router.push(`/dashboard/offers/${offer.id}`)
+        },
+      }
+    )
   }
 
   const toggleProduct = (product: Product) => {

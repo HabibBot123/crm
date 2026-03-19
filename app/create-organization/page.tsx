@@ -8,23 +8,19 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAuth } from "@/hooks/use-auth"
+import { useOrganizations } from "@/hooks/use-organizations"
 import { toast } from "sonner"
-
-type OrganizationsClaim = {
-  organization_id: number
-  roles: string[]
-  organization_member_ids: number[]
-}
 
 export default function CreateOrganizationPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { supabase, user, isLoading } = useAuth()
+  const { supabase, user, isLoading: authLoading } = useAuth()
+  const { organizations, isLoading: orgsLoading } = useOrganizations()
   const [slug, setSlug] = useState("")
   const [name, setName] = useState("")
   const [loading, setLoading] = useState(false)
 
-  const organizations = (user?.app_metadata?.organizations ?? []) as OrganizationsClaim[]
+  const isLoading = authLoading || orgsLoading
 
   useEffect(() => {
     if (isLoading) return
@@ -89,7 +85,6 @@ export default function CreateOrganizationPage() {
       return
     }
 
-    await supabase.auth.refreshSession()
     await queryClient.invalidateQueries({ queryKey: ["organizations"] })
     toast.success("Organization created successfully")
     router.refresh()

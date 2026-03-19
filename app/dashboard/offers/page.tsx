@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Plus,
   MoreHorizontal,
@@ -40,15 +39,12 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useCoachAccessGuard } from "@/hooks/use-access-guard"
-import { useAuth } from "@/hooks/use-auth"
 import {
-  fetchOffersByOrganization,
-  updateOffer,
-  deleteOffer,
   type OfferListItem,
 } from "@/lib/services/offers"
-import { cn } from "@/lib/utils"
+import { cn, formatAmountFromCents } from "@/lib/utils"
 import { toast } from "sonner"
+import { useArchiveOffer, useOffers } from "@/hooks/use-offers"
 
 const statusStyles: Record<string, string> = {
   active: "bg-success/10 text-success",
@@ -69,19 +65,17 @@ const billingTypeLabel: Record<string, string> = {
 }
 
 function formatPrice(offer: OfferListItem): string {
-  const price = `${offer.currency.toUpperCase()} ${(offer.price / 100).toFixed(2)}`
+  const basePrice = formatAmountFromCents(offer.price, offer.currency) ?? ""
   if (offer.billing_type === "subscription") {
-    return `${price} / ${offer.interval === "year" ? "yr" : "mo"}`
+    return `${basePrice} / ${offer.interval === "year" ? "yr" : "mo"}`
   }
   if (offer.billing_type === "installment" && offer.installment_count) {
-    return `${price} × ${offer.installment_count}`
+    return `${basePrice} × ${offer.installment_count}`
   }
-  return price
+  return basePrice
 }
 
 export default function OffersPage() {
-  const queryClient = useQueryClient()
-  const { supabase } = useAuth()
   const {
     canAccess,
     guardContent,
@@ -94,44 +88,15 @@ export default function OffersPage() {
       "To create and manage offers, you need to complete Stripe Connect onboarding for this organization.",
     stripeUseRouter: true,
   })
-  const [deleteTarget, setDeleteTarget] = useState<OfferListItem | null>(null)
+  const [archivingId, setArchivingId] = useState<number | null>(null)
 
-  const {
-    data: offers = [],
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: ["offers", currentOrganization?.id],
-    queryFn: () => fetchOffersByOrganization(supabase, currentOrganization!.id),
-    enabled: !!currentOrganization?.id,
-  })
+  const { offers, isLoading, error } = useOffers(currentOrganization?.id ?? null)
 
   useEffect(() => {
     if (error) toast.error((error as Error).message)
   }, [error])
 
-  const archiveMutation = useMutation({
-    mutationFn: (offerId: number) =>
-      updateOffer(supabase, offerId, { status: "archived" }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["offers", currentOrganization?.id] })
-      toast.success("Offer archived")
-    },
-    onError: (err: Error) => toast.error(err.message),
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: (offerId: number) => deleteOffer(supabase, offerId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["offers", currentOrganization?.id] })
-      setDeleteTarget(null)
-      toast.success("Offer deleted")
-    },
-    onError: (err: Error) => {
-      toast.error(err.message)
-      setDeleteTarget(null)
-    },
-  })
+  const archiveMutation = useArchiveOffer(currentOrganization?.id ?? null)
 
   if (!canAccess && guardContent) {
     return <div className="p-4 lg:p-8">{guardContent}</div>
@@ -241,20 +206,20 @@ export default function OffersPage() {
                           {offer.status !== "archived" && (
                             <DropdownMenuItem
                               className="gap-2"
-                              onClick={() => archiveMutation.mutate(offer.id)}
-                              disabled={archiveMutation.isPending}
+                              onClick={() => {
+                                setArchivingId(offer.id)
+                                archiveMutation.mutate(offer.id, {
+                                  onSettled: () => setArchivingId(null),
+                                })
+                              }}
+                              disabled={
+                                archiveMutation.isPending || archivingId === offer.id
+                              }
                             >
                               <Archive className="h-4 w-4" />
                               Archive
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuItem
-                            className="gap-2 text-destructive focus:text-destructive"
-                            onClick={() => setDeleteTarget(offer)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            Delete
-                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -266,28 +231,6 @@ export default function OffersPage() {
         </div>
       )}
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete offer</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete &quot;{deleteTarget?.title}&quot;? This will
-              remove the offer and all its payment links. Existing enrollments will not be
-              affected. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
-              disabled={deleteMutation.isPending}
-            >
-              {deleteMutation.isPending ? "Deleting…" : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }

@@ -1,24 +1,19 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useState } from "react"
 import {
   Search,
   Mail,
   UserCheck,
   Users,
   UserX,
-  ChevronLeft,
-  ChevronRight,
   Calendar,
   Package,
 } from "lucide-react"
 import { useCurrentOrganization } from "@/components/providers/organization-provider"
-import { useAuth } from "@/hooks/use-auth"
-import {
-  fetchClientsByOrganization,
-  type ClientWithEnrollments,
-} from "@/lib/services/clients"
+import { useClients, useClientDetail, type ClientSummary } from "@/hooks/use-clients"
+import { PaginationControls } from "@/components/dashboard/pagination-controls"
+import { PaginationSummary } from "@/components/dashboard/pagination-summary"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -30,7 +25,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { cn } from "@/lib/utils"
+import { cn, formatAmountFromCents } from "@/lib/utils"
 
 const statusConfig: Record<
   string,
@@ -72,10 +67,7 @@ function getInitials(display: string): string {
 }
 
 function formatCurrency(amountCents: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "EUR",
-  }).format(amountCents / 100)
+  return formatAmountFromCents(amountCents, "EUR") ?? "—"
 }
 
 function formatDate(dateStr: string): string {
@@ -86,38 +78,35 @@ function formatDate(dateStr: string): string {
   })
 }
 
-export default function ClientsPage() {
-  const { supabase } = useAuth()
-  const { currentOrganization, isLoading: orgLoading } = useCurrentOrganization()
-  const [search, setSearch] = useState("")
-  const [selectedClient, setSelectedClient] = useState<ClientWithEnrollments | null>(null)
-  const [page, setPage] = useState(1)
-  const perPage = 10
+const perPage = 10
 
-  const {
-    data: clients = [],
-    isLoading: dataLoading,
-    error,
-  } = useQuery({
-    queryKey: ["clients", currentOrganization?.id],
-    queryFn: () =>
-      fetchClientsByOrganization(supabase, currentOrganization!.id),
-    enabled: !!currentOrganization?.id,
+export default function ClientsPage() {
+  const { currentOrganization, isLoading: orgLoading } = useCurrentOrganization()
+  const [searchInput, setSearchInput] = useState("")
+  const [search, setSearch] = useState("")
+  const [selectedClientKey, setSelectedClientKey] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+
+  const applySearch = () => {
+    setSearch(searchInput.trim())
+    setPage(1)
+  }
+
+  const { data, isLoading: dataLoading, error } = useClients({
+    organizationId: currentOrganization?.id ?? null,
+    page,
+    pageSize: perPage,
+    search,
   })
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return clients
-    const q = search.toLowerCase()
-    return clients.filter(
-      (c) =>
-        c.client_display.toLowerCase().includes(q) ||
-        c.email_display.toLowerCase().includes(q)
-    )
-  }, [clients, search])
+  const { data: clientDetail, isLoading: detailLoading } = useClientDetail({
+    organizationId: currentOrganization?.id ?? null,
+    clientKey: selectedClientKey,
+  })
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage))
-  const paginated = filtered.slice((page - 1) * perPage, page * perPage)
-
+  const items = data.items
+  const total = data.total
+  const totalPages = Math.max(1, Math.ceil(total / perPage))
   const isLoading = orgLoading || dataLoading
 
   if (!currentOrganization && !orgLoading) {
@@ -144,19 +133,20 @@ export default function ClientsPage() {
       </div>
 
       {/* Search */}
-      <div className="mt-6">
-        <div className="relative flex-1 max-w-sm">
+      <div className="mt-6 flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search clients..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value)
-              setPage(1)
-            }}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && applySearch()}
             className="pl-9"
           />
         </div>
+        <Button type="button" variant="secondary" onClick={applySearch}>
+          Search
+        </Button>
       </div>
 
       {/* Content */}
@@ -178,11 +168,11 @@ export default function ClientsPage() {
               {(error as Error).message}
             </p>
           </div>
-        ) : filtered.length === 0 ? (
+        ) : items.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card py-16 px-6">
             <Users className="h-10 w-10 text-muted-foreground" />
             <p className="mt-4 text-sm text-muted-foreground text-center">
-              {clients.length === 0
+              {total === 0 && !search.trim()
                 ? "No clients yet. Enrollments will appear here after purchases."
                 : "No clients match your search."}
             </p>
@@ -191,13 +181,14 @@ export default function ClientsPage() {
           <>
             {/* Mobile cards */}
             <div className="space-y-3 lg:hidden">
-              {paginated.map((client) => {
+              {items.map((client: ClientSummary) => {
                 const config = getStatusConfig(client.status)
+                const emailDisplay = client.client_email ?? client.buyer_email ?? "—"
                 return (
                   <button
-                    key={client.clientKey}
+                    key={client.client_key}
                     type="button"
-                    onClick={() => setSelectedClient(client)}
+                    onClick={() => setSelectedClientKey(client.client_key)}
                     className="w-full rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/30"
                   >
                     <div className="flex items-center gap-3">
@@ -211,9 +202,9 @@ export default function ClientsPage() {
                           {client.client_display}
                         </p>
                         <p className="truncate text-xs text-muted-foreground">
-                          {client.email_display}
+                          {emailDisplay}
                         </p>
-                        {!client.has_account && (
+                        {!client.user_id && (
                           <Badge variant="secondary" className="mt-1 text-[10px]">
                             No account yet
                           </Badge>
@@ -229,8 +220,8 @@ export default function ClientsPage() {
                     <div className="mt-3 flex items-center gap-4 border-t border-border pt-3 text-xs text-muted-foreground">
                       <span>{formatCurrency(client.total_spent)}</span>
                       <span>
-                        {client.enrollments.length} enrollment
-                        {client.enrollments.length > 1 ? "s" : ""}
+                        {client.enrollment_count} enrollment
+                        {client.enrollment_count !== 1 ? "s" : ""}
                       </span>
                     </div>
                   </button>
@@ -256,22 +247,21 @@ export default function ClientsPage() {
                       Enrollments
                     </th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                      Last started
+                      First joined
                     </th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                      Expires
+                      Last expires
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {paginated.map((client) => {
+                  {items.map((client: ClientSummary) => {
                     const config = getStatusConfig(client.status)
-                    const lastEnrollment = client.enrollments[0]
-                    const lastExpiresAt = lastEnrollment?.enrollment_expires_at ?? null
+                    const emailDisplay = client.client_email ?? client.buyer_email ?? "—"
                     return (
                       <tr
-                        key={client.clientKey}
-                        onClick={() => setSelectedClient(client)}
+                        key={client.client_key}
+                        onClick={() => setSelectedClientKey(client.client_key)}
                         className="cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-muted/30"
                       >
                         <td className="px-4 py-3">
@@ -286,9 +276,9 @@ export default function ClientsPage() {
                                 {client.client_display}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                {client.email_display}
+                                {emailDisplay}
                               </p>
-                              {!client.has_account && (
+                              {!client.user_id && (
                                 <Badge variant="secondary" className="mt-0.5 text-[10px]">
                                   No account yet
                                 </Badge>
@@ -308,18 +298,16 @@ export default function ClientsPage() {
                           {formatCurrency(client.total_spent)}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
-                          {client.enrollments.length}
+                          {client.enrollment_count}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
-                          {lastEnrollment
-                            ? formatDate(
-                                lastEnrollment.enrollment_started_at
-                              )
+                          {client.first_enrollment_started_at
+                            ? formatDate(client.first_enrollment_started_at)
                             : "—"}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
-                          {lastExpiresAt
-                            ? formatDate(lastExpiresAt)
+                          {client.last_enrollment_expires_at
+                            ? formatDate(client.last_enrollment_expires_at)
                             : "—"}
                         </td>
                       </tr>
@@ -328,34 +316,15 @@ export default function ClientsPage() {
                 </tbody>
               </table>
 
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between border-t border-border px-4 py-3">
-                  <p className="text-xs text-muted-foreground">
-                    {(page - 1) * perPage + 1}–
-                    {Math.min(page * perPage, filtered.length)} of {filtered.length}
-                  </p>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      disabled={page === 1}
-                      onClick={() => setPage((p) => p - 1)}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      disabled={page === totalPages}
-                      onClick={() => setPage((p) => p + 1)}
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3">
+                <PaginationSummary page={page} pageSize={perPage} total={total} />
+                <PaginationControls
+                  page={page}
+                  pageSize={perPage}
+                  total={total}
+                  onPageChange={setPage}
+                />
+              </div>
             </div>
           </>
         )}
@@ -363,32 +332,35 @@ export default function ClientsPage() {
 
       {/* Client Detail Sheet */}
       <Sheet
-        open={!!selectedClient}
-        onOpenChange={() => setSelectedClient(null)}
+        open={!!selectedClientKey}
+        onOpenChange={(open) => !open && setSelectedClientKey(null)}
       >
         <SheetContent className="overflow-y-auto p-6 sm:max-w-md">
           <SheetHeader className="pb-1">
             <SheetTitle className="font-display">Client profile</SheetTitle>
-            <SheetDescription>
-              Enrollments and total amount spent
-            </SheetDescription>
           </SheetHeader>
-          {selectedClient && (
+          {detailLoading ? (
+            <div className="space-y-4 pt-4">
+              <div className="h-14 animate-pulse rounded-lg bg-muted" />
+              <div className="h-20 animate-pulse rounded-lg bg-muted" />
+              <div className="h-32 animate-pulse rounded-lg bg-muted" />
+            </div>
+          ) : clientDetail ? (
             <div className="space-y-8">
               <div className="flex items-center gap-4">
                 <Avatar className="h-14 w-14">
                   <AvatarFallback className="bg-primary/10 text-lg font-bold text-primary">
-                    {getInitials(selectedClient.client_display)}
+                    {getInitials(clientDetail.client_display)}
                   </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0">
                   <p className="font-bold text-foreground">
-                    {selectedClient.client_display}
+                    {clientDetail.client_display}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {selectedClient.email_display}
+                    {clientDetail.email_display}
                   </p>
-                  {!selectedClient.has_account && (
+                  {!clientDetail.has_account && (
                     <Badge variant="secondary" className="mt-1 text-xs">
                       No account yet
                     </Badge>
@@ -396,35 +368,12 @@ export default function ClientsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="rounded-lg border border-border p-4">
-                  <p className="text-xs text-muted-foreground">
-                    Total spent
-                  </p>
-                  <p className="mt-2 text-lg font-bold text-foreground">
-                    {formatCurrency(selectedClient.total_spent)}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-border p-4">
-                  <p className="text-xs text-muted-foreground">Status</p>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "mt-2 text-xs capitalize",
-                      getStatusConfig(selectedClient.status).color
-                    )}
-                  >
-                    {getStatusConfig(selectedClient.status).label}
-                  </Badge>
-                </div>
-              </div>
-
               <div>
                 <p className="mb-3 text-sm font-medium text-foreground">
-                  Enrollments ({selectedClient.enrollments.length})
+                  Enrollments ({clientDetail.enrollments.length})
                 </p>
                 <ul className="space-y-3">
-                  {selectedClient.enrollments.map((en) => (
+                  {clientDetail.enrollments.map((en) => (
                     <li
                       key={en.enrollment_id}
                       className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-4 text-sm"
@@ -465,20 +414,24 @@ export default function ClientsPage() {
                 </ul>
               </div>
 
-              {selectedClient.email_for_mailto && (
+              {clientDetail.email_for_mailto && (
                 <Button
                   size="sm"
                   className="mt-2 w-full gap-2"
                   asChild
                 >
-                  <a href={`mailto:${selectedClient.email_for_mailto}`}>
+                  <a href={`mailto:${clientDetail.email_for_mailto}`}>
                     <Mail className="h-4 w-4" />
                     Send email
                   </a>
                 </Button>
               )}
             </div>
-          )}
+          ) : selectedClientKey ? (
+            <p className="pt-4 text-sm text-muted-foreground">
+              Client not found.
+            </p>
+          ) : null}
         </SheetContent>
       </Sheet>
     </div>

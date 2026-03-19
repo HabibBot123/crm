@@ -14,7 +14,7 @@ const plans = [
       "Up to 50 clients",
       "Basic analytics",
       "Email support",
-      "CoachPro branding",
+      "CoachStack branding",
     ],
     cta: "Start free",
     popular: false,

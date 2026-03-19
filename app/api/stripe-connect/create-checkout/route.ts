@@ -178,11 +178,16 @@ export async function POST(req: NextRequest) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
     const baseAppUrl = appUrl.replace(/\/$/, "")
 
+    const displayPriceCents =
+      isInstallmentFlow && effectiveInstallmentCount != null && effectiveInstallmentCount > 0
+        ? Math.round(effectivePrice / effectiveInstallmentCount)
+        : effectivePrice
+
     const successUrl =
       `${baseAppUrl}/order-success` +
       `?product=${encodeURIComponent(offer.title)}` +
       `&coach=${encodeURIComponent(org.name ?? "")}` +
-      `&price=${encodeURIComponent(String(effectivePrice))}` +
+      `&price=${encodeURIComponent(String(displayPriceCents))}` +
       `&currency=${encodeURIComponent(offer.currency)}`
     const cancelUrl = `${baseAppUrl}/org/${(org as { slug?: string }).slug ?? ""}/buy/${offer.id}`
 
@@ -208,6 +213,9 @@ export async function POST(req: NextRequest) {
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata: sessionMetadata,
+      ...(!isSubscription
+        ? { invoice_creation: { enabled: true } }
+        : {}),
       ...(isSubscription && isInstallmentFlow && effectiveInstallmentCount != null && effectiveInstallmentCount > 1
         ? {
             subscription_data: {

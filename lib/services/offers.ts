@@ -191,6 +191,52 @@ export async function updateOffer(
   offerId: number,
   input: UpdateOfferInput
 ): Promise<Offer> {
+  // Archiving is Stripe-aware and must go through the dedicated API route
+  if (input.status === "archived") {
+    // First load offer to get its organization id
+    const { data: existing, error: existingError } = await supabase
+      .from("offers")
+      .select("id, organization_id, status")
+      .eq("id", offerId)
+      .single()
+
+    if (existingError || !existing) {
+      throw existingError ?? new Error("Offer not found")
+    }
+
+    const orgId = (existing as { organization_id: number }).organization_id
+
+    const res = await fetch("/api/stripe-connect/archive-offer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ organizationId: orgId, offerId }),
+    })
+
+    if (!res.ok) {
+      let message = "Failed to archive offer"
+      try {
+        const data = (await res.json()) as { error?: string }
+        if (data?.error) message = data.error
+      } catch {
+        // ignore JSON parse errors
+      }
+      throw new Error(message)
+    }
+
+    // Reload the full offer from Supabase to return fresh data
+    const { data: updated, error: reloadError } = await supabase
+      .from("offers")
+      .select("*")
+      .eq("id", offerId)
+      .single()
+
+    if (reloadError || !updated) {
+      throw reloadError ?? new Error("Offer archived but failed to reload")
+    }
+
+    return updated as Offer
+  }
+
   const payload: Record<string, unknown> = {}
   if (input.title !== undefined) payload.title = input.title.trim()
   if (input.description !== undefined) payload.description = input.description?.trim() || null
@@ -216,8 +262,7 @@ export async function deleteOffer(
   supabase: SupabaseClient,
   offerId: number
 ): Promise<void> {
-  const { error } = await supabase.from("offers").delete().eq("id", offerId)
-  if (error) throw error
+  throw new Error("Offers cannot be deleted. Archive the offer instead.")
 }
 
 // ----------------------------------------------------------------

@@ -1,0 +1,43 @@
+<!--
+  Supabase Auth: Confirm signup email template
+  Copy this into: Authentication → Email Templates → Confirm signup
+  Keep the Go template variables: {{ .ConfirmationURL }}, {{ .Email }}, {{ .SiteURL }}
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Confirm your email</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f5; line-height: 1.5;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f4f4f5;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 480px; background-color: #ffffff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+          <tr>
+            <td style="padding: 40px 32px;">
+              <div style="margin-bottom: 24px;">
+                <span style="display: inline-block; width: 40px; height: 40px; line-height: 40px; text-align: center; background-color: #3b82f6; color: #ffffff; font-size: 18px; font-weight: bold; border-radius: 10px;">C</span>
+                <span style="margin-left: 8px; font-size: 20px; font-weight: 700; color: #18181b;">CoachStack</span>
+              </div>
+              <h1 style="margin: 0 0 16px; font-size: 22px; font-weight: 600; color: #18181b;">Confirm your email</h1>
+              <p style="margin: 0 0 24px; font-size: 15px; color: #52525b;">You’re almost in. Click the button below to verify <strong style="color: #18181b;">{{ .Email }}</strong> and activate your account.</p>
+              <table role="presentation" cellspacing="0" cellpadding="0" style="margin: 0 0 24px;">
+                <tr>
+                  <td style="border-radius: 8px; background-color: #3b82f6;">
+                    <a href="{{ .ConfirmationURL }}" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 14px 28px; font-size: 15px; font-weight: 600; color: #ffffff; text-decoration: none;">Confirm my email</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin: 0; font-size: 13px; color: #71717a;">If you didn’t create an account with CoachStack, you can safely ignore this email.</p>
+              <p style="margin: 16px 0 0; font-size: 12px; color: #a1a1aa;">If the button doesn’t work, copy and paste this link into your browser:<br><a href="{{ .ConfirmationURL }}" style="color: #3b82f6; word-break: break-all;">{{ .ConfirmationURL }}</a></p>
+            </td>
+          </tr>
+        </table>
+        <p style="margin: 24px 0 0; font-size: 12px; color: #a1a1aa;">CoachStack — coaching made simple</p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

@@ -1,6 +1,6 @@
 {
-  "name": "CoachPro",
-  "short_name": "CoachPro",
+  "name": "CoachStack",
+  "short_name": "CoachStack",
   "description": "The All-in-One Coaching Platform",
   "start_url": "/student",
   "display": "standalone",

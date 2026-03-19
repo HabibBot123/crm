@@ -61,7 +61,7 @@ export default function LoginPage() {
       <div className="hidden w-1/2 bg-primary/5 lg:flex lg:flex-col lg:justify-between lg:p-12">
         <Link href="/" className="flex items-center gap-2.5">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">C</span>
-          <span className="text-lg font-bold text-foreground font-display">CoachPro</span>
+          <span className="text-lg font-bold text-foreground font-display">CoachStack</span>
         </Link>
         <div>
           <h2 className="text-3xl font-bold text-foreground font-display">Welcome back</h2>
@@ -77,7 +77,7 @@ export default function LoginPage() {
           <div className="mb-8 text-center lg:text-left">
             <div className="mb-6 flex items-center justify-center gap-2.5 lg:hidden">
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">C</span>
-              <span className="text-lg font-bold text-foreground font-display">CoachPro</span>
+              <span className="text-lg font-bold text-foreground font-display">CoachStack</span>
             </div>
             <h1 className="text-2xl font-bold text-foreground font-display">Sign in</h1>
             <p className="mt-2 text-sm text-muted-foreground">

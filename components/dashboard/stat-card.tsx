@@ -1,38 +1,38 @@
 import { cn } from "@/lib/utils"
-import { TrendingUp, TrendingDown } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
+import { TrendBadge } from "@/components/dashboard/trend-badge"
+
+type IconColor = "primary" | "success" | "warning" | "accent"
 
 interface StatCardProps {
   title: string
   value: string
   change?: number
   icon: LucideIcon
+  iconColor?: IconColor
 }
 
-export function StatCard({ title, value, change, icon: Icon }: StatCardProps) {
-  const hasChange = typeof change === "number"
-  const isPositive = (change ?? 0) >= 0
+const iconColorClasses: Record<IconColor, { bg: string; icon: string }> = {
+  primary: { bg: "bg-primary/10",  icon: "text-primary"             },
+  success: { bg: "bg-success/10",  icon: "text-success"             },
+  warning: { bg: "bg-warning/10",  icon: "text-warning-foreground"  },
+  accent:  { bg: "bg-accent/15",   icon: "text-accent-foreground"   },
+}
 
+export function StatCard({ title, value, change, icon: Icon, iconColor = "primary" }: StatCardProps) {
+  const colors = iconColorClasses[iconColor]
   return (
     <div className="rounded-xl border border-border bg-card p-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-medium text-muted-foreground">{title}</p>
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-          <Icon className="h-4 w-4 text-primary" />
+        <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", colors.bg)}>
+          <Icon className={cn("h-4 w-4", colors.icon)} />
         </div>
       </div>
-      <p className="mt-3 text-2xl font-bold text-foreground font-display">{value}</p>
-      {hasChange && (
+      <p className="mt-3 font-display text-3xl font-bold text-foreground">{value}</p>
+      {typeof change === "number" && (
         <div className="mt-2 flex items-center gap-1.5">
-          {isPositive ? (
-            <TrendingUp className="h-3.5 w-3.5 text-success" />
-          ) : (
-            <TrendingDown className="h-3.5 w-3.5 text-destructive" />
-          )}
-          <span className={cn("text-xs font-medium", isPositive ? "text-success" : "text-destructive")}>
-            {isPositive ? "+" : ""}
-            {change}%
-          </span>
+          <TrendBadge value={change} />
           <span className="text-xs text-muted-foreground">vs last month</span>
         </div>
       )}

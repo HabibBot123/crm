@@ -56,16 +56,6 @@ export interface Client {
   productsOwned: number
 }
 
-export interface Lead {
-  id: string
-  name: string
-  email: string
-  stage: "new" | "contacted" | "qualified" | "closed"
-  source: string
-  createdAt: string
-  value: number
-}
-
 export interface TeamMember {
   id: string
   name: string
@@ -92,18 +82,6 @@ export interface Coach {
 
 /** Current client's subscribed coach IDs (in real app this comes from auth/session). */
 export const currentClientCoachIds: string[] = ["1", "2"]
-
-export interface Sale {
-  id: string
-  orderId: string
-  clientName: string
-  clientEmail: string
-  product: string
-  amount: number
-  status: "completed" | "pending" | "refunded"
-  date: string
-  paymentMethod: string
-}
 
 export interface Offer {
   id: string
@@ -232,17 +210,6 @@ export const clients: Client[] = [
   { id: "7", name: "Amanda White", email: "amanda@example.com", avatar: "AW", status: "active", tags: ["VIP", "Coaching"], assignedTo: "Coach Alex", joinedAt: "2025-11-18", revenue: 796, productsOwned: 2 },
 ]
 
-export const leads: Lead[] = [
-  { id: "1", name: "Alex Rivera", email: "alex@example.com", stage: "new", source: "Instagram", createdAt: "2026-02-18", value: 297 },
-  { id: "2", name: "Sophie Martin", email: "sophie@example.com", stage: "new", source: "Website", createdAt: "2026-02-17", value: 199 },
-  { id: "3", name: "Tom Baker", email: "tom@example.com", stage: "contacted", source: "Referral", createdAt: "2026-02-15", value: 297 },
-  { id: "4", name: "Nina Patel", email: "nina@example.com", stage: "contacted", source: "Instagram", createdAt: "2026-02-14", value: 49 },
-  { id: "5", name: "Chris Lee", email: "chris@example.com", stage: "qualified", source: "Website", createdAt: "2026-02-12", value: 594 },
-  { id: "6", name: "Maria Garcia", email: "maria@example.com", stage: "qualified", source: "Facebook", createdAt: "2026-02-10", value: 297 },
-  { id: "7", name: "Ryan Kim", email: "ryan@example.com", stage: "closed", source: "Referral", createdAt: "2026-02-08", value: 297 },
-  { id: "8", name: "Jessica Tran", email: "jessica@example.com", stage: "closed", source: "Instagram", createdAt: "2026-02-05", value: 199 },
-]
-
 export const teamMembers: TeamMember[] = [
   { id: "1", name: "Alex Thompson", email: "alex@fitpro.com", role: "owner", avatar: "AT", joinedAt: "2024-01-01" },
   { id: "2", name: "Jordan Cruz", email: "jordan@fitpro.com", role: "admin", avatar: "JC", joinedAt: "2024-06-15" },
@@ -285,15 +252,6 @@ export const coaches: Coach[] = [
     rating: 5.0,
     clientsCount: 28,
   },
-]
-
-export const sales: Sale[] = [
-  { id: "1", orderId: "ORD-001", clientName: "Sarah Johnson", clientEmail: "sarah@example.com", product: "Complete Fitness Transformation", amount: 297, status: "completed", date: "2026-02-20", paymentMethod: "Visa *4242" },
-  { id: "2", orderId: "ORD-002", clientName: "Michael Chen", clientEmail: "michael@example.com", product: "Complete Fitness Transformation", amount: 297, status: "completed", date: "2026-02-19", paymentMethod: "Mastercard *5555" },
-  { id: "3", orderId: "ORD-003", clientName: "Emily Davis", clientEmail: "emily@example.com", product: "1:1 Executive Coaching", amount: 199, status: "completed", date: "2026-02-18", paymentMethod: "Visa *4242" },
-  { id: "4", orderId: "ORD-004", clientName: "Lisa Park", clientEmail: "lisa@example.com", product: "Mindfulness Mastery", amount: 49, status: "completed", date: "2026-02-17", paymentMethod: "PayPal" },
-  { id: "5", orderId: "ORD-005", clientName: "Amanda White", clientEmail: "amanda@example.com", product: "1:1 Executive Coaching", amount: 199, status: "pending", date: "2026-02-16", paymentMethod: "Visa *1234" },
-  { id: "6", orderId: "ORD-006", clientName: "David Brown", clientEmail: "david@example.com", product: "Complete Fitness Transformation", amount: 297, status: "refunded", date: "2026-02-15", paymentMethod: "Visa *4242" },
 ]
 
 export const offers: Offer[] = [

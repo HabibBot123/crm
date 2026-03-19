@@ -35,6 +35,27 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     if (isLoading || organizations.length === 0) return
+    let queryId: number | null = null
+    if (typeof window !== "undefined") {
+      const search = window.location.search
+      if (search) {
+        const params = new URLSearchParams(search)
+        const raw = params.get("orgId")
+        const parsedQuery = raw ? Number(raw) : NaN
+        const validQuery =
+          Number.isFinite(parsedQuery) && organizations.some((o) => o.id === parsedQuery)
+        if (validQuery) {
+          queryId = parsedQuery
+          setCurrentId(parsedQuery)
+          localStorage.setItem(STORAGE_KEY, String(parsedQuery))
+          const url = new URL(window.location.href)
+          url.searchParams.delete("orgId")
+          window.history.replaceState({}, "", url.toString())
+          return
+        }
+      }
+    }
+
     const stored = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null
     const parsed = stored ? Number(stored) : NaN
     const validId = Number.isFinite(parsed) && organizations.some((o) => o.id === parsed)
