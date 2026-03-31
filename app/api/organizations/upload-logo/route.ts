@@ -17,6 +17,8 @@ export async function POST(request: NextRequest) {
   const formData = await request.formData()
   const file = formData.get("file") as File | null
   const organizationIdRaw = formData.get("organization_id")
+  const assetTypeRaw = String(formData.get("asset_type") ?? "logo").trim().toLowerCase()
+  const assetType = assetTypeRaw === "hero" ? "hero" : "logo"
 
   if (!file || !file.size) {
     return badRequest("file is required")
@@ -43,7 +45,10 @@ export async function POST(request: NextRequest) {
   const safeExt = ["jpg", "jpeg", "png", "gif", "webp"].includes(ext)
     ? ext
     : "jpg"
-  const storagePath = `${organizationId}/organizations/logo.${safeExt}`
+  const storagePath =
+    assetType === "hero"
+      ? `${organizationId}/organizations/hero.${safeExt}`
+      : `${organizationId}/organizations/logo.${safeExt}`
 
   const result = await uploadToBunnyStorage({ file, storagePath })
   if (!result.ok) return result.response
@@ -60,7 +65,7 @@ export async function POST(request: NextRequest) {
     .update({
       branding: {
         ...currentBranding,
-        logo_url: result.url,
+        ...(assetType === "hero" ? { hero_image_url: result.url } : { logo_url: result.url }),
       },
     })
     .eq("id", organizationId)

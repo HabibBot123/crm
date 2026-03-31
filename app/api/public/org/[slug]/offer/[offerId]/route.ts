@@ -50,7 +50,20 @@ export async function GET(
   const { data: offerRow, error: offerError } = await supabase
     .from("offers")
     .select(
-      "id, title, description, price, currency, interval, billing_type, installment_count"
+      `
+      id,
+      title,
+      description,
+      price,
+      currency,
+      interval,
+      billing_type,
+      installment_count,
+      key_features,
+      offer_products(
+        products(id, title, type, cover_image_url)
+      )
+      `
     )
     .eq("id", offerId)
     .eq("organization_id", organization.id)
@@ -91,6 +104,13 @@ export async function GET(
     id: number
     title: string
     description: string | null
+    key_features: string[] | null
+    offer_products: {
+      products:
+        | { id: number; title: string; type: string; cover_image_url: string | null }
+        | { id: number; title: string; type: string; cover_image_url: string | null }[]
+        | null
+    }[]
     price: number
     currency: string
     interval: "month" | "year" | null
@@ -102,6 +122,14 @@ export async function GET(
   const effectiveInstallmentCount = variant
     ? variant.installment_count
     : offer.installment_count
+
+  const products =
+    (offer.offer_products ?? [])
+      .map((op) => (Array.isArray(op.products) ? op.products[0] : op.products))
+      .filter(
+        (p): p is { id: number; title: string; type: string; cover_image_url: string | null } =>
+          p != null
+      ) ?? []
 
   const data: PublicOfferWithOrgResponse = {
     organization,
@@ -115,6 +143,8 @@ export async function GET(
       billing_type: offer.billing_type as any,
       installment_count: effectiveInstallmentCount,
       variant,
+      key_features: offer.key_features ?? null,
+      products,
     },
   }
 

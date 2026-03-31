@@ -73,14 +73,21 @@ export async function GET(request: Request, context: RouteContext) {
 
   if (clientKeyParam?.trim()) {
     const clientKey = clientKeyParam.trim()
-    const { data: enrollmentsData, error: enrError } = await admin
+    let enrollmentsQuery = admin
       .from("enrollments")
       .select(
         "id, organization_id, offer_id, user_id, buyer_email, status, started_at, expires_at, created_at, updated_at, offers(title), users(full_name, email)"
       )
       .eq("organization_id", organizationId)
-      .or(`user_id.eq.${clientKey},buyer_email.eq.${clientKey}`)
       .order("started_at", { ascending: false })
+
+    if (clientKey.includes("@")) {
+      enrollmentsQuery = enrollmentsQuery.eq("buyer_email", clientKey)
+    } else {
+      enrollmentsQuery = enrollmentsQuery.eq("user_id", clientKey)
+    }
+
+    const { data: enrollmentsData, error: enrError } = await enrollmentsQuery
 
     if (enrError) {
       return serverError("Failed to load client detail", enrError.message)

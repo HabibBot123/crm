@@ -294,6 +294,9 @@ function OverviewTab({
 }) {
   const [title, setTitle] = useState(offer.title)
   const [description, setDescription] = useState(offer.description ?? "")
+  const [keyFeatures, setKeyFeatures] = useState<string[]>(
+    offer.key_features && offer.key_features.length > 0 ? offer.key_features : [""]
+  )
   const [price, setPrice] = useState(String(offer.price / 100))
   const [currency, setCurrency] = useState(offer.currency)
   const [interval, setInterval] = useState<"month" | "year">(offer.interval ?? "month")
@@ -307,9 +310,15 @@ function OverviewTab({
     if (isNaN(parsedPrice) || parsedPrice <= 0) {
       return
     }
+    const normalizedKeyFeatures = keyFeatures
+      .map((f) => f.trim())
+      .filter((f) => f.length > 0)
+      .slice(0, 5)
+
     onSave({
       title,
       description: description || null,
+      key_features: normalizedKeyFeatures.length > 0 ? normalizedKeyFeatures : null,
       price: Math.round(parsedPrice * 100),
       currency,
       interval: offer.billing_type === "subscription" ? interval : null,
@@ -371,6 +380,49 @@ function OverviewTab({
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
           />
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <Label>Key features (max 5)</Label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setKeyFeatures((prev) => (prev.length >= 5 ? prev : [...prev, ""]))
+              }
+              disabled={keyFeatures.length >= 5}
+            >
+              Add feature
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {keyFeatures.map((feature, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <Input
+                  value={feature}
+                  onChange={(e) =>
+                    setKeyFeatures((prev) =>
+                      prev.map((v, i) => (i === idx ? e.target.value : v))
+                    )
+                  }
+                  placeholder={`Feature ${idx + 1}`}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setKeyFeatures((prev) =>
+                      prev.length === 1 ? [""] : prev.filter((_, i) => i !== idx)
+                    )
+                  }
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </div>
         </div>
         <div className="grid grid-cols-[1fr_auto] gap-3">
           <div className="space-y-2">

@@ -1,0 +1,144 @@
+---
+alwaysApply: true
+---
+
+## Design System UX (Single Source of Truth)
+
+This file defines the **prescriptive** UX rules for the entire app (styles, typography, layout, states, and component patterns).
+
+Goal: maintain a “dense, organized, power-user friendly” consistency (inspired by Linear / Airtable).
+
+---
+
+## 1. Colors & Theme (tokens)
+
+The UI theme is driven by CSS variables (OKLCH) and used via Tailwind/Shadcn:
+
+- Base container: `bg-background text-foreground`
+- Card: `bg-card text-card-foreground`
+- Accent: `bg-accent text-accent-foreground`
+- Primary/Secondary: `bg-primary text-primary-foreground`, `bg-secondary text-secondary-foreground`
+- Border/Input/Ring: `border-border`, `ring`, `bg-input`
+
+Main tokens (light mode, defined in `app/globals.css`):
+
+- `--background`: oklch(0.985 0 0)
+- `--foreground`: oklch(0.15 0 0)
+- `--primary`: oklch(0.7141 0.1918 48.92)
+- `--secondary`: oklch(0.94 0 0)
+- `--muted`: oklch(0.96 0 0)
+- `--accent`: oklch(0.95 0 0)
+- `--destructive`: oklch(0.55 0.22 27)
+- `--border`: oklch(0.91 0 0)
+- `--ring`: oklch(0.7141 0.1918 48.92)
+
+Dark mode:
+
+- `.dark` redefines the same tokens (goal: contrast and readability, not just inversion).
+
+Charts / graphs:
+
+- `--chart-1` to `--chart-5` are dedicated colors for visualizations.
+
+---
+
+## 2. Fonts & Typography (utilities)
+
+Fonts used:
+
+- Body: `font-sans` (defined in code via Next/font + `--font-inter`)
+- Display: via the `font-display` utility
+  - The `font-display` utility is defined in `app/globals.css` and uses `--font-geist`
+
+Reminder: in practice, follow the typography hierarchy described in section 6.
+
+---
+
+## 3. Layout primitives (Dashboard)
+
+| Context | Pattern |
+|---|---|
+| Page container | `<div className="space-y-4 p-6 lg:p-8">` |
+| Page title | Always `PageHeader` (`title` + optional `subtitle` + optional `action`) |
+| Content sections (data, lists) | `SectionCard` (flat, thin border, no shadow) |
+| Settings / account pages | 2-column layout: left nav (`w-48 shrink-0`) + right content inside `SectionCard` |
+| KPI metrics strip | `StatCard` in `grid sm:grid-cols-2 lg:grid-cols-4` |
+
+---
+
+## 4. Dashboard Constraints (components)
+
+❌ **Never** use the shadcn `<Card>` (shadow + `CardHeader/CardContent`) in dashboard pages.
+
+➡️ In `/dashboard`, use only `SectionCard` (flat style aligned with the design system).
+
+---
+
+## 5. Lists & Tables — 2 distinct patterns
+
+### Pattern A — Rich card list (no headers)
+
+Use when each item is a “standalone content block” (no need for aligned multi-column table).
+
+- Container: `<ul className="space-y-3">` directly in the page (no `SectionCard` wrapper)
+- Item: `<RichListItem>` (default class: `border border-border bg-card p-4 rounded-xl hover:bg-accent/40`)
+- Pagination: `flex items-center justify-between` block below the list (simple, no table)
+
+### Pattern B — Data table (with headers)
+
+Use when data is structured in columns.
+
+- Container: `<SectionCard noPadding>` wrapping the `<table>`
+- `<th>`: `text-xs font-semibold uppercase tracking-wider text-muted-foreground`
+- Header row: `bg-muted/60 border-b border-border`
+- `<tr>`: `hover:bg-accent/60`, **no `divide-y`**, no `border-b` on rows
+- Pagination: footer via the `footer` prop of `SectionCard`
+
+❌ **Never mix both**
+
+- No `<RichListItem>` inside a `SectionCard`
+- No raw `<table>` without `SectionCard` wrapper
+
+---
+
+## 6. States (Empty / Loading)
+
+- Zero-data: always `EmptyState`
+- Loading:
+  - list: `LoadingRows`
+  - grid: `LoadingGrid`
+- Do not render `null` conditionally without a placeholder.
+
+---
+
+## 7. Badges & Status
+
+- Role/status indicators: always `StatusBadge`
+- Do not use inline `Badge` with hardcoded colors scattered across pages
+- Color mapping (if needed) should stay local to the page (e.g. a `roleColors` object), not inside shared components
+
+---
+
+## 8. Typography hierarchy (concrete rules)
+
+- Page titles: `font-display text-2xl font-bold tracking-tight` (Geist)
+- Section titles: `text-sm font-semibold text-foreground` (Inter)
+- Labels / column headers: `text-xs font-semibold uppercase tracking-wider text-muted-foreground`
+- Body: `text-sm text-foreground`
+- Muted: `text-sm text-muted-foreground`
+
+---
+
+## 9. Branding (dynamic “public org” colors)
+
+On public pages (`/org/[slug]`, preview, offers), colors come from the organization branding:
+
+- `primaryColor`: `branding.primary_color` with fallback `#e07b39`
+- `secondaryColor`: `branding.secondary_color` with fallback `#111827`
+
+When adding brand-driven UI, ensure:
+- readability (compute onPrimary/onSecondary)
+- controlled transparency (e.g. `${primaryColor}14`, `${primaryColor}1a`, etc.)
+
+---
+  

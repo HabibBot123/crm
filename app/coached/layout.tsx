@@ -10,7 +10,7 @@ export default function CoachedLayout({ children }: { children: React.ReactNode 
         <CoachedSidebar />
         <div className="flex flex-1 flex-col min-w-0">
           <CoachedHeader />
-          <main className="flex-1 min-w-0 overflow-x-hidden px-4 pb-20 pt-6 md:pb-8 lg:px-6 lg:pt-8 xl:px-8">
+          <main className="flex-1 min-w-0 overflow-x-hidden px-4 pb-24 pt-6 md:pb-8 lg:px-8 lg:pt-8 xl:px-10">
             {children}
           </main>
           <CoachedBottomTabs />

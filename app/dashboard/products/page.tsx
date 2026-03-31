@@ -24,8 +24,11 @@ import {
 } from "@/components/ui/alert-dialog"
 import { PaginationControls } from "@/components/dashboard/pagination-controls"
 import { PaginationSummary } from "@/components/dashboard/pagination-summary"
-import { Skeleton } from "@/components/ui/skeleton"
 import { useCoachAccessGuard } from "@/hooks/use-access-guard"
+import { PageHeader } from "@/components/dashboard/page-header"
+import { LoadingRows } from "@/components/dashboard/loading-rows"
+import { EmptyState } from "@/components/dashboard/empty-state"
+import { RichListItem } from "@/components/dashboard/rich-list-item"
 import type { Product } from "@/lib/services/products"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -77,72 +80,48 @@ export default function ProductsPage() {
 
   if (!canAccess && guardContent) {
     return (
-      <div className="p-4 lg:p-8">
+      <div className="space-y-4 p-6 lg:p-8">
         {guardContent}
       </div>
     )
   }
 
   return (
-    <div className="p-4 lg:p-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground font-display">
-            Products
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {total} product{total !== 1 ? "s" : ""} total
-          </p>
-        </div>
+    <div className="space-y-4 p-6 lg:p-8">
+      <PageHeader
+        title="Products"
+        subtitle={`${total} product${total !== 1 ? "s" : ""} total`}
+      >
         <Link href="/dashboard/products/new">
           <Button className="gap-2">
             <Plus className="h-4 w-4" />
             New product
           </Button>
         </Link>
-      </div>
+      </PageHeader>
 
       {isLoading ? (
-        <div className="mt-8 space-y-3">
-          {Array.from({ length: 4 }).map((_, idx) => (
-            <div
-              key={`product-skeleton-${idx}`}
-              className="flex items-center gap-4 rounded-xl border border-border bg-card p-4"
-            >
-              <div className="h-16 w-24 rounded-lg bg-muted-foreground/20 animate-pulse" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-40" />
-                <Skeleton className="h-3 w-64" />
-                <Skeleton className="h-3 w-32" />
-              </div>
-              <div className="flex flex-col items-end gap-2">
-                <Skeleton className="h-6 w-20 rounded-full" />
-                <Skeleton className="h-6 w-16 rounded-full" />
-              </div>
-            </div>
-          ))}
-        </div>
+        <LoadingRows count={4} />
       ) : total === 0 ? (
-        <div className="mt-8 flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card py-16 px-6">
-          <p className="text-sm text-muted-foreground text-center">
-            No products yet. Create your first product to get started.
-          </p>
-          <Button className="mt-4 gap-2" asChild>
-            <Link href="/dashboard/products/new">
-              <Plus className="h-4 w-4" />
-              Create your first product
-            </Link>
-          </Button>
-        </div>
+        <EmptyState
+          icon={Plus}
+          title="No products yet"
+          description="Create your first product to get started."
+          action={
+            <Button className="gap-2" asChild>
+              <Link href="/dashboard/products/new">
+                <Plus className="h-4 w-4" />
+                Create your first product
+              </Link>
+            </Button>
+          }
+        />
       ) : (
         <>
-          <div className="mt-8 space-y-3">
+          <ul className="space-y-3">
             {paginatedProducts.map((product) => (
-              <div
-                key={product.id}
-                className="group flex items-center gap-4 rounded-xl border border-border bg-card p-4 transition-all hover:shadow-lg hover:shadow-primary/5"
-              >
-                <div className="relative h-16 w-24 rounded-lg bg-muted overflow-hidden">
+              <RichListItem key={product.id}>
+                <div className="relative h-16 w-24 shrink-0 rounded-lg bg-muted overflow-hidden">
                   {product.cover_image_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -160,12 +139,7 @@ export default function ProductsPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <Badge
-                      className={cn(
-                        "text-xs capitalize",
-                        statusStyles[product.status]
-                      )}
-                    >
+                    <Badge className={cn("text-xs capitalize", statusStyles[product.status])}>
                       {product.status}
                     </Badge>
                     <Badge variant="secondary" className="text-xs capitalize">
@@ -181,7 +155,7 @@ export default function ProductsPage() {
                     {product.description || "No description"}
                   </p>
                 </div>
-                <div className="flex flex-col items-end gap-2">
+                <div className="flex shrink-0 flex-col items-end gap-2">
                   <span className="text-[11px] text-muted-foreground">
                     {new Date(product.updated_at).toLocaleDateString("en-US", {
                       month: "short",
@@ -191,20 +165,13 @@ export default function ProductsPage() {
                   </span>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                      >
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem asChild>
-                        <Link
-                          href={`/dashboard/products/${product.id}`}
-                          className="gap-2"
-                        >
+                        <Link href={`/dashboard/products/${product.id}`} className="gap-2">
                           <Pencil className="h-4 w-4" />
                           Edit
                         </Link>
@@ -212,9 +179,7 @@ export default function ProductsPage() {
                       {product.status !== "archived" && (
                         <DropdownMenuItem
                           className="gap-2"
-                          onClick={() =>
-                            archiveMutation.mutate({ productId: product.id })
-                          }
+                          onClick={() => archiveMutation.mutate({ productId: product.id })}
                           disabled={archiveMutation.isPending}
                         >
                           <Archive className="h-4 w-4" />
@@ -233,18 +198,13 @@ export default function ProductsPage() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-              </div>
+              </RichListItem>
             ))}
-          </div>
+          </ul>
 
-          <div className="mt-4 flex items-center justify-between">
+          <div className="flex items-center justify-between">
             <PaginationSummary page={page} pageSize={pageSize} total={total} />
-            <PaginationControls
-              page={page}
-              pageSize={pageSize}
-              total={total}
-              onPageChange={setPage}
-            />
+            <PaginationControls page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
           </div>
         </>
       )}

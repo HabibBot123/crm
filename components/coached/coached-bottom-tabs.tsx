@@ -25,8 +25,10 @@ export function CoachedBottomTabs() {
               key={tab.href}
               href={tab.href}
               className={cn(
-                "flex flex-col items-center gap-1 px-3 py-1 text-[10px] font-medium transition-colors",
-                isActive ? "text-primary" : "text-muted-foreground"
+                "flex min-h-11 min-w-[4.25rem] flex-col items-center justify-center gap-0.5 rounded-xl px-2 py-1.5 text-[10px] font-medium transition-colors",
+                isActive
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground active:bg-muted/80"
               )}
             >
               <tab.icon className={cn("h-5 w-5", isActive && "text-primary")} />

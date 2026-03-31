@@ -2,7 +2,10 @@
 
 import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "@/hooks/use-auth"
-import { fetchOrganizationsWithMember, type Organization } from "@/lib/services/organizations"
+import {
+  fetchOrganizationsWithMember,
+  type Organization,
+} from "@/lib/services/organizations"
 
 export function useOrganizations() {
   const { supabase, user } = useAuth()

@@ -1,11 +1,26 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { parseOrganizationBrandingJson } from "@/schemas/organization-branding.schema"
 import type { BillingType } from "./offers"
-import { fetchOffersByOrganization } from "./offers"
 
 export type OrganizationBranding = {
   logo_url?: string | null
+  hero_image_url?: string | null
   description?: string | null
+  bio?: string | null
+  credentials?: { icon: string; text: string }[] | null
   primary_color?: string | null
+  secondary_color?: string | null
+  tagline?: string | null
+  cta_text?: string | null
+  offers_section_title?: string | null
+  footer_cta_text?: string | null
+  stats?: { value: string; label: string }[] | null
+  testimonials?: { author: string; role?: string | null; text: string; rating?: number | null }[] | null
+  faq?: { question: string; answer: string }[] | null
+  offers_display?: {
+    visible_offer_ids: number[]
+    featured_offer_id: number | null
+  } | null
 }
 
 export type OrganizationDisplay = {
@@ -83,6 +98,23 @@ export async function fetchOrganizationsWithMember(
   return result.sort((a, b) => a.name.localeCompare(b.name))
 }
 
+/** Dashboard: load `organizations.branding` for one org (Supabase RLS). */
+export async function fetchOrganizationBranding(
+  supabase: SupabaseClient,
+  organizationId: number
+): Promise<OrganizationBranding | null> {
+  const { data, error } = await supabase
+    .from("organizations")
+    .select("branding")
+    .eq("id", organizationId)
+    .is("deleted_at", null)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data) return null
+  return parseOrganizationBrandingJson(data.branding)
+}
+
 // ----------------------------------------------------------------
 // Public (by slug)
 // ----------------------------------------------------------------
@@ -118,8 +150,16 @@ export type PublicOrgOffer = {
   price: number
   currency: string
   interval: "month" | "year" | null
+  installment_count: number | null
   stripe_payment_link: string | null
   billing_type: BillingType
+  key_features: string[] | null
+  products: {
+    id: number
+    title: string
+    type: string
+    cover_image_url: string | null
+  }[]
 }
 
 export type PublicOrgResponse = {
@@ -127,35 +167,28 @@ export type PublicOrgResponse = {
   offers: PublicOrgOffer[]
 }
 
-const DEFAULT_MAX_PUBLIC_OFFERS = 50
-
-export async function getPublicOrganizationData(
-  supabase: SupabaseClient,
-  slug: string,
-  maxOffers: number = DEFAULT_MAX_PUBLIC_OFFERS
+export async function fetchPublicOrganizationBySlug(
+  baseUrl: string,
+  slug: string
 ): Promise<PublicOrgResponse | null> {
-  const organization = await fetchOrganizationBySlug(supabase, slug)
-  if (!organization) return null
+  const normalizedSlug = slug.trim().toLowerCase()
+  const url = new URL(`/api/public/org/${encodeURIComponent(normalizedSlug)}`, baseUrl)
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    cache: "no-store",
+  })
 
-  const allOffers = await fetchOffersByOrganization(supabase, organization.id)
-  const offers: PublicOrgOffer[] = allOffers
-    .filter((o) => o.status === "active")
-    .slice(0, maxOffers)
-    .map((o) => ({
-      id: o.id,
-      title: o.title,
-      description: o.description,
-      price: o.price,
-      currency: o.currency,
-      interval: o.interval,
-      stripe_payment_link: o.stripe_payment_link,
-      billing_type: o.billing_type,
-    }))
-
-  return {
-    organization,
-    offers,
+  if (res.status === 404) return null
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    const message =
+      body && typeof (body as { error?: unknown }).error === "string"
+        ? (body as { error: string }).error
+        : "Unable to load organization"
+    throw new Error(message)
   }
+
+  return (await res.json()) as PublicOrgResponse
 }
 
 // ----------------------------------------------------------------
@@ -173,6 +206,13 @@ export type PublicOfferPayload = {
   id: number
   title: string
   description: string | null
+  key_features: string[] | null
+  products: {
+    id: number
+    title: string
+    type: string
+    cover_image_url: string | null
+  }[]
   price: number
   currency: string
   interval: "month" | "year" | null
@@ -219,8 +259,21 @@ export async function getPublicOfferWithOrg(
 }
 
 export type UpdateOrganizationBrandingInput = {
+  logo_url?: string | null
   description?: string | null
   primary_color?: string | null
+  secondary_color?: string | null
+  tagline?: string | null
+  cta_text?: string | null
+  offers_section_title?: string | null
+  footer_cta_text?: string | null
+  bio?: string | null
+  credentials?: OrganizationBranding["credentials"]
+  stats?: OrganizationBranding["stats"]
+  testimonials?: OrganizationBranding["testimonials"]
+  faq?: OrganizationBranding["faq"]
+  offers_display?: OrganizationBranding["offers_display"]
+  hero_image_url?: string | null
 }
 
 export async function updateOrganizationBranding(
@@ -245,9 +298,63 @@ export async function updateOrganizationBranding(
     updates.description = input.description?.trim() || null
   }
 
+  if (input.bio !== undefined) {
+    updates.bio = input.bio?.trim() || null
+  }
+
+  if (input.credentials !== undefined) {
+    const list = (input.credentials ?? []).filter((c) => c.text.trim().length > 0)
+    updates.credentials = list.length > 0 ? list : null
+  }
+
+  if (input.logo_url !== undefined) {
+    updates.logo_url = input.logo_url?.trim() || null
+  }
+
   if (input.primary_color !== undefined) {
     const trimmed = input.primary_color?.trim() || ""
     updates.primary_color = trimmed || null
+  }
+
+  if (input.secondary_color !== undefined) {
+    const trimmed = input.secondary_color?.trim() || ""
+    updates.secondary_color = trimmed || null
+  }
+
+  if (input.tagline !== undefined) {
+    updates.tagline = input.tagline?.trim() || null
+  }
+
+  if (input.cta_text !== undefined) {
+    updates.cta_text = input.cta_text?.trim() || null
+  }
+
+  if (input.offers_section_title !== undefined) {
+    updates.offers_section_title = input.offers_section_title?.trim() || null
+  }
+
+  if (input.footer_cta_text !== undefined) {
+    updates.footer_cta_text = input.footer_cta_text?.trim() || null
+  }
+
+  if (input.hero_image_url !== undefined) {
+    updates.hero_image_url = input.hero_image_url?.trim() || null
+  }
+
+  if (input.stats !== undefined) {
+    updates.stats = input.stats ?? null
+  }
+
+  if (input.testimonials !== undefined) {
+    updates.testimonials = input.testimonials ?? null
+  }
+
+  if (input.faq !== undefined) {
+    updates.faq = input.faq ?? null
+  }
+
+  if (input.offers_display !== undefined) {
+    updates.offers_display = input.offers_display ?? null
   }
 
   const { error: updateError } = await supabase

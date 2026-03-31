@@ -28,6 +28,7 @@ export async function handleCheckoutSessionCompleted(
 
   const buyerEmail =
     session.customer_details?.email?.trim().toLowerCase() ?? null
+  const buyerName = session.customer_details?.name?.trim() || null
   if (!buyerEmail) {
     console.warn(
       `checkout.session.completed [${session.id}]: no customer email — cannot create enrollment`
@@ -108,6 +109,7 @@ export async function handleCheckoutSessionCompleted(
       const { error } = await supabase
         .from("enrollments")
         .update({
+          buyer_name: buyerName,
           buyer_email: buyerEmail,
           status: "active",
           stripe_customer_id: session.customer ?? null,
@@ -126,6 +128,7 @@ export async function handleCheckoutSessionCompleted(
           offer_id: offerId,
           offer_variant_id: variantId,
           user_id: userId,
+          buyer_name: buyerName,
           buyer_email: buyerEmail,
           status: "active",
           stripe_customer_id: session.customer ?? null,
@@ -145,6 +148,7 @@ export async function handleCheckoutSessionCompleted(
         offer_id: offerId,
         offer_variant_id: variantId,
         user_id: null,
+        buyer_name: buyerName,
         buyer_email: buyerEmail,
         status: "active",
         stripe_customer_id: session.customer ?? null,
@@ -164,7 +168,7 @@ export async function handleCheckoutSessionCompleted(
     )
   } else {
     console.log(
-      `Enrollment created: offer ${offerId}, user ${userId ?? "pending"}, email "${buyerEmail}", expires ${expiresAt ?? "never"}`
+      `Enrollment created: offer ${offerId}, user ${userId ?? "pending"}, name "${buyerName ?? "—"}", email "${buyerEmail}", expires ${expiresAt ?? "never"}`
     )
   }
 }

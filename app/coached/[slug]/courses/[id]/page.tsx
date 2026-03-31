@@ -136,7 +136,7 @@ export default function CoursePlayerPage({
 
   if (isLoading) {
     return (
-      <div className="-mx-4 -mt-6 md:mx-0 md:mt-0">
+      <div className="-mx-4 -mt-6 md:mx-0 md:mt-0 lg:-mx-8 lg:-mt-8 lg:-mb-8 xl:-mx-10">
         <div className="h-14 animate-pulse rounded-t-xl bg-muted" />
         <div className="flex min-h-[300px] items-center justify-center p-6">
           <p className="text-sm text-muted-foreground">Loading…</p>
@@ -164,7 +164,7 @@ export default function CoursePlayerPage({
   const hasNext = currentIndex >= 0 && currentIndex < allLessons.length - 1
 
   return (
-    <div className="-mx-4 -mt-6 flex min-h-0 flex-col md:flex-row md:mx-0 md:mt-0 lg:-mx-6 lg:-mt-8 lg:-mb-8 lg:min-h-[calc(100vh-2rem)] xl:-mx-8">
+    <div className="-mx-4 -mt-6 flex min-h-0 flex-col md:flex-row md:mx-0 md:mt-0 lg:-mx-8 lg:-mt-8 lg:-mb-8 lg:min-h-[calc(100vh-2rem)] xl:-mx-10">
       <CourseSidebar
         modules={course.product_modules}
         progress={progress}
@@ -209,7 +209,7 @@ export default function CoursePlayerPage({
             <ContentViewer
               content={activeContent}
               onVideoEnded={handleVideoEnded}
-              className="max-w-4xl mx-auto w-full mt-1"
+              className="mt-1 w-full"
             />
           ) : (
             <div className="flex min-h-[280px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/30 p-6 sm:p-8 text-center">

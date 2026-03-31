@@ -1,6 +1,11 @@
 "use client"
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query"
 import { toast } from "sonner"
 import { useAuth } from "@/hooks/use-auth"
 import {
@@ -9,33 +14,85 @@ import {
   deleteOfferVariant,
   fetchOfferWithDetails,
   fetchOffersByOrganization,
+  fetchOffersPage,
+  type OfferFetchScope,
   updateOffer,
   type OfferListItem,
   type OfferWithDetails,
 } from "@/lib/services/offers"
 
-export function offersQueryKey(organizationId: number | null) {
-  return ["offers", organizationId] as const
+export function offersQueryKey(
+  organizationId: number | null,
+  scope: OfferFetchScope = "all"
+) {
+  return ["offers", organizationId, scope] as const
+}
+
+export function offersPageQueryKey(
+  organizationId: number | null,
+  scope: OfferFetchScope,
+  page: number,
+  pageSize: number
+) {
+  return ["offers", organizationId, scope, "page", page, pageSize] as const
+}
+
+function invalidateOffersForOrganization(
+  queryClient: QueryClient,
+  organizationId: number | null
+) {
+  if (organizationId == null) return
+  void queryClient.invalidateQueries({ queryKey: ["offers", organizationId] })
 }
 
 export function offerQueryKey(offerId: number) {
   return ["offer", offerId] as const
 }
 
-export function useOffers(organizationId: number | null) {
+export function useOffers(
+  organizationId: number | null,
+  scope: OfferFetchScope = "all"
+) {
   const { supabase } = useAuth()
 
   const query = useQuery({
-    queryKey: offersQueryKey(organizationId),
+    queryKey: offersQueryKey(organizationId, scope),
     queryFn: () => {
       if (!organizationId) throw new Error("organizationId is required to fetch offers")
-      return fetchOffersByOrganization(supabase, organizationId)
+      return fetchOffersByOrganization(supabase, organizationId, scope)
     },
     enabled: !!organizationId,
   })
 
   return {
     offers: (query.data ?? []) as OfferListItem[],
+    isLoading: query.isLoading,
+    error: query.error,
+  }
+}
+
+export function useOffersPage(
+  organizationId: number | null,
+  scope: OfferFetchScope,
+  page: number,
+  pageSize: number
+) {
+  const { supabase } = useAuth()
+
+  const query = useQuery({
+    queryKey: offersPageQueryKey(organizationId, scope, page, pageSize),
+    queryFn: () => {
+      if (!organizationId) throw new Error("organizationId is required to fetch offers")
+      return fetchOffersPage(supabase, organizationId, scope, page, pageSize)
+    },
+    enabled: !!organizationId,
+  })
+
+  const data = query.data ?? { items: [] as OfferListItem[], total: 0 }
+
+  return {
+    items: data.items,
+    total: data.total,
     isLoading: query.isLoading,
     error: query.error,
   }
@@ -64,7 +121,7 @@ export function useArchiveOffer(organizationId: number | null) {
   return useMutation({
     mutationFn: async (offerId: number) => updateOffer(supabase, offerId, { status: "archived" }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: offersQueryKey(organizationId) })
+      invalidateOffersForOrganization(queryClient, organizationId)
       toast.success("Offer archived")
     },
     onError: (err: Error) => toast.error(err.message),
@@ -78,7 +135,7 @@ export function useCreateOffer(organizationId: number | null) {
   return useMutation({
     mutationFn: (input: Parameters<typeof createOffer>[1]) => createOffer(supabase, input),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: offersQueryKey(organizationId) })
+      invalidateOffersForOrganization(queryClient, organizationId)
       toast.success("Offer created")
     },
     onError: (err: Error) => toast.error(err.message),
@@ -93,7 +150,7 @@ export function useUpdateOffer(organizationId: number | null, offerId: number) {
     mutationFn: (input: Parameters<typeof updateOffer>[2]) => updateOffer(supabase, offerId, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: offerQueryKey(offerId) })
-      queryClient.invalidateQueries({ queryKey: offersQueryKey(organizationId) })
+      invalidateOffersForOrganization(queryClient, organizationId)
       toast.success("Offer updated")
     },
     onError: (err: Error) => toast.error(err.message),
@@ -152,7 +209,7 @@ export function usePublishOffer(organizationId: number | null, offerId: number) 
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: offerQueryKey(offerId) })
-      queryClient.invalidateQueries({ queryKey: offersQueryKey(organizationId) })
+      invalidateOffersForOrganization(queryClient, organizationId)
       toast.success("Offer published")
     },
     onError: (err: Error) => toast.error(err.message),

@@ -135,7 +135,13 @@ This ensures:
 
 ---
 
-## 7. Other Rules
+## 7. Dashboard UX Patterns (Prescriptive)
+
+Tout le contenu UX (couleurs, fonts, layout primitives, patterns lists/tables, états, etc.) est centralisé dans `/.cursor/rules/design-system-ux.mdc`.
+
+---
+
+## 8. Other Rules
 
 - Never typecast. Never use `as`
 - Use **React Query** for caching

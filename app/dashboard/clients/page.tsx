@@ -26,6 +26,10 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { cn, formatAmountFromCents } from "@/lib/utils"
+import { PageHeader } from "@/components/dashboard/page-header"
+import { SectionCard } from "@/components/dashboard/section-card"
+import { LoadingRows } from "@/components/dashboard/loading-rows"
+import { EmptyState } from "@/components/dashboard/empty-state"
 
 const statusConfig: Record<
   string,
@@ -111,7 +115,7 @@ export default function ClientsPage() {
 
   if (!currentOrganization && !orgLoading) {
     return (
-      <div className="p-4 lg:p-8">
+      <div className="space-y-4 p-6 lg:p-8">
         <p className="text-sm text-muted-foreground">
           Select an organization to view clients.
         </p>
@@ -120,21 +124,14 @@ export default function ClientsPage() {
   }
 
   return (
-    <div className="p-4 lg:p-8">
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">
-            Clients
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Clients and enrollments linked to your offers
-          </p>
-        </div>
-      </div>
+    <div className="space-y-4 p-6 lg:p-8">
+      <PageHeader
+        title="Clients"
+        subtitle="Clients and enrollments linked to your offers"
+      />
 
-      {/* Search */}
-      <div className="mt-6 flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
+      <div className="flex items-center gap-2">
+        <div className="relative min-w-[200px] max-w-sm flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search clients..."
@@ -149,109 +146,78 @@ export default function ClientsPage() {
         </Button>
       </div>
 
-      {/* Content */}
-      <div className="mt-6">
-        {isLoading ? (
-          <div className="rounded-xl border border-border bg-card p-8">
-            <div className="space-y-3">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div
-                  key={i}
-                  className="h-12 animate-pulse rounded-lg bg-muted"
-                />
-              ))}
-            </div>
-          </div>
-        ) : error ? (
-          <div className="rounded-xl border border-border bg-card p-8 text-center">
-            <p className="text-sm text-destructive">
-              {(error as Error).message}
-            </p>
-          </div>
-        ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card py-16 px-6">
-            <Users className="h-10 w-10 text-muted-foreground" />
-            <p className="mt-4 text-sm text-muted-foreground text-center">
-              {total === 0 && !search.trim()
-                ? "No clients yet. Enrollments will appear here after purchases."
-                : "No clients match your search."}
-            </p>
-          </div>
-        ) : (
-          <>
-            {/* Mobile cards */}
-            <div className="space-y-3 lg:hidden">
-              {items.map((client: ClientSummary) => {
-                const config = getStatusConfig(client.status)
-                const emailDisplay = client.client_email ?? client.buyer_email ?? "—"
-                return (
-                  <button
-                    key={client.client_key}
-                    type="button"
-                    onClick={() => setSelectedClientKey(client.client_key)}
-                    className="w-full rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/30"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-10 w-10">
-                        <AvatarFallback className="bg-primary/10 text-sm font-semibold text-primary">
-                          {getInitials(client.client_display)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium text-foreground">
-                          {client.client_display}
-                        </p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {emailDisplay}
-                        </p>
-                        {!client.user_id && (
-                          <Badge variant="secondary" className="mt-1 text-[10px]">
-                            No account yet
-                          </Badge>
-                        )}
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className={cn("shrink-0 text-xs", config.color)}
-                      >
-                        {config.label}
-                      </Badge>
+      {isLoading ? (
+        <SectionCard><LoadingRows count={5} /></SectionCard>
+      ) : error ? (
+        <SectionCard>
+          <p className="text-center text-sm text-destructive">{(error as Error).message}</p>
+        </SectionCard>
+      ) : items.length === 0 ? (
+        <EmptyState
+          icon={Users}
+          title={total === 0 && !search.trim() ? "No clients yet" : "No clients match your search"}
+          description={total === 0 && !search.trim() ? "Enrollments will appear here after purchases." : undefined}
+        />
+      ) : (
+        <>
+          {/* Mobile cards */}
+          <div className="space-y-3 lg:hidden">
+            {items.map((client: ClientSummary) => {
+              const config = getStatusConfig(client.status)
+              const emailDisplay = client.client_email ?? client.buyer_email ?? "—"
+              return (
+                <button
+                  key={client.client_key}
+                  type="button"
+                  onClick={() => setSelectedClientKey(client.client_key)}
+                  className="w-full rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-accent/40"
+                >
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback className="bg-primary/10 text-sm font-semibold text-primary">
+                        {getInitials(client.client_display)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-foreground">{client.client_display}</p>
+                      <p className="truncate text-xs text-muted-foreground">{emailDisplay}</p>
+                      {!client.user_id && (
+                        <Badge variant="secondary" className="mt-1 text-[10px]">No account yet</Badge>
+                      )}
                     </div>
-                    <div className="mt-3 flex items-center gap-4 border-t border-border pt-3 text-xs text-muted-foreground">
-                      <span>{formatCurrency(client.total_spent)}</span>
-                      <span>
-                        {client.enrollment_count} enrollment
-                        {client.enrollment_count !== 1 ? "s" : ""}
-                      </span>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
+                    <Badge variant="outline" className={cn("shrink-0 text-xs", config.color)}>
+                      {config.label}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 flex items-center gap-4 border-t border-border pt-3 text-xs text-muted-foreground">
+                    <span>{formatCurrency(client.total_spent)}</span>
+                    <span>{client.enrollment_count} enrollment{client.enrollment_count !== 1 ? "s" : ""}</span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
 
-            {/* Desktop table */}
-            <div className="hidden overflow-x-auto rounded-xl border border-border bg-card lg:block">
+          {/* Desktop table */}
+          <SectionCard
+            noPadding
+            footer={
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <PaginationSummary page={page} pageSize={perPage} total={total} />
+                <PaginationControls page={page} pageSize={perPage} total={total} onPageChange={setPage} />
+              </div>
+            }
+          >
+            <div className="hidden overflow-x-auto lg:block">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border bg-muted/50">
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                      Client
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                      Status
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                      Total spent
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                      Enrollments
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                      First joined
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                      Last expires
-                    </th>
+                  <tr className="border-b border-border bg-muted/60">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Client</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total spent</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Enrollments</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">First joined</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Last expires</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -262,7 +228,7 @@ export default function ClientsPage() {
                       <tr
                         key={client.client_key}
                         onClick={() => setSelectedClientKey(client.client_key)}
-                        className="cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-muted/30"
+                        className="cursor-pointer transition-colors hover:bg-accent/60"
                       >
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
@@ -272,63 +238,38 @@ export default function ClientsPage() {
                               </AvatarFallback>
                             </Avatar>
                             <div>
-                              <p className="font-medium text-foreground">
-                                {client.client_display}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {emailDisplay}
-                              </p>
+                              <p className="font-medium text-foreground">{client.client_display}</p>
+                              <p className="text-xs text-muted-foreground">{emailDisplay}</p>
                               {!client.user_id && (
-                                <Badge variant="secondary" className="mt-0.5 text-[10px]">
-                                  No account yet
-                                </Badge>
+                                <Badge variant="secondary" className="mt-0.5 text-[10px]">No account yet</Badge>
                               )}
                             </div>
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <Badge
-                            variant="outline"
-                            className={cn("text-xs capitalize", config.color)}
-                          >
+                          <Badge variant="outline" className={cn("text-xs capitalize", config.color)}>
                             {config.label}
                           </Badge>
                         </td>
                         <td className="px-4 py-3 font-semibold text-foreground">
                           {formatCurrency(client.total_spent)}
                         </td>
+                        <td className="px-4 py-3 text-muted-foreground">{client.enrollment_count}</td>
                         <td className="px-4 py-3 text-muted-foreground">
-                          {client.enrollment_count}
+                          {client.first_enrollment_started_at ? formatDate(client.first_enrollment_started_at) : "—"}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
-                          {client.first_enrollment_started_at
-                            ? formatDate(client.first_enrollment_started_at)
-                            : "—"}
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">
-                          {client.last_enrollment_expires_at
-                            ? formatDate(client.last_enrollment_expires_at)
-                            : "—"}
+                          {client.last_enrollment_expires_at ? formatDate(client.last_enrollment_expires_at) : "—"}
                         </td>
                       </tr>
                     )
                   })}
                 </tbody>
               </table>
-
-              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3">
-                <PaginationSummary page={page} pageSize={perPage} total={total} />
-                <PaginationControls
-                  page={page}
-                  pageSize={perPage}
-                  total={total}
-                  onPageChange={setPage}
-                />
-              </div>
             </div>
-          </>
-        )}
-      </div>
+          </SectionCard>
+        </>
+      )}
 
       {/* Client Detail Sheet */}
       <Sheet

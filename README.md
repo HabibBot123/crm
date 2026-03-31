@@ -1,6 +1,6 @@
-# CRM Sport — Coach sportif
+# CoachStack — CRM for coaches
 
-Application CRM pour coachs sportifs (gestion clients, ventes, offres, leads, contenu, etc.).
+Application CRM pour tout type de coach (éducation, business, life, sport, executive, etc.) : gestion clients, ventes, offres, contenu, équipe, suivi de programmes, etc.
 
 ## Prérequis
 

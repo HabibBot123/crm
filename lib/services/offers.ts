@@ -17,6 +17,7 @@ export type Offer = {
   stripe_price_id: string | null
   stripe_product_id: string | null
   stripe_payment_link: string | null
+  key_features: string[] | null
   status: OfferStatus
   created_at: string
   updated_at: string
@@ -69,19 +70,62 @@ export type OfferListItem = Offer & {
   offer_products: { id: number; product_id: number }[]
 }
 
+export type OfferFetchScope = "all" | "active"
+
+export type OffersListPage = {
+  items: OfferListItem[]
+  total: number
+}
+
 // ----------------------------------------------------------------
 // Fetch
 // ----------------------------------------------------------------
 
+export async function fetchOffersPage(
+  supabase: SupabaseClient,
+  organizationId: number,
+  scope: OfferFetchScope,
+  page: number,
+  pageSize: number
+): Promise<OffersListPage> {
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+
+  let query = supabase
+    .from("offers")
+    .select("*, offer_products(id, product_id)", { count: "exact" })
+    .eq("organization_id", organizationId)
+    .order("updated_at", { ascending: false })
+
+  if (scope === "active") {
+    query = query.eq("status", "active")
+  }
+
+  const { data, error, count } = await query.range(from, to)
+
+  if (error) throw error
+  return {
+    items: (data ?? []) as OfferListItem[],
+    total: count ?? 0,
+  }
+}
+
 export async function fetchOffersByOrganization(
   supabase: SupabaseClient,
-  organizationId: number
+  organizationId: number,
+  scope: OfferFetchScope = "all"
 ): Promise<OfferListItem[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("offers")
     .select("*, offer_products(id, product_id)")
     .eq("organization_id", organizationId)
     .order("updated_at", { ascending: false })
+
+  if (scope === "active") {
+    query = query.eq("status", "active")
+  }
+
+  const { data, error } = await query
 
   if (error) throw error
   return (data ?? []) as OfferListItem[]
@@ -134,6 +178,7 @@ export type CreateOfferInput = {
   organization_id: number
   title: string
   description?: string | null
+  key_features?: string[] | null
   billing_type: BillingType
   price: number
   currency?: string
@@ -146,12 +191,15 @@ export async function createOffer(
   supabase: SupabaseClient,
   input: CreateOfferInput
 ): Promise<Offer> {
+  const sanitizedKeyFeatures = sanitizeKeyFeatures(input.key_features)
+
   const { data, error } = await supabase
     .from("offers")
     .insert({
       organization_id: input.organization_id,
       title: input.title.trim(),
       description: input.description?.trim() || null,
+      key_features: sanitizedKeyFeatures,
       billing_type: input.billing_type,
       price: input.price,
       currency: input.currency ?? "eur",
@@ -178,6 +226,7 @@ export async function createOffer(
 export type UpdateOfferInput = {
   title?: string
   description?: string | null
+  key_features?: string[] | null
   price?: number
   currency?: string
   interval?: "month" | "year" | null
@@ -240,6 +289,7 @@ export async function updateOffer(
   const payload: Record<string, unknown> = {}
   if (input.title !== undefined) payload.title = input.title.trim()
   if (input.description !== undefined) payload.description = input.description?.trim() || null
+  if (input.key_features !== undefined) payload.key_features = sanitizeKeyFeatures(input.key_features)
   if (input.price !== undefined) payload.price = input.price
   if (input.currency !== undefined) payload.currency = input.currency
   if (input.interval !== undefined) payload.interval = input.interval
@@ -256,6 +306,17 @@ export async function updateOffer(
 
   if (error) throw error
   return data as Offer
+}
+
+function sanitizeKeyFeatures(input?: string[] | null): string[] | null {
+  if (!input) return null
+
+  const cleaned = input
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0)
+
+  if (cleaned.length === 0) return null
+  return cleaned.slice(0, 5)
 }
 
 export async function deleteOffer(

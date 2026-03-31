@@ -279,7 +279,7 @@ export default function StripeConnectPage() {
             <p>
               We use <span className="font-medium text-foreground">Stripe</span> as our payments
               partner. <span className="font-medium text-foreground">Stripe Connect</span> lets you
-              receive payments on your own Stripe account while selling via CRM Sport.
+              receive payments on your own Stripe account while selling your coaching offers via CoachStack.
             </p>
             <p className="mt-1">
               Setup can take several steps; after each visit to Stripe, we refresh your status and

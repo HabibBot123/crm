@@ -1,97 +1,90 @@
 "use client"
 
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { ExternalLink, CreditCard, Globe, Shield } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { useCurrentOrganization } from "@/components/providers/organization-provider"
+import { PageHeader } from "@/components/dashboard/page-header"
+import { SectionCard } from "@/components/dashboard/section-card"
+import { NavList } from "@/components/dashboard/nav-list"
+import type { NavListItem } from "@/components/dashboard/nav-list"
+
+type Section = "domain" | "payments"
+
+const nav: NavListItem<Section>[] = [
+  { id: "domain", label: "Domain", icon: Globe },
+  { id: "payments", label: "Payments", icon: CreditCard },
+]
 
 export default function SettingsPage() {
   const router = useRouter()
   const { currentOrganization } = useCurrentOrganization()
+  const [section, setSection] = useState<Section>("domain")
 
   const stripeConnected = Boolean(currentOrganization?.stripe_account_id)
   const stripeReady = Boolean(currentOrganization?.stripe_onboarding_completed)
 
-  const handleConfigureStripe = () => {
-    router.push("/dashboard/stripe-connect")
-  }
-
   return (
-    <div className="p-4 lg:p-8">
-      <h1 className="text-2xl font-bold text-foreground font-display">Settings</h1>
-      <p className="mt-1 text-sm text-muted-foreground">Manage your workspace settings</p>
+    <div className="space-y-4 p-6 lg:p-8">
+      <PageHeader title="Settings" subtitle="Manage your organization settings" />
 
-      <Tabs defaultValue="domain" className="mt-8">
-        <TabsList>
-          <TabsTrigger value="domain" className="gap-2"><Globe className="h-4 w-4" /> Domain</TabsTrigger>
-          <TabsTrigger value="payments" className="gap-2"><CreditCard className="h-4 w-4" /> Payments</TabsTrigger>
-        </TabsList>
+      <div className="flex gap-8">
+        <NavList items={nav} value={section} onChange={setSection} />
 
-        {/* Domain */}
-        <TabsContent value="domain" className="mt-6">
-          <div className="max-w-2xl space-y-6">
-            <div className="rounded-xl border border-border bg-card p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-foreground">Current domain</h3>
-                  <p className="mt-1 text-sm text-primary">
-                    {currentOrganization?.slug
-                      ? `${currentOrganization.slug}.${process.env.NEXT_PUBLIC_APP_URL}`
-                      : process.env.NEXT_PUBLIC_APP_URL}
-                  </p>
-                </div>
-                <Badge variant="secondary" className="text-xs">Default</Badge>
-              </div>
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* Payments */}
-        <TabsContent value="payments" className="mt-6">
-          <div className="max-w-2xl space-y-6">
-            <div className="rounded-xl border border-border bg-card p-8 text-center">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-                <CreditCard className="h-7 w-7 text-primary" />
-              </div>
-              <h3 className="mt-4 text-lg font-semibold text-foreground">Connect Stripe</h3>
-              <p className="mt-2 text-sm text-muted-foreground max-w-sm mx-auto">
-                Connect your Stripe account to start accepting payments and managing subscriptions.
+        {/* Right content */}
+        <div className="min-w-0 flex-1 max-w-lg">
+          {section === "domain" && (
+            <SectionCard
+              title="Current domain"
+              subtitle="This is were your leads can buy your products"
+              action={<Badge variant="secondary" className="text-xs">Default</Badge>}
+            >
+              <p className="text-sm text-primary">
+                {currentOrganization?.slug
+                  ? `${currentOrganization.slug}.${process.env.NEXT_PUBLIC_APP_URL}`
+                  : process.env.NEXT_PUBLIC_APP_URL}
               </p>
-              <div className="mt-4 flex flex-col items-center gap-2 text-sm">
-                <span className="text-xs text-muted-foreground">
-                  {stripeConnected
-                    ? "Stripe is connected for this organization."
-                    : "Stripe is not connected yet for this organization."}
-                </span>
-                {stripeConnected && (
-                  <span
-                    className={
-                      stripeReady
-                        ? "text-xs text-emerald-600"
-                        : "text-xs text-amber-600"
-                    }
-                  >
-                    {stripeReady
-                      ? "Ready to accept payments."
-                      : "Complete setup on Stripe to accept payments."}
-                  </span>
-                )}
+            </SectionCard>
+          )}
+
+          {section === "payments" && (
+            <SectionCard title="Stripe Connect" subtitle="Accept payments and manage subscriptions">
+              <div className="flex flex-col items-center text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+                  <CreditCard className="h-7 w-7 text-primary" />
+                </div>
+                <div className="mt-4 space-y-1">
+                  <p className="text-xs text-muted-foreground">
+                    {stripeConnected
+                      ? "Stripe is connected for this organization."
+                      : "Stripe is not connected yet for this organization."}
+                  </p>
+                  {stripeConnected && (
+                    <p className={stripeReady ? "text-xs text-success" : "text-xs text-warning-foreground"}>
+                      {stripeReady ? "Ready to accept payments." : "Complete setup on Stripe to accept payments."}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  className="mt-6 gap-2"
+                  onClick={() => router.push("/dashboard/stripe-connect")}
+                  disabled={!currentOrganization}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Manage Stripe connection
+                </Button>
+                <div className="mt-6 flex items-center justify-center gap-4 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1"><Shield className="h-3.5 w-3.5" /> Secure</span>
+                  <span className="flex items-center gap-1"><Shield className="h-3.5 w-3.5" /> PCI compliant</span>
+                  <span className="flex items-center gap-1"><Shield className="h-3.5 w-3.5" /> Instant payouts</span>
+                </div>
               </div>
-              <Button className="mt-6 gap-2" onClick={handleConfigureStripe} disabled={!currentOrganization}>
-                <ExternalLink className="h-4 w-4" />
-                Manage Stripe connection
-              </Button>
-              <div className="mt-6 flex items-center justify-center gap-4 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1"><Shield className="h-3.5 w-3.5" /> Secure</span>
-                <span className="flex items-center gap-1"><Shield className="h-3.5 w-3.5" /> PCI compliant</span>
-                <span className="flex items-center gap-1"><Shield className="h-3.5 w-3.5" /> Instant payouts</span>
-              </div>
-            </div>
-          </div>
-        </TabsContent>
-      </Tabs>
+            </SectionCard>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

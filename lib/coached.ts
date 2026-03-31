@@ -11,6 +11,14 @@ export function productTypeLabel(type: string): string {
   return type === "coaching" ? "Coaching" : "Course"
 }
 
+/** Theme tokens for product-type pills (same outline + /10 bg pattern as StatusBadge). */
+export function productTypeBadgeClassName(type: string): string {
+  if (type === "coaching") {
+    return "border-primary/20 bg-primary/10 text-primary"
+  }
+  return "border-chart-3/20 bg-chart-3/10 text-chart-3"
+}
+
 export function formatSessionDateTime(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", {
     weekday: "short",

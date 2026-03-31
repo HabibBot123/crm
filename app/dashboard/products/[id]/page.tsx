@@ -17,21 +17,21 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable"
 import {
-  ArrowLeft,
   Plus,
   Send,
   BookOpen,
   FileText,
-  Trash2,
-  FileSpreadsheet,
-  Presentation,
+  Settings,
+  Info,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { PageHeader } from "@/components/dashboard/page-header"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { NavList } from "@/components/dashboard/nav-list"
+import type { NavListItem } from "@/components/dashboard/nav-list"
+import { SectionCard } from "@/components/dashboard/section-card"
 import {
   Select,
   SelectContent,
@@ -91,6 +91,7 @@ export default function ProductEditorPage({
       "To edit products, you need to complete Stripe Connect onboarding for this organization.",
   })
   const productId = Number(id)
+  const [section, setSection] = useState<string>("content")
   const [expandedModules, setExpandedModules] = useState<number[]>([])
   const [contentPickerModuleId, setContentPickerModuleId] = useState<number | null>(null)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
@@ -103,25 +104,16 @@ export default function ProductEditorPage({
   )
 
   const updateProductMutation = useUpdateProductDetails(currentOrganization?.id ?? null, productId)
-
   const createModuleMutation = useCreateProductModule(productId)
-
   const updateModuleMutation = useUpdateProductModule(productId)
-
   const addItemMutation = useAddProductLesson(productId)
-
   const removeItemMutation = useRemoveProductLesson(productId)
-
   const updateModuleItemMutation = useUpdateProductLesson(productId)
-
   const coachingMutation = useUpsertCoachingDetails(productId)
-
   const deleteProductMutation = useDeleteDraftProduct(currentOrganization?.id ?? null, productId)
-
   const deleteModuleMutation = useDeleteProductModule(productId)
 
   const reorderModulesMutation = useReorderModules(productId)
-
   const reorderLessonsMutation = useReorderLessons(productId)
 
   const modules = product?.product_modules ?? []
@@ -174,29 +166,23 @@ export default function ProductEditorPage({
   }
 
   if (!canAccess && guardContent) {
-    return (
-      <div className="p-4 lg:p-8">
-        {guardContent}
-      </div>
-    )
+    return <div className="space-y-4 p-6 lg:p-8">{guardContent}</div>
   }
 
   if (isLoading || product === undefined) {
     return (
-      <div className="p-4 lg:p-8">
-        <div className="h-8 w-8 animate-pulse rounded bg-muted" />
-        <div className="mt-6 h-64 animate-pulse rounded-xl bg-muted" />
+      <div className="space-y-4 p-6 lg:p-8">
+        <div className="h-8 w-48 animate-pulse rounded bg-muted" />
+        <div className="h-64 animate-pulse rounded-xl bg-muted" />
       </div>
     )
   }
 
   if (error || !product) {
     return (
-      <div className="p-4 lg:p-8">
-        <p className="text-sm text-muted-foreground">
-          Product not found or you don’t have access.
-        </p>
-        <Button className="mt-4" asChild>
+      <div className="space-y-4 p-6 lg:p-8">
+        <p className="text-sm text-muted-foreground">Product not found or you don&apos;t have access.</p>
+        <Button asChild>
           <Link href="/dashboard/products">Back to products</Link>
         </Button>
       </div>
@@ -209,26 +195,21 @@ export default function ProductEditorPage({
     )
   }
 
-  const defaultTab = product.type === "coaching" ? "coaching" : "course"
+  const navItems: NavListItem[] = [
+    ...(product.type === "course"
+      ? [{ id: "content", label: "Curriculum", icon: BookOpen }]
+      : [{ id: "content", label: "Coaching", icon: FileText }]),
+    { id: "details", label: "Details", icon: Info },
+    { id: "settings", label: "Settings", icon: Settings },
+  ]
 
   return (
-    <div className="p-4 lg:p-8">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-            <Link href="/dashboard/products">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <div>
-            <h1 className="text-xl font-bold text-foreground font-display">
-              {product.title}
-            </h1>
-            <p className="text-sm text-muted-foreground capitalize">
-              {product.type} · {product.status}
-            </p>
-          </div>
-        </div>
+    <div className="space-y-4 p-6 lg:p-8">
+      <PageHeader
+        title={product.title}
+        back="/dashboard/products"
+        subtitle={`${product.type.charAt(0).toUpperCase() + product.type.slice(1)} · ${product.status.charAt(0).toUpperCase() + product.status.slice(1)}`}
+      >
         {product.status === "draft" && (
           <Button
             size="sm"
@@ -240,27 +221,18 @@ export default function ProductEditorPage({
             {updateProductMutation.isPending ? "Publishing…" : "Publish"}
           </Button>
         )}
-      </div>
+      </PageHeader>
 
-      <Tabs defaultValue={defaultTab} className="mt-8">
-        <TabsList>
-          {product.type === "course" && (
-            <TabsTrigger value="course">Course</TabsTrigger>
-          )}
-          {product.type === "coaching" && (
-            <TabsTrigger value="coaching">Coaching</TabsTrigger>
-          )}
-          <TabsTrigger value="details">Details</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
-        </TabsList>
+      {/* Body */}
+      <div className="flex gap-8">
+        <NavList items={navItems} value={section} onChange={setSection} />
 
-        {product.type === "course" && (
-          <TabsContent value="course" className="mt-6">
+        <div className="min-w-0 flex-1">
+          {/* Curriculum tab */}
+          {section === "content" && product.type === "course" && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-foreground">
-                  Curriculum
-                </h2>
+                <h2 className="text-sm font-semibold text-foreground">Curriculum</h2>
                 <Button
                   variant="outline"
                   size="sm"
@@ -272,21 +244,13 @@ export default function ProductEditorPage({
                   Add module
                 </Button>
               </div>
-
               {modules.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4">
-                  No modules yet. Add a module to start building your
-                  curriculum.
+                <p className="py-4 text-sm text-muted-foreground">
+                  No modules yet. Add a module to start building your curriculum.
                 </p>
               ) : (
-                <DndContext
-                  sensors={sensors}
-                  onDragEnd={handleModuleDragEnd}
-                >
-                  <SortableContext
-                    items={modules.map((m) => m.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
+                <DndContext sensors={sensors} onDragEnd={handleModuleDragEnd}>
+                  <SortableContext items={modules.map((m) => m.id)} strategy={verticalListSortingStrategy}>
                     {modules.map((mod) => (
                       <SortableModuleCard
                         key={mod.id}
@@ -294,19 +258,11 @@ export default function ProductEditorPage({
                         isExpanded={expandedModules.includes(mod.id)}
                         onToggle={() => toggleModule(mod.id)}
                         onAddLesson={() => setContentPickerModuleId(mod.id)}
-                        onRemoveLesson={(itemId) =>
-                          removeItemMutation.mutate(itemId)
-                        }
+                        onRemoveLesson={(itemId) => removeItemMutation.mutate(itemId)}
                         onDeleteModule={() => setDeleteModuleId(mod.id)}
-                        onUpdateModuleTitle={(moduleId, title) =>
-                          updateModuleMutation.mutate({ moduleId, title })
-                        }
-                        onUpdateLessonTitle={(itemId, title) =>
-                          updateModuleItemMutation.mutate({ itemId, title })
-                        }
-                        onReorderLessons={(moduleId, updates) =>
-                          reorderLessonsMutation.mutate({ moduleId, updates })
-                        }
+                        onUpdateModuleTitle={(moduleId, title) => updateModuleMutation.mutate({ moduleId, title })}
+                        onUpdateLessonTitle={(itemId, title) => updateModuleItemMutation.mutate({ itemId, title })}
+                        onReorderLessons={(moduleId, updates) => reorderLessonsMutation.mutate({ moduleId, updates })}
                         removePending={removeItemMutation.isPending}
                         updateModulePending={updateModuleMutation.isPending}
                         updateLessonPending={updateModuleItemMutation.isPending}
@@ -318,79 +274,70 @@ export default function ProductEditorPage({
                 </DndContext>
               )}
             </div>
-          </TabsContent>
-        )}
+          )}
 
-        {product.type === "coaching" && (
-          <TabsContent value="coaching" className="mt-6">
+          {/* Coaching tab */}
+          {section === "content" && product.type === "coaching" && (
             <CoachingTab
               product={product}
               onSaveCoaching={(input) => coachingMutation.mutate(input)}
               savePending={coachingMutation.isPending}
             />
-          </TabsContent>
-        )}
+          )}
 
-        <TabsContent value="details" className="mt-6">
-          <DetailsTab
-            product={product}
-            onSaveDetails={(input) => updateProductMutation.mutate(input)}
-            onCoverUpload={handleCoverUpload}
-            coverInputRef={coverInputRef}
-            savePending={updateProductMutation.isPending}
-          />
-        </TabsContent>
+          {/* Details tab */}
+          {section === "details" && (
+            <DetailsTab
+              product={product}
+              onSaveDetails={(input) => updateProductMutation.mutate(input)}
+              onCoverUpload={handleCoverUpload}
+              coverInputRef={coverInputRef}
+              savePending={updateProductMutation.isPending}
+            />
+          )}
 
-        <TabsContent value="settings" className="mt-6">
-          <div className="max-w-2xl space-y-4">
-            <div className="rounded-xl border border-border bg-card p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    Archive product
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Archived products are hidden from new offers but keep their existing
-                    enrollments and content.
-                  </p>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => updateProductMutation.mutate({ status: "archived" })}
-                  disabled={
-                    updateProductMutation.isPending || product.status === "archived"
+          {/* Settings tab */}
+          {section === "settings" && (
+            <div className="max-w-lg space-y-4">
+              <SectionCard
+                title="Archive product"
+                subtitle="Archived products are hidden from new offers but keep their existing enrollments and content."
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => updateProductMutation.mutate({ status: "archived" })}
+                    disabled={updateProductMutation.isPending || product.status === "archived"}
+                  >
+                    {product.status === "archived" ? "Archived" : "Archive"}
+                  </Button>
+                }
+              >
+                <span />
+              </SectionCard>
+
+              {product.status === "draft" && (
+                <SectionCard
+                  title="Delete product"
+                  subtitle="Only draft products can be deleted. This permanently removes all modules, lessons, and coaching details."
+                  action={
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setDeleteConfirmOpen(true)}
+                      disabled={deleteProductMutation.isPending}
+                    >
+                      Delete
+                    </Button>
                   }
                 >
-                  {product.status === "archived" ? "Archived" : "Archive"}
-                </Button>
-              </div>
+                  <span />
+                </SectionCard>
+              )}
             </div>
-
-            <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-destructive">
-                    Delete product
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Only draft products can be deleted. This permanently removes this
-                    product and all its data (modules, lessons, coaching details).
-                  </p>
-                </div>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => setDeleteConfirmOpen(true)}
-                  disabled={deleteProductMutation.isPending || product.status !== "draft"}
-                >
-                  Delete
-                </Button>
-              </div>
-            </div>
-          </div>
-        </TabsContent>
-      </Tabs>
+          )}
+        </div>
+      </div>
 
       <ProductContentPicker
         open={contentPickerModuleId !== null}
@@ -414,9 +361,8 @@ export default function ProductEditorPage({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete product</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete &quot;{product.title}&quot;? This
-              will remove all modules, lessons, and coaching details. This
-              action cannot be undone.
+              Are you sure you want to delete &quot;{product.title}&quot;? This will remove all
+              modules, lessons, and coaching details. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -498,8 +444,8 @@ function DetailsTab({
   }
 
   return (
-    <div className="max-w-2xl space-y-8">
-      <form onSubmit={handleSaveDetails} className="space-y-6">
+    <SectionCard title="Product details">
+      <form onSubmit={handleSaveDetails} className="max-w-2xl space-y-6">
         <div className="space-y-2">
           <Label htmlFor="details-title">Product name</Label>
           <Input
@@ -519,11 +465,7 @@ function DetailsTab({
         </div>
         <div className="space-y-2">
           <Label>Type</Label>
-          <Input
-            value={product.type}
-            disabled
-            className="capitalize bg-muted"
-          />
+          <Input value={product.type} disabled className="capitalize bg-muted" />
         </div>
         <div className="space-y-2">
           <Label htmlFor="details-status">Status</Label>
@@ -551,7 +493,7 @@ function DetailsTab({
             onChange={onCoverUpload}
           />
           <div
-            className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/30 p-10 cursor-pointer hover:bg-muted/50 transition-colors"
+            className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/30 p-10 transition-colors hover:bg-muted/50"
             onClick={() => coverInputRef.current?.click()}
           >
             {product.cover_image_url ? (
@@ -562,18 +504,14 @@ function DetailsTab({
                   alt="Cover"
                   className="max-h-40 rounded-lg object-cover"
                 />
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Click to change
-                </p>
+                <p className="mt-2 text-xs text-muted-foreground">Click to change</p>
               </>
             ) : (
               <>
                 <p className="text-sm font-medium text-muted-foreground">
                   Drop image here or click to upload
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  PNG, JPG up to 5MB
-                </p>
+                <p className="mt-1 text-xs text-muted-foreground">PNG, JPG up to 5MB</p>
               </>
             )}
           </div>
@@ -582,7 +520,7 @@ function DetailsTab({
           {savePending ? "Saving…" : "Save details"}
         </Button>
       </form>
-    </div>
+    </SectionCard>
   )
 }
 
@@ -631,11 +569,8 @@ function CoachingTab({
   }
 
   return (
-    <div className="max-w-2xl">
-      <form onSubmit={handleSaveCoaching} className="space-y-6">
-        <h3 className="text-sm font-semibold text-foreground">
-          Coaching details
-        </h3>
+    <SectionCard title="Coaching details">
+      <form onSubmit={handleSaveCoaching} className="max-w-2xl space-y-6">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="coaching-sessions">Number of sessions</Label>
@@ -644,9 +579,7 @@ function CoachingTab({
               type="number"
               min={0}
               value={sessionsCount}
-              onChange={(e) =>
-                setSessionsCount(parseInt(e.target.value, 10) || 0)
-              }
+              onChange={(e) => setSessionsCount(parseInt(e.target.value, 10) || 0)}
             />
           </div>
           <div className="space-y-2">
@@ -681,6 +614,6 @@ function CoachingTab({
           {savePending ? "Saving…" : "Save coaching details"}
         </Button>
       </form>
-    </div>
+    </SectionCard>
   )
 }

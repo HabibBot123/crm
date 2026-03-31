@@ -22,7 +22,7 @@ export async function handleInvoicePaid(
   const amountPaid = invoice.amount_paid ?? 0
   if (amountPaid <= 0) return
 
-  const price = amountPaid / 100
+  const price = amountPaid
   const currency = (invoice.currency ?? "eur").toLowerCase()
 
   // Resolve org + enrollment once (by subscription or by customer+account)

@@ -31,8 +31,11 @@ import { CreateSessionDialog } from "@/components/dashboard/coaching/create-sess
 import { PaginationControls } from "@/components/dashboard/pagination-controls"
 import { PaginationSummary } from "@/components/dashboard/pagination-summary"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { PageHeader } from "@/components/dashboard/page-header"
+import { RichListItem } from "@/components/dashboard/rich-list-item"
+import { LoadingRows } from "@/components/dashboard/loading-rows"
+import { EmptyState } from "@/components/dashboard/empty-state"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -92,13 +95,11 @@ export default function CoachingPage() {
   const packsTotalPages = Math.max(1, Math.ceil(packsTotal / PACKS_PAGE_SIZE))
   const sessionsTotalPages = Math.max(1, Math.ceil(sessionsTotal / SESSIONS_PAGE_SIZE))
 
-  // Reset paging when switching organization
   useEffect(() => {
     setPacksPage(1)
     setSessionsPage(1)
   }, [orgId])
 
-  // Clamp pages when total changes (e.g. after mutations)
   useEffect(() => {
     setPacksPage((p) => Math.min(p, packsTotalPages))
   }, [packsTotalPages])
@@ -111,22 +112,17 @@ export default function CoachingPage() {
 
   if (!currentOrganization && !orgLoading) {
     return (
-      <div className="p-4 lg:p-8">
+      <div className="space-y-4 p-6 lg:p-8">
         <p className="text-sm text-muted-foreground">Select an organization.</p>
       </div>
     )
   }
 
   return (
-    <div className="p-4 lg:p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground font-display">Coaching</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Assign coaches and manage sessions
-        </p>
-      </div>
+    <div className="space-y-4 p-6 lg:p-8">
+      <PageHeader title="Coaching" subtitle="Assign coaches and manage sessions" />
 
-      <Tabs defaultValue="coaching" className="space-y-6">
+      <Tabs defaultValue="coaching" className="space-y-4">
         <TabsList className="grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="coaching" className="gap-2">
             <MessageCircle className="h-4 w-4" />
@@ -138,109 +134,75 @@ export default function CoachingPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="coaching" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Coaching packs</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-14 animate-pulse rounded-lg bg-muted" />
-                  ))}
-                </div>
-              ) : packs.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No coaching packs for this organization.</p>
-              ) : (
-                <>
-                  <div className="space-y-3">
-                    {packs.map((pack) => (
-                      <PackRow
-                        key={pack.enrollment_product_id}
-                        pack={pack}
-                        organizationId={orgId}
-                        onAssign={(memberId) =>
-                          assignMutation.mutate({
-                            enrollmentProductId: pack.enrollment_product_id,
-                            organizationMemberId: memberId,
-                          })
-                        }
-                        onNewSession={
-                          pack.coach_full_name != null && pack.user_id != null
-                            ? () => setSessionDialogPack(pack)
-                            : undefined
-                        }
-                        assignPending={assignMutation.isPending}
-                      />
-                    ))}
-                  </div>
-                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
-                    <PaginationSummary
-                      page={packsPage}
-                      pageSize={PACKS_PAGE_SIZE}
-                      total={packsTotal}
-                    />
-                    <PaginationControls
-                      page={packsPage}
-                      pageSize={PACKS_PAGE_SIZE}
-                      total={packsTotal}
-                      onPageChange={setPacksPage}
-                    />
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
+        <TabsContent value="coaching" className="space-y-3">
+          {isLoading ? (
+            <LoadingRows count={3} />
+          ) : packs.length === 0 ? (
+            <EmptyState
+              icon={MessageCircle}
+              title="No coaching packs"
+              description="Coaching packs will appear here once clients enroll."
+            />
+          ) : (
+            <ul className="space-y-3">
+              {packs.map((pack) => (
+                <PackRow
+                  key={pack.enrollment_product_id}
+                  pack={pack}
+                  organizationId={orgId}
+                  onAssign={(memberId) =>
+                    assignMutation.mutate({
+                      enrollmentProductId: pack.enrollment_product_id,
+                      organizationMemberId: memberId,
+                    })
+                  }
+                  onNewSession={
+                    pack.coach_full_name != null && pack.user_id != null
+                      ? () => setSessionDialogPack(pack)
+                      : undefined
+                  }
+                  assignPending={assignMutation.isPending}
+                />
+              ))}
+            </ul>
+          )}
+          {packsTotal > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <PaginationSummary page={packsPage} pageSize={PACKS_PAGE_SIZE} total={packsTotal} />
+              <PaginationControls page={packsPage} pageSize={PACKS_PAGE_SIZE} total={packsTotal} onPageChange={setPacksPage} />
+            </div>
+          )}
         </TabsContent>
 
-        <TabsContent value="sessions" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Sessions</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {sessionsLoading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-12 animate-pulse rounded-lg bg-muted" />
-                  ))}
-                </div>
-              ) : sessions.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No sessions. Assign a coach to a pack, then create a session.
-                </p>
-              ) : (
-                <>
-                  <div className="space-y-2">
-                    {sessions.map((session) => (
-                      <SessionRow
-                        key={session.id}
-                        session={session}
-                        onComplete={(completed) =>
-                          completeMutation.mutate({ sessionId: session.id, completed })
-                        }
-                        completePending={completeMutation.isPending}
-                      />
-                    ))}
-                  </div>
-                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
-                    <PaginationSummary
-                      page={sessionsPage}
-                      pageSize={SESSIONS_PAGE_SIZE}
-                      total={sessionsTotal}
-                    />
-                    <PaginationControls
-                      page={sessionsPage}
-                      pageSize={SESSIONS_PAGE_SIZE}
-                      total={sessionsTotal}
-                      onPageChange={setSessionsPage}
-                    />
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
+        <TabsContent value="sessions" className="space-y-3">
+          {sessionsLoading ? (
+            <LoadingRows count={3} />
+          ) : sessions.length === 0 ? (
+            <EmptyState
+              icon={Calendar}
+              title="No sessions yet"
+              description="Assign a coach to a pack, then create a session."
+            />
+          ) : (
+            <ul className="space-y-3">
+              {sessions.map((session) => (
+                <SessionRow
+                  key={session.id}
+                  session={session}
+                  onComplete={(completed) =>
+                    completeMutation.mutate({ sessionId: session.id, completed })
+                  }
+                  completePending={completeMutation.isPending}
+                />
+              ))}
+            </ul>
+          )}
+          {sessionsTotal > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <PaginationSummary page={sessionsPage} pageSize={SESSIONS_PAGE_SIZE} total={sessionsTotal} />
+              <PaginationControls page={sessionsPage} pageSize={SESSIONS_PAGE_SIZE} total={sessionsTotal} onPageChange={setSessionsPage} />
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
@@ -284,8 +246,6 @@ function PackRow({
 }) {
   const [assignOpen, setAssignOpen] = useState(false)
   const [memberSearchInput, setMemberSearchInput] = useState("")
-  // Search "applied" value (drives the API call). We only update it on submit
-  // to avoid firing a request on each keystroke.
   const [memberSearch, setMemberSearch] = useState("")
 
   const handleAssignOpenChange = (open: boolean) => {
@@ -302,14 +262,14 @@ function PackRow({
   })
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border p-3">
+    <RichListItem>
       <div className="min-w-0 flex-1">
         <p className="font-medium text-foreground">{pack.product_title}</p>
         <p className="text-xs text-muted-foreground">
           {pack.user_full_name} · {pack.offer_title} · Started {formatDate(pack.enrollment_started_at)}
         </p>
         {pack.completion_total != null && (
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="mt-0.5 text-xs text-muted-foreground">
             {pack.completion_completed ?? 0} / {pack.completion_total} sessions ✓
           </p>
         )}
@@ -323,7 +283,7 @@ function PackRow({
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-[280px] p-0" align="end">
-              <div className="p-2 border-b border-border">
+              <div className="border-b border-border p-2">
                 <div className="flex items-center gap-2">
                   <div className="relative flex-1">
                     <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -332,11 +292,9 @@ function PackRow({
                       value={memberSearchInput}
                       onChange={(e) => setMemberSearchInput(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          setMemberSearch(memberSearchInput.trim())
-                        }
+                        if (e.key === "Enter") setMemberSearch(memberSearchInput.trim())
                       }}
-                      className="pl-8 h-9"
+                      className="h-9 pl-8"
                     />
                   </div>
                   <Button
@@ -369,7 +327,8 @@ function PackRow({
                         setMemberSearch("")
                       }}
                     >
-                      {m.display_name ?? m.user_id.slice(0, 8)} <span className="text-muted-foreground">({m.role})</span>
+                      {m.display_name ?? m.user_id.slice(0, 8)}{" "}
+                      <span className="text-muted-foreground">({m.role})</span>
                     </button>
                   ))
                 )}
@@ -379,12 +338,10 @@ function PackRow({
         )}
         {pack.coach_full_name && (
           <div className="flex flex-col items-end gap-1">
-            <span className="text-xs text-muted-foreground">
-              Coach: {pack.coach_full_name}
-            </span>
+            <span className="text-xs text-muted-foreground">Coach: {pack.coach_full_name}</span>
             {onNewSession ? (
-              <Button size="sm" variant="default" onClick={onNewSession}>
-                <Plus className="h-4 w-4 mr-1" />
+              <Button size="sm" onClick={onNewSession}>
+                <Plus className="mr-1 h-4 w-4" />
                 New session
               </Button>
             ) : (
@@ -399,7 +356,7 @@ function PackRow({
           </div>
         )}
       </div>
-    </div>
+    </RichListItem>
   )
 }
 
@@ -414,12 +371,12 @@ function SessionRow({
 }) {
   const isCompleted = session.completed_at != null
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border p-3 text-sm">
+    <RichListItem>
       <div className="min-w-0 flex-1">
         <p className="font-medium text-foreground">
           {session.product_title ?? "—"} · {session.user_full_name ?? "—"}
         </p>
-        <p className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+        <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span>
             {formatDate(session.scheduled_at)}, {formatDuration(session.duration_minutes)}
             {session.coach_display && ` with ${session.coach_display}`}
@@ -435,13 +392,13 @@ function SessionRow({
             href={session.meeting_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+            className="mt-1 flex items-center gap-1 text-xs text-primary hover:underline"
           >
             <Video className="h-3 w-3" /> Video link
           </a>
         )}
         {session.location && (
-          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+          <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
             <MapPin className="h-3 w-3" /> {session.location}
           </p>
         )}
@@ -456,11 +413,11 @@ function SessionRow({
             onClick={() => onComplete(true)}
             disabled={completePending}
           >
-            <Check className="h-4 w-4 mr-1" />
+            <Check className="mr-1 h-4 w-4" />
             Mark completed
           </Button>
         )}
       </div>
-    </div>
+    </RichListItem>
   )
 }

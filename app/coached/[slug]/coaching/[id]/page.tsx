@@ -11,6 +11,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { formatSessionDateTime, formatDuration } from "@/lib/coached"
 import type { CoachedCoachingSession } from "@/lib/services/coached"
+import { cn } from "@/lib/utils"
+
+/** Local map: session delivery → theme tokens (outline pill pattern). */
+const COACHED_DELIVERY_BADGE: Record<string, string> = {
+  remote: "border-chart-3/20 bg-chart-3/10 text-chart-3",
+  in_person: "border-chart-4/20 bg-chart-4/10 text-chart-4",
+  hybrid: "border-chart-5/20 bg-chart-5/10 text-chart-5",
+}
+
+function coachedDeliveryBadgeClass(mode: string): string {
+  const key = mode.toLowerCase()
+  return COACHED_DELIVERY_BADGE[key] ?? "border-border bg-muted text-muted-foreground"
+}
 
 export default function CoachedCoachingPage({
   params,
@@ -148,13 +161,19 @@ function SessionCard({ session, isPast }: { session: CoachedCoachingSession; isP
             {formatDuration(session.duration_minutes)}
           </span>
           {session.delivery_mode && (
-            <Badge variant="secondary" className="text-[10px] capitalize">
+            <Badge
+              variant="outline"
+              className={cn("text-[10px] font-normal capitalize", coachedDeliveryBadgeClass(session.delivery_mode))}
+            >
               {session.delivery_mode.replace("_", " ")}
             </Badge>
           )}
           {completed && (
-            <Badge className="bg-success/10 text-success border-success/20 text-[10px]">
-              <Check className="h-3 w-3 mr-0.5" />
+            <Badge
+              variant="outline"
+              className="border-success/20 bg-success/10 text-[10px] font-normal text-success normal-case"
+            >
+              <Check className="mr-0.5 h-3 w-3" />
               Completed
             </Badge>
           )}

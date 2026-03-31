@@ -3,16 +3,21 @@
 import { use, useState } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { useQuery } from "@tanstack/react-query"
-import { Lock, ArrowLeft, Loader2 } from "lucide-react"
+import { Lock, ArrowLeft, Loader2, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { getPublicOfferWithOrg, type PublicOfferWithOrgResponse } from "@/lib/services/organizations"
+import { usePublicOfferWithOrg } from "@/hooks/use-public-organization"
 import { formatAmountFromCents } from "@/lib/utils"
 
 type PageProps = {
   params: Promise<{ slug: string; offerId: string }>
+}
+
+function productIcon(type: string) {
+  if (type === "course") return "📖"
+  if (type === "coaching") return "🎯"
+  return "🧩"
 }
 
 export default function BuyOfferPage({ params }: PageProps) {
@@ -24,28 +29,11 @@ export default function BuyOfferPage({ params }: PageProps) {
   const [fullName, setFullName] = useState("")
   const [loading, setLoading] = useState(false)
 
-  const {
-    data,
-    isLoading: dataLoading,
-    error,
-  } = useQuery<PublicOfferWithOrgResponse | null>({
-    queryKey: ["public-offer", slug, offerId, variantId],
-    enabled: !!slug && !!offerId,
-    queryFn: async () => {
-      const numericOfferId = Number(offerId)
-      const numericVariantId = variantId ? Number(variantId) : null
-      if (typeof window === "undefined") return null
-      if (!slug || !Number.isFinite(numericOfferId) || numericOfferId <= 0) {
-        return null
-      }
-      return getPublicOfferWithOrg(
-        window.location.origin,
-        slug,
-        numericOfferId,
-        numericVariantId
-      )
-    },
-  })
+  const { data, isLoading: dataLoading, error } = usePublicOfferWithOrg(
+    slug,
+    offerId,
+    variantId
+  )
 
   const dataError =
     !slug || !offerId
@@ -95,6 +83,8 @@ export default function BuyOfferPage({ params }: PageProps) {
     }
   }
 
+  const primaryColor = data?.organization.branding?.primary_color ?? "#e07b39"
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border">
@@ -113,7 +103,7 @@ export default function BuyOfferPage({ params }: PageProps) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-2xl px-4 py-10">
+      <main className="mx-auto max-w-5xl px-4 py-10">
         {dataLoading ? (
           <div className="flex flex-col items-center justify-center gap-3 py-16">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -124,7 +114,7 @@ export default function BuyOfferPage({ params }: PageProps) {
             <p className="text-sm text-muted-foreground">{dataError}</p>
           </div>
         ) : data ? (
-          <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <section className="rounded-2xl border border-border bg-card/60 p-6 shadow-sm space-y-6">
               <div className="space-y-2">
                 <h1 className="text-xl font-semibold text-foreground">
@@ -183,15 +173,12 @@ export default function BuyOfferPage({ params }: PageProps) {
               <div className="flex items-baseline justify-between gap-4">
                 <div className="space-y-1">
                   <h2 className="text-lg font-semibold text-foreground">
-                    Review your pack before paying
+                    Review your offer before paying
                   </h2>
                 </div>
-                <p className="text-xs text-muted-foreground whitespace-nowrap">
-                  Total due on Stripe
-                </p>
               </div>
 
-              <div className="rounded-xl border border-border bg-background/60 p-4 space-y-4">
+              <div className="rounded-xl bg-background/60 space-y-4">
                 <h3 className="text-base font-semibold text-foreground">
                   {data.offer.title}
                 </h3>
@@ -201,42 +188,60 @@ export default function BuyOfferPage({ params }: PageProps) {
                   </p>
                 )}
 
-                <div className="flex gap-3">
-                  {data.organization.branding?.logo_url ? (
-                    <img
-                      src={data.organization.branding.logo_url}
-                      alt=""
-                      className="mt-0.5 h-8 w-8 rounded-lg border border-border object-cover"
-                    />
-                  ) : (
-                    <div
-                      className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-xs font-semibold text-muted-foreground"
-                      style={
-                        data.organization.branding?.primary_color
-                          ? {
-                              backgroundColor: `${data.organization.branding.primary_color}15`,
-                              color: data.organization.branding.primary_color,
-                            }
-                          : undefined
-                      }
+                <p className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                  Offer summary
+                </p>
+
+                {data.offer.description && (
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {data.offer.description}
+                  </p>
+                )}
+
+                {data.offer.key_features && data.offer.key_features.length > 0 && (
+                  <div className="space-y-2">
+                    <p
+                      className="text-xs font-semibold uppercase tracking-widest"
+                      style={{ color: primaryColor }}
                     >
-                      {data.organization.name
-                        .split(" ")
-                        .map((w) => w[0])
-                        .join("")
-                        .slice(0, 2)
-                        .toUpperCase()}
-                    </div>
-                  )}
-                  <div className="space-y-1">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                      Coach
+                      Key highlights
                     </p>
-                    <p className="text-sm font-semibold text-foreground">
-                      {data.organization.name}
-                    </p>
+                    <ul className="space-y-1">
+                      {data.offer.key_features.map((f, i) => (
+                        <li
+                          key={`${f}-${i}`}
+                          className="flex items-start gap-2 text-sm text-muted-foreground"
+                        >
+                          <Check className="mt-0.5 h-4 w-4" style={{ color: primaryColor }} />
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                </div>
+                )}
+
+                {data.offer.products && data.offer.products.length > 0 && (
+                  <div className="space-y-2">
+                    <p
+                      className="text-xs font-semibold uppercase tracking-widest"
+                      style={{ color: primaryColor }}
+                    >
+                      Products included
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {data.offer.products.map((p) => (
+                        <span
+                          key={p.id}
+                          className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-2 text-xs font-medium text-foreground"
+                          style={{ color: primaryColor }}
+                        >
+                          <span aria-hidden>{productIcon(p.type)}</span>
+                          {p.title}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
                   {data.offer.billing_type === "subscription" &&
@@ -282,6 +287,45 @@ export default function BuyOfferPage({ params }: PageProps) {
                       per payment
                     </p>
                   ))}
+
+                <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                    Coach
+                  </p>
+                  <div className="flex items-center gap-3">
+                    {data.organization.branding?.logo_url ? (
+                      <img
+                        src={data.organization.branding.logo_url}
+                        alt=""
+                        className="h-10 w-10 rounded-lg border border-border object-cover"
+                      />
+                    ) : (
+                      <div
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-sm font-semibold text-muted-foreground"
+                        style={{
+                          backgroundColor: `${primaryColor}15`,
+                          color: primaryColor,
+                        }}
+                      >
+                        {data.organization.name
+                          .split(" ")
+                          .map((w) => w[0])
+                          .join("")
+                          .slice(0, 2)
+                          .toUpperCase()}
+                      </div>
+                    )}
+                    <p className="text-sm font-semibold text-foreground">
+                      {data.organization.name}
+                    </p>
+                  </div>
+
+                  {data.organization.branding?.description && (
+                    <p className="text-sm leading-relaxed text-muted-foreground">
+                      {data.organization.branding.description}
+                    </p>
+                  )}
+                </div>
               </div>
             </section>
           </div>

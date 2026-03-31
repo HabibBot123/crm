@@ -4,13 +4,11 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { DollarSign, Users, ShoppingCart, TrendingUp, MessageCircle, Package } from "lucide-react"
+import { MessageCircle, Package, ShoppingCart, Users, TrendingUp, DollarSign } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
 import { useCurrentOrganization } from "@/components/providers/organization-provider"
 import { StatCard } from "@/components/dashboard/stat-card"
-import { PageHeader } from "@/components/dashboard/page-header"
 import { SectionCard } from "@/components/dashboard/section-card"
-import { GreetingBanner } from "@/components/dashboard/greeting-banner"
 import { EmptyState } from "@/components/dashboard/empty-state"
 import { UserAvatar } from "@/components/dashboard/user-avatar"
 import { Badge } from "@/components/ui/badge"
@@ -109,39 +107,46 @@ export default function DashboardPage() {
     )
   }
 
+  const today = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  })
+
+  const firstName = (user?.user_metadata?.full_name as string | undefined)
+    ?.trim()
+    .split(" ")[0] ?? null
+
   return (
-    <div className="space-y-6 p-4 lg:p-8">
-      <PageHeader
-        title="Overview"
-        subtitle="Your organization at a glance"
-      />
+    <div className="space-y-6 p-6 lg:p-8">
 
-      <GreetingBanner />
-
-      {/* Coaching CTA — only when relevant */}
-      {(stats.unassigned_coaching_count ?? 0) > 0 && (
-        <Link href="/dashboard/coaching">
-          <div className="flex items-center justify-between rounded-xl border border-primary/25 bg-primary/5 p-4 transition-colors hover:bg-primary/8">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                <MessageCircle className="h-4 w-4 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground">
-                  {stats.unassigned_coaching_count} coaching
-                  {stats.unassigned_coaching_count !== 1 ? "s" : ""} to assign
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Assign a coach to each pack to track sessions
-                </p>
-              </div>
+      {/* Page header */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
+            {firstName ? `Good to see you, ${firstName}` : "Overview"}
+          </h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {currentOrganization?.name && (
+              <span className="font-medium text-foreground">{currentOrganization.name} · </span>
+            )}
+            {today}
+          </p>
+        </div>
+        {(stats.unassigned_coaching_count ?? 0) > 0 && (
+          <Link href="/dashboard/coaching">
+            <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm transition-colors hover:bg-primary/10">
+              <MessageCircle className="h-4 w-4 text-primary" />
+              <span className="font-medium text-primary">
+                You have {stats.unassigned_coaching_count} coaching to assign
+              </span>
             </div>
-            <span className="text-sm font-medium text-primary">View →</span>
-          </div>
-        </Link>
-      )}
+          </Link>
+        )}
+      </div>
 
-      {/* KPI cards */}
+      {/* KPI strip */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Revenue"
@@ -150,34 +155,32 @@ export default function DashboardPage() {
             maximumFractionDigits: 2,
           })} €`}
           change={0}
-          icon={DollarSign}
-          iconColor="primary"
+          borderColor="primary"
         />
         <StatCard
           title="Total Clients"
           value={stats.total_clients.toString()}
           change={0}
-          icon={Users}
-          iconColor="success"
+          borderColor="success"
         />
         <StatCard
           title="Total Sales"
           value={stats.total_enrollments.toString()}
           change={0}
-          icon={ShoppingCart}
-          iconColor="warning"
+          borderColor="warning"
         />
         <StatCard
           title="Conversion Rate"
           value={`${conversionRate}%`}
           change={0}
-          icon={TrendingUp}
-          iconColor="accent"
+          borderColor="accent"
         />
       </div>
 
-      {/* Recent Sales + Top Products */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      {/* 65/35 split */}
+      <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+
+        {/* Left — Recent Sales table */}
         <SectionCard
           title="Recent Sales"
           action={
@@ -196,11 +199,14 @@ export default function DashboardPage() {
               description="Sales will appear here after purchases."
             />
           ) : (
-            <ul className="space-y-4">
+            <ul className="space-y-1">
               {recentSales.map((sale) => {
-                const name = sale.user_full_name || sale.buyer_email || "Unknown client"
+                const name = sale.user_full_name || sale.buyer_email || "Unknown"
                 return (
-                  <li key={sale.id} className="flex items-center gap-3">
+                  <li
+                    key={sale.id}
+                    className="flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-accent"
+                  >
                     <UserAvatar
                       name={sale.user_full_name}
                       email={sale.buyer_email}
@@ -209,18 +215,24 @@ export default function DashboardPage() {
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-foreground">{name}</p>
                       {sale.offer_title && (
-                        <p className="truncate text-xs text-muted-foreground">
-                          {sale.offer_title}
-                        </p>
+                        <p className="truncate text-xs text-muted-foreground">{sale.offer_title}</p>
                       )}
                     </div>
-                    <span className="shrink-0 text-sm font-semibold text-foreground">
-                      +{(sale.amount / 100).toLocaleString(undefined, {
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 2,
-                      })}{" "}
-                      {sale.currency.toUpperCase()}
-                    </span>
+                    <div className="shrink-0 text-right">
+                      <p className="text-sm font-semibold text-foreground">
+                        +{(sale.amount / 100).toLocaleString(undefined, {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 2,
+                        })}{" "}
+                        {sale.currency.toUpperCase()}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(sale.created_at).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </p>
+                    </div>
                   </li>
                 )
               })}
@@ -228,6 +240,7 @@ export default function DashboardPage() {
           )}
         </SectionCard>
 
+        {/* Right — Top Products */}
         <SectionCard
           title="Top Products"
           action={
@@ -246,16 +259,12 @@ export default function DashboardPage() {
               description="Products with enrollments will appear here."
             />
           ) : (
-            <ul className="space-y-4">
-              {topProducts.map((product) => (
+            <ul className="space-y-3">
+              {topProducts.map((product, i) => (
                 <li key={product.product_id} className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-xs font-bold text-primary">
-                    {product.type === "course"
-                      ? "CR"
-                      : product.type === "coaching"
-                        ? "CO"
-                        : "PR"}
-                  </div>
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-xs font-bold text-muted-foreground">
+                    {i + 1}
+                  </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-foreground">
                       {product.title}

@@ -20,6 +20,7 @@ import {
 import Link from "next/link"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/dashboard/status-badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -276,7 +277,12 @@ export default function CoachedProfilePage() {
                   <h3 className="text-sm font-semibold text-foreground">Enrollments</h3>
                 </div>
                 {enrollments.length > 0 && (
-                  <Badge variant="secondary" className="text-[10px]">{enrollments.length} enrollment{enrollments.length !== 1 ? "s" : ""}</Badge>
+                  <Badge
+                    variant="outline"
+                    className="border-chart-1/20 bg-chart-1/10 text-[10px] font-medium text-chart-1 normal-case"
+                  >
+                    {enrollments.length} enrollment{enrollments.length !== 1 ? "s" : ""}
+                  </Badge>
                 )}
               </div>
               {enrollmentsLoading ? (
@@ -297,7 +303,9 @@ export default function CoachedProfilePage() {
                         <p className="text-xs text-muted-foreground">
                           {en.organization_name} · {formatDate(en.started_at)}
                         </p>
-                        <Badge variant="outline" className="mt-1 text-[10px] capitalize">{en.status}</Badge>
+                        <div className="mt-1">
+                          <StatusBadge status={en.status} className="text-[10px] font-normal" />
+                        </div>
                       </div>
                       {en.stripe_customer_id && (
                         <Button
@@ -330,7 +338,12 @@ export default function CoachedProfilePage() {
                   <h3 className="text-sm font-semibold text-foreground">Invoices</h3>
                 </div>
                 {invoices.length > 0 && (
-                  <Badge variant="secondary" className="text-[10px]">{invoices.length} invoice{invoices.length !== 1 ? "s" : ""}</Badge>
+                  <Badge
+                    variant="outline"
+                    className="border-chart-1/20 bg-chart-1/10 text-[10px] font-medium text-chart-1 normal-case"
+                  >
+                    {invoices.length} invoice{invoices.length !== 1 ? "s" : ""}
+                  </Badge>
                 )}
               </div>
               {invoicesLoading ? (

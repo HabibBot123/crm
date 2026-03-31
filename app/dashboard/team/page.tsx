@@ -45,8 +45,12 @@ import type { TeamMember, TeamMemberRole } from "@/lib/services/team"
 import { canManageTeam, getMemberActionsPermissions } from "@/lib/permissions/team"
 import { PaginationControls } from "@/components/dashboard/pagination-controls"
 import { PaginationSummary } from "@/components/dashboard/pagination-summary"
-import { Skeleton } from "@/components/ui/skeleton"
 import { useAuth } from "@/hooks/use-auth"
+import { PageHeader } from "@/components/dashboard/page-header"
+import { SectionCard } from "@/components/dashboard/section-card"
+import { LoadingRows } from "@/components/dashboard/loading-rows"
+import { EmptyState } from "@/components/dashboard/empty-state"
+import { RichListItem } from "@/components/dashboard/rich-list-item"
 
 const roleIcons: Record<string, typeof Crown> = {
   owner: Crown,
@@ -60,7 +64,7 @@ const roleColors: Record<string, string> = {
   owner: "bg-warning/10 text-warning-foreground",
   admin: "bg-primary/10 text-primary",
   sales: "bg-success/10 text-success",
-  ambassador: "bg-accent/10 text-accent",
+  ambassador: "bg-chart-2/10 text-chart-2",
   member: "bg-muted text-foreground",
 }
 
@@ -110,189 +114,172 @@ export default function TeamPage() {
   const canConfirmRoleChange = canManage && changeRoleMemberId != null && changeRoleSelectedRole !== changeRoleCurrentRole
 
   return (
-    <div className="p-4 lg:p-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground font-display">Team</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {isLoading ? "Loading members…" : `${total} members and invitations`}
-          </p>
-        </div>
-      </div>
+    <div className="space-y-4 p-6 lg:p-8">
+      <PageHeader
+        title="Team"
+        subtitle={isLoading ? "Loading members…" : `${total} member${total !== 1 ? "s" : ""} and invitations`}
+      />
 
-      <div className="mt-8 rounded-xl border border-border bg-card p-6">
-        <h3 className="text-sm font-semibold text-foreground">Invite team member</h3>
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-          <div className="flex-1 space-y-1">
-            <Label htmlFor="inviteEmail" className="sr-only">
-              Email
-            </Label>
-            <Input
-              id="inviteEmail"
-              placeholder="teammate@example.com"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
+      {canManage && (
+        <SectionCard title="Invite team member" subtitle="They will receive an email for sign in or sign up and will">
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="flex-1">
+              <Label htmlFor="inviteEmail" className="sr-only">Email</Label>
+              <Input
+                id="inviteEmail"
+                placeholder="teammate@example.com"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <Select value={role} onValueChange={setRole}>
+              <SelectTrigger className="w-full sm:w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="sales">Sales</SelectItem>
+                <SelectItem value="ambassador">Ambassador</SelectItem>
+                <SelectItem value="member">Member</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button className="gap-2" onClick={handleInvite} disabled={inviteMutation.isPending || !email || !orgId}>
+              <UserPlus className="h-4 w-4" />
+              {inviteMutation.isPending ? "Sending…" : "Invite"}
+            </Button>
           </div>
-          <Select value={role} onValueChange={setRole}>
-            <SelectTrigger className="w-full sm:w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="sales">Sales</SelectItem>
-              <SelectItem value="ambassador">Ambassador</SelectItem>
-              <SelectItem value="member">Member</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button className="gap-2" onClick={handleInvite} disabled={inviteMutation.isPending || !email || !orgId}>
-            <UserPlus className="h-4 w-4" />
-            {inviteMutation.isPending ? "Sending…" : "Invite"}
-          </Button>
-        </div>
-      </div>
+        </SectionCard>
+      )}
 
-      <div className="mt-6 space-y-3">
-        {isLoading &&
-          Array.from({ length: 4 }).map((_, idx) => (
-            <div
-              key={`skeleton-${idx}`}
-              className="flex items-center gap-4 rounded-xl border border-border bg-card p-4"
-            >
-              <div className="h-10 w-10 rounded-full bg-muted-foreground/20 animate-pulse" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-32 bg-muted-foreground/20" />
-                <Skeleton className="h-3 w-40 bg-muted-foreground/20" />
-              </div>
-              <Skeleton className="h-6 w-20 rounded-full bg-muted-foreground/20" />
-              <Skeleton className="hidden h-3 w-24 bg-muted-foreground/20 sm:block" />
-              <div className="h-8 w-8 rounded-full bg-transparent" />
-            </div>
-          ))}
+      {isLoading && <LoadingRows count={4} />}
 
-        {!isLoading && members.map((member) => {
-          const RoleIcon = roleIcons[member.role] ?? Shield
-          const isCurrentUser = user && member.user_id === user.id
-          const memberActions = getMemberActionsPermissions({
-            actorRole: canManage ? actorRole : null,
-            member,
-            isSelf: !!isCurrentUser,
-          })
-          const canAnyAction =
-            memberActions.canCancelInvitation ||
-            memberActions.canChangeMemberRole ||
-            memberActions.canRevokeAccess
-          const currentUserName = (user?.user_metadata?.full_name as string | undefined) ?? null
+      {!isLoading && members.length === 0 && (
+        <EmptyState
+          icon={UserPlus}
+          title="No team members yet"
+          description="Invite your first teammate using the form above."
+        />
+      )}
 
-          const primary = isCurrentUser
-            ? currentUserName ?? user?.email ?? "You"
-            : member.full_name ?? member.email ?? "Pending invitation"
+      {!isLoading && members.length > 0 && (
+        <ul className="space-y-3">
+          {members.map((member) => {
+            const RoleIcon = roleIcons[member.role] ?? Shield
+            const isCurrentUser = user && member.user_id === user.id
+            const memberActions = getMemberActionsPermissions({
+              actorRole: canManage ? actorRole : null,
+              member,
+              isSelf: !!isCurrentUser,
+            })
+            const canAnyAction =
+              memberActions.canCancelInvitation ||
+              memberActions.canChangeMemberRole ||
+              memberActions.canRevokeAccess
+            const currentUserName = (user?.user_metadata?.full_name as string | undefined) ?? null
 
-          const secondary = isCurrentUser
-            ? user?.email ?? null
-            : member.email ?? null
-          return (
-            <div
-              key={member.id}
-              className="flex items-center gap-4 rounded-xl border border-border bg-card p-4"
-            >
-              <Avatar className="h-10 w-10">
-                <AvatarFallback className="bg-secondary text-secondary-foreground text-sm">
-                  {primary.charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-foreground">
-                    {primary}
-                  </span>
-                  {member.role === "owner" && <Crown className="h-3.5 w-3.5 text-warning" />}
+            const primary = isCurrentUser
+              ? currentUserName ?? user?.email ?? "You"
+              : member.full_name ?? member.email ?? "Pending invitation"
+
+            const secondary = isCurrentUser
+              ? user?.email ?? null
+              : member.email ?? null
+
+            return (
+              <RichListItem key={member.id}>
+                <Avatar className="h-9 w-9 shrink-0">
+                  <AvatarFallback className="bg-secondary text-secondary-foreground text-sm">
+                    {primary.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate text-sm font-medium text-foreground">{primary}</span>
+                    {member.role === "owner" && <Crown className="h-3.5 w-3.5 shrink-0 text-warning" />}
+                    {isCurrentUser && member.status === "active" && (
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        You
+                      </span>
+                    )}
+                  </div>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {member.status === "invited" &&
+                      `Invited on ${member.invited_at ? new Date(member.invited_at).toLocaleDateString("en-US") : ""}`}
+                    {member.status === "active" && secondary}
+                    {member.status === "revoked" &&
+                      `Access revoked${member.revoked_at ? ` on ${new Date(member.revoked_at).toLocaleDateString("en-US")}` : ""}`}
+                  </p>
                 </div>
-                <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                  {member.status === "invited" &&
-                    `Invited on ${
-                      member.invited_at ? new Date(member.invited_at).toLocaleDateString("en-US") : ""
-                    }`}
-                  {member.status === "active" && secondary}
+                <Badge className={cn("shrink-0 text-xs capitalize gap-1.5", roleColors[member.role] ?? roleColors.member)}>
+                  <RoleIcon className="h-3 w-3" />
+                  {member.role}
+                </Badge>
+                <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">
+                  {member.status === "invited" && "Invitation pending"}
+                  {member.status === "active" &&
+                    (member.accepted_at
+                      ? `Joined ${new Date(member.accepted_at).toLocaleDateString("en-US", { month: "short", year: "numeric" })}`
+                      : "")}
                   {member.status === "revoked" &&
-                    `Access revoked${member.revoked_at ? ` on ${new Date(member.revoked_at).toLocaleDateString("en-US")}` : ""}`}
-                  {isCurrentUser && member.status === "active" && (
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                      You
-                    </span>
-                  )}
-                </p>
-              </div>
-              <Badge className={cn("text-xs capitalize gap-1.5", roleColors[member.role] ?? roleColors.member)}>
-                <RoleIcon className="h-3 w-3" />
-                {member.role}
-              </Badge>
-              <span className="hidden text-xs text-muted-foreground sm:block">
-                {member.status === "invited" && "Invitation pending"}
-                {member.status === "active" &&
-                  (member.accepted_at
-                    ? `Joined ${new Date(member.accepted_at).toLocaleDateString("en-US", {
-                        month: "short",
-                        year: "numeric",
-                      })}`
-                    : "")}
-                {member.status === "revoked" &&
-                  (member.revoked_at
-                    ? `Revoked ${new Date(member.revoked_at).toLocaleDateString("en-US", {
-                        month: "short",
-                        year: "numeric",
-                      })}`
-                    : "Access revoked")}
-              </span>
-              {canAnyAction && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    {memberActions.canCancelInvitation && (
-                      <DropdownMenuItem
-                        className="text-destructive"
-                        onSelect={() => setCancelInvitationMemberId(member.id)}
-                        disabled={cancelInvitationMutation.isPending}
-                      >
-                        Cancel invitation
-                      </DropdownMenuItem>
-                    )}
+                    (member.revoked_at
+                      ? `Revoked ${new Date(member.revoked_at).toLocaleDateString("en-US", { month: "short", year: "numeric" })}`
+                      : "Access revoked")}
+                </span>
+                {canAnyAction && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {memberActions.canCancelInvitation && (
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onSelect={() => setCancelInvitationMemberId(member.id)}
+                          disabled={cancelInvitationMutation.isPending}
+                        >
+                          Cancel invitation
+                        </DropdownMenuItem>
+                      )}
+                      {memberActions.canChangeMemberRole && (
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            setChangeRoleMemberId(member.id)
+                            setChangeRoleMemberLabel(primary)
+                            setChangeRoleCurrentRole(member.role)
+                            const initialSelectedRole = roleOptions.find((r) => r !== member.role) ?? roleOptions[0]
+                            setChangeRoleSelectedRole(initialSelectedRole)
+                          }}
+                        >
+                          Change role
+                        </DropdownMenuItem>
+                      )}
+                      {memberActions.canRevokeAccess && (
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onSelect={() => setRevokeAccessMemberId(member.id)}
+                          disabled={revokeAccessMutation.isPending}
+                        >
+                          Revoke access
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </RichListItem>
+            )
+          })}
+        </ul>
+      )}
 
-                    {memberActions.canChangeMemberRole && (
-                      <DropdownMenuItem
-                        onSelect={() => {
-                          setChangeRoleMemberId(member.id)
-                          setChangeRoleMemberLabel(primary)
-                          setChangeRoleCurrentRole(member.role)
-                          const initialSelectedRole = roleOptions.find((r) => r !== member.role) ?? roleOptions[0]
-                          setChangeRoleSelectedRole(initialSelectedRole)
-                        }}
-                      >
-                        Change role
-                      </DropdownMenuItem>
-                    )}
-
-                    {memberActions.canRevokeAccess && (
-                      <DropdownMenuItem
-                        className="text-destructive"
-                        onSelect={() => setRevokeAccessMemberId(member.id)}
-                        disabled={revokeAccessMutation.isPending}
-                      >
-                        Revoke access
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-            </div>
-          )
-        })}
-      </div>
+      {total > 0 && !isLoading && (
+        <div className="flex items-center justify-between">
+          <PaginationSummary page={page} pageSize={pageSize} total={total} />
+          <PaginationControls page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
+        </div>
+      )}
 
       {/* Cancel invitation confirmation */}
       <AlertDialog
@@ -425,15 +412,6 @@ export default function TeamPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="mt-4 flex items-center justify-between">
-        <PaginationSummary page={page} pageSize={pageSize} total={total} />
-        <PaginationControls
-          page={page}
-          pageSize={pageSize}
-          total={total}
-          onPageChange={setPage}
-        />
-      </div>
     </div>
   )
 }
