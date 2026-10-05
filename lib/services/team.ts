@@ -3,7 +3,16 @@ import { sendInviteTeamMemberEmail } from "@/lib/email/workflows/send-invite-tea
 
 export type TeamMemberStatus = "invited" | "active" | "revoked"
 
-export type TeamMemberRole = "owner" | "admin" | "sales" | "ambassador" | "member"
+export type TeamMemberRole = "owner" | "admin" | "sales" | "ambassador" | "coach" | "member"
+
+export type MemberCommissionDefaults = {
+  default_commission_rate_sales: number | null
+  default_commission_fixed_sales: number | null
+  default_commission_rate_ambassador: number | null
+  default_commission_fixed_ambassador: number | null
+  default_commission_rate_coach: number | null
+  default_commission_fixed_coach: number | null
+}
 
 export type TeamMember = {
   id: number
@@ -17,7 +26,7 @@ export type TeamMember = {
   accepted_at: string | null
   revoked_at: string | null
   created_at: string
-}
+} & MemberCommissionDefaults
 
 export type TeamMembersPage = {
   items: TeamMember[]
@@ -29,6 +38,8 @@ export type FetchTeamMembersParams = {
   page: number
   pageSize: number
   search?: string
+  roles?: TeamMemberRole[]
+  status?: TeamMemberStatus
 }
 
 export type TeamInvitationInfo = {
@@ -40,12 +51,18 @@ export type TeamInvitationInfo = {
 export async function fetchTeamMembers(
   params: FetchTeamMembersParams
 ): Promise<TeamMembersPage> {
-  const { organizationId, page, pageSize, search: searchTerm } = params
+  const { organizationId, page, pageSize, search: searchTerm, roles, status } = params
   const searchParams = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
   })
   if (searchTerm?.trim()) searchParams.set("search", searchTerm.trim())
+  if (roles != null && roles.length > 0) {
+    searchParams.set("roles", roles.join(","))
+  }
+  if (status != null) {
+    searchParams.set("status", status)
+  }
 
   const res = await fetch(`/api/organizations/${organizationId}/team?${searchParams.toString()}`, {
     method: "GET",
@@ -86,6 +103,12 @@ export type InviteTeamMemberInput = {
   organizationId: number
   email: string
   role: Exclude<TeamMemberRole, "owner">
+  defaultCommissionRateSales?: number | null
+  defaultCommissionFixedSales?: number | null
+  defaultCommissionRateAmbassador?: number | null
+  defaultCommissionFixedAmbassador?: number | null
+  defaultCommissionRateCoach?: number | null
+  defaultCommissionFixedCoach?: number | null
 }
 
 export async function inviteTeamMember(
@@ -111,6 +134,12 @@ export async function inviteTeamMember(
     status: "invited",
     invited_at: new Date().toISOString(),
     invitation_token: invitationToken,
+    default_commission_rate_sales: input.defaultCommissionRateSales ?? null,
+    default_commission_fixed_sales: input.defaultCommissionFixedSales ?? null,
+    default_commission_rate_ambassador: input.defaultCommissionRateAmbassador ?? null,
+    default_commission_fixed_ambassador: input.defaultCommissionFixedAmbassador ?? null,
+    default_commission_rate_coach: input.defaultCommissionRateCoach ?? null,
+    default_commission_fixed_coach: input.defaultCommissionFixedCoach ?? null,
   })
 
   if (error) {
@@ -159,33 +188,41 @@ export type CancelTeamInvitationInput = {
   requesterUserId: string
 }
 
-async function assertRequesterIsOwnerOrAdmin(
+async function assertRequesterHasCapability(
   supabase: SupabaseClient,
   organizationId: number,
-  requesterUserId: string
+  capability: "team.invite" | "team.manage_roles" | "team.revoke"
 ): Promise<void> {
-  const { data, error } = await supabase
-    .from("organization_members")
-    .select("status, role")
-    .eq("organization_id", organizationId)
-    .eq("user_id", requesterUserId)
-    .maybeSingle()
-
-  if (error) throw new Error("Failed to verify your membership.")
-  if (!data || data.status !== "active") throw new Error("You are not an active member of this organization.")
-
-  if (data.role !== "owner" && data.role !== "admin") {
-    throw new Error("Only owner or admin can manage team members.")
-  }
+  const { data, error } = await supabase.rpc("has_org_capability", {
+    p_organization_id: organizationId,
+    p_capability: capability,
+  })
+  if (error) throw new Error("Failed to verify your permissions.")
+  if (data !== true) throw new Error("You don't have permission to manage team members.")
 }
 
 export async function cancelTeamInvitation(
   supabase: SupabaseClient,
   input: CancelTeamInvitationInput
 ): Promise<void> {
-  const { organizationId, memberId, requesterUserId } = input
+  const { organizationId, memberId } = input
 
-  await assertRequesterIsOwnerOrAdmin(supabase, organizationId, requesterUserId)
+  const [inviteResult, revokeResult] = await Promise.all([
+    supabase.rpc("has_org_capability", {
+      p_organization_id: organizationId,
+      p_capability: "team.invite",
+    }),
+    supabase.rpc("has_org_capability", {
+      p_organization_id: organizationId,
+      p_capability: "team.revoke",
+    }),
+  ])
+  if (inviteResult.error || revokeResult.error) {
+    throw new Error("Failed to verify your permissions.")
+  }
+  if (inviteResult.data !== true && revokeResult.data !== true) {
+    throw new Error("You don't have permission to manage team members.")
+  }
 
   const { data: target, error: targetError } = await supabase
     .from("organization_members")
@@ -218,9 +255,9 @@ export async function changeTeamMemberRole(
   supabase: SupabaseClient,
   input: ChangeTeamMemberRoleInput
 ): Promise<void> {
-  const { organizationId, memberId, role, requesterUserId } = input
+  const { organizationId, memberId, role } = input
 
-  await assertRequesterIsOwnerOrAdmin(supabase, organizationId, requesterUserId)
+  await assertRequesterHasCapability(supabase, organizationId, "team.manage_roles")
 
   const { data: target, error: targetError } = await supabase
     .from("organization_members")
@@ -255,7 +292,7 @@ export async function revokeTeamAccess(
 ): Promise<void> {
   const { organizationId, memberId, requesterUserId } = input
 
-  await assertRequesterIsOwnerOrAdmin(supabase, organizationId, requesterUserId)
+  await assertRequesterHasCapability(supabase, organizationId, "team.revoke")
 
   const { data: target, error: targetError } = await supabase
     .from("organization_members")
@@ -278,5 +315,42 @@ export async function revokeTeamAccess(
     .eq("id", memberId)
 
   if (updateError) throw new Error("Failed to revoke access.")
+}
+
+export type UpdateMemberCommissionDefaultsInput = {
+  organizationId: number
+  memberId: number
+  requesterUserId: string
+  defaultCommissionRateSales: number | null
+  defaultCommissionFixedSales: number | null
+  defaultCommissionRateAmbassador: number | null
+  defaultCommissionFixedAmbassador: number | null
+  defaultCommissionRateCoach: number | null
+  defaultCommissionFixedCoach: number | null
+}
+
+export async function updateMemberCommissionDefaults(
+  supabase: SupabaseClient,
+  input: UpdateMemberCommissionDefaultsInput
+): Promise<void> {
+  const { organizationId, memberId } = input
+
+  await assertRequesterHasCapability(supabase, organizationId, "team.manage_roles")
+
+  const { error } = await supabase
+    .from("organization_members")
+    .update({
+      default_commission_rate_sales: input.defaultCommissionRateSales,
+      default_commission_fixed_sales: input.defaultCommissionFixedSales,
+      default_commission_rate_ambassador: input.defaultCommissionRateAmbassador,
+      default_commission_fixed_ambassador: input.defaultCommissionFixedAmbassador,
+      default_commission_rate_coach: input.defaultCommissionRateCoach,
+      default_commission_fixed_coach: input.defaultCommissionFixedCoach,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("organization_id", organizationId)
+    .eq("id", memberId)
+
+  if (error) throw new Error("Failed to update commission defaults.")
 }
 

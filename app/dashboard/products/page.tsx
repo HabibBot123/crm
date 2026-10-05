@@ -33,6 +33,8 @@ import type { Product } from "@/lib/services/products"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { useArchiveProduct, useDeleteProduct, useProducts } from "@/hooks/use-products"
+import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
+import { NoAccessState } from "@/components/dashboard/no-access-state"
 
 const statusStyles: Record<string, string> = {
   published: "bg-success/10 text-success",
@@ -51,12 +53,10 @@ export default function ProductsPage() {
     currentOrganization,
   } = useCoachAccessGuard({
     requireOrg: true,
-    requireStripe: true,
     noOrgMessage: "Select an organization to view products.",
-    stripeDescription:
-      "To create and sell products, you need to complete Stripe Connect onboarding for this organization.",
-    stripeUseRouter: true,
   })
+  const { can, isLoading: capsLoading } = useOrgCapabilities()
+  const canManageCatalog = can("catalog.manage")
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
   const [page, setPage] = useState(1)
 
@@ -83,6 +83,15 @@ export default function ProductsPage() {
       <div className="space-y-4 p-6 lg:p-8">
         {guardContent}
       </div>
+    )
+  }
+
+  if (!capsLoading && !canManageCatalog) {
+    return (
+      <NoAccessState
+        title="Products"
+        description="You don’t have permission to manage products with your role."
+      />
     )
   }
 

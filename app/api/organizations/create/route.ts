@@ -49,6 +49,7 @@ export async function POST(request: Request) {
       slug: slugValue,
       name: nameValue,
       owner_id: user.id,
+      mode: "solo",
     })
     .select("id")
     .single()

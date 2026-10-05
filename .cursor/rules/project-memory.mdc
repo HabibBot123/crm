@@ -1,0 +1,39 @@
+---
+description: Mémoire projet CoachStack — lire et maintenir docs/
+alwaysApply: true
+---
+
+# Mémoire projet (CoachStack)
+
+## Au début d’une conversation non triviale
+
+1. Lire `AGENTS.md` et les fichiers `docs/` pertinents (`00-overview`, `03-features`, `04-decisions`, **`06-database`** si DB/RLS/RPC).
+2. Traiter `docs/` comme source de vérité vivante. `APP_OVERVIEW.md` = détail routes/entités **as-built** (peut être dépassé si une décision plus récente est dans `docs/`).
+3. Schéma / triggers / vues / RPC : **`docs/06-database.md`**. Ne pas se fier à `supabase/migrations/` (vide / trompeur). Enrichir via MCP Supabase.
+4. Si la tâche est produit / vision / pivot : **ne pas coder** ; discuter et noter dans `docs/`.
+
+## Quand une info durable apparaît
+
+Dans la **même session**, sans attendre qu’on le demande :
+
+- Produit / ICP / positionnement → `docs/00-overview.md`
+- Stack / libs / infra → `docs/01-tech-stack.md`
+- Structure / patterns → `docs/02-architecture.md`
+- Feature add/change/status → `docs/03-features.md`
+- Décision figée → `docs/04-decisions.md`
+- Tables / vues / triggers / RPC / contrats DB → `docs/06-database.md`
+- Toujours ajouter 3–6 lignes en haut de `docs/05-session-log.md` (date, décisions, suite)
+
+## Ne pas écrire dans docs/
+
+- Debug jetable, logs bruts, brainstorms non retenus
+- Secrets, clés API, tokens, contenus `.env`
+- Pavés qui dupliquent tout `APP_OVERVIEW.md` — pointer vers lui plutôt
+
+## Conflits
+
+Si l’utilisateur contredit `docs/` : **corriger `docs/` immédiatement**, puis agir.
+
+## Reprise post-pause
+
+Tant que `docs/04-decisions.md` section “Reprise” contient des items “À décider”, éviter les refactors larges / pivots sans accord explicite de Habib.

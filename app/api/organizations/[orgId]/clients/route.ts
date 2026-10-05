@@ -1,8 +1,8 @@
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { assertOrgCapability } from "@/lib/api-helpers/assert-org-capability"
 import {
   badRequest,
-  forbidden,
   ok,
   unauthorized,
   serverError,
@@ -24,6 +24,17 @@ function escapeIlike(q: string): string {
     .replace(/%/g, "\\%")
     .replace(/_/g, "\\_")
     .replace(/'/g, "''")
+}
+
+/** PostgREST may return embedded `profiles` as one row or an array. */
+function fullNameFromProfilesRelation(relation: unknown): string | null {
+  if (relation == null) return null
+  const row = Array.isArray(relation) ? relation[0] : relation
+  if (row == null || typeof row !== "object" || !("full_name" in row)) return null
+  const name = row.full_name
+  if (name == null) return null
+  if (typeof name === "string") return name
+  return String(name)
 }
 
 export async function GET(request: Request, context: RouteContext) {
@@ -54,20 +65,8 @@ export async function GET(request: Request, context: RouteContext) {
     return unauthorized("Unauthorized")
   }
 
-  const { data: membership, error: membershipError } = await supabase
-    .from("organization_members")
-    .select("id, status")
-    .eq("organization_id", organizationId)
-    .eq("user_id", user.id)
-    .maybeSingle()
-
-  if (membershipError) {
-    return serverError("Unable to verify membership", membershipError.message)
-  }
-
-  if (!membership || membership.status !== "active") {
-    return forbidden("You are not an active member of this organization.")
-  }
+  const access = await assertOrgCapability(supabase, organizationId, "clients.view")
+  if (!access.ok) return access.response
 
   const admin = createAdminClient()
 
@@ -76,7 +75,7 @@ export async function GET(request: Request, context: RouteContext) {
     let enrollmentsQuery = admin
       .from("enrollments")
       .select(
-        "id, organization_id, offer_id, user_id, buyer_email, status, started_at, expires_at, created_at, updated_at, offers(title), users(full_name, email)"
+        "id, organization_id, offer_id, user_id, buyer_email, status, started_at, expires_at, created_at, updated_at, offers(title), profiles(full_name)"
       )
       .eq("organization_id", organizationId)
       .order("started_at", { ascending: false })
@@ -105,7 +104,7 @@ export async function GET(request: Request, context: RouteContext) {
       created_at: string
       updated_at: string
       offers: { title: string } | { title: string }[] | null
-      users: { full_name: string | null; email: string | null } | { full_name: string | null; email: string | null }[] | null
+      profiles: { full_name: string | null } | { full_name: string | null }[] | null
     }>
 
     if (enrollments.length === 0) {
@@ -114,19 +113,16 @@ export async function GET(request: Request, context: RouteContext) {
 
     const rows: ClientEnrollmentRow[] = enrollments.map((e) => {
       const offer = Array.isArray(e.offers) ? e.offers[0] : e.offers
-      const user = Array.isArray(e.users) ? e.users[0] : e.users
       const offerTitle = offer?.title ?? ""
-      const fullName = user?.full_name ?? null
-      const userEmail = user?.email ?? null
+      const fullName = fullNameFromProfilesRelation(e.profiles)
       return {
         organization_id: e.organization_id,
         enrollment_id: e.id,
         offer_id: e.offer_id,
         offer_title: offerTitle,
         user_id: e.user_id,
-        buyer_email: e.buyer_email,
         client_name: fullName,
-        client_email: userEmail,
+        client_email: e.buyer_email,
         client_display: fullName ?? e.buyer_email ?? "—",
         enrollment_status: e.status as ClientEnrollmentRow["enrollment_status"],
         enrollment_started_at: e.started_at,

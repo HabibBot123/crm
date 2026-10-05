@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import type { SupabaseClient } from "@supabase/supabase-js"
-import { badRequest, forbidden, notFound } from "@/lib/api-helpers/api-response"
+import { assertOrgCapability } from "@/lib/api-helpers/assert-org-capability"
+import { badRequest, notFound } from "@/lib/api-helpers/api-response"
 
 export type ProductAccessData = {
   user: { id: string }
@@ -8,8 +9,7 @@ export type ProductAccessData = {
 }
 
 /**
- * Validates that the user is authenticated and has access to the product
- * (member of the product's organization). Use in product API routes.
+ * Validates auth membership + `catalog.manage` for the product's organization.
  */
 export async function validateProductAccess(
   supabase: SupabaseClient,
@@ -36,23 +36,19 @@ export async function validateProductAccess(
     }
   }
 
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id")
-    .eq("user_id", userId)
-    .eq("status", "active")
-    .eq("organization_id", product.organization_id)
-    .maybeSingle()
-
-  if (!membership) {
-    return { ok: false, response: forbidden("Forbidden") }
+  const organizationId = product.organization_id
+  if (typeof organizationId !== "number" || !Number.isFinite(organizationId)) {
+    return { ok: false, response: notFound("Product not found") }
   }
+
+  const access = await assertOrgCapability(supabase, organizationId, "catalog.manage")
+  if (!access.ok) return { ok: false, response: access.response }
 
   return {
     ok: true,
     data: {
       user: { id: userId },
-      product: product as { id: number; organization_id: number },
+      product: { id: product.id, organization_id: organizationId },
     },
   }
 }

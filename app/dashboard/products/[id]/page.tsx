@@ -50,6 +50,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useCoachAccessGuard } from "@/hooks/use-access-guard"
+import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
+import { NoAccessState } from "@/components/dashboard/no-access-state"
 import { useAuth } from "@/hooks/use-auth"
 import {
   type ProductWithDetails,
@@ -85,11 +87,10 @@ export default function ProductEditorPage({
   const { supabase } = useAuth()
   const { canAccess, guardContent, currentOrganization } = useCoachAccessGuard({
     requireOrg: true,
-    requireStripe: true,
     noOrgMessage: "Select an organization to edit products.",
-    stripeDescription:
-      "To edit products, you need to complete Stripe Connect onboarding for this organization.",
   })
+  const { can, isLoading: capsLoading } = useOrgCapabilities()
+  const canManageCatalog = can("catalog.manage")
   const productId = Number(id)
   const [section, setSection] = useState<string>("content")
   const [expandedModules, setExpandedModules] = useState<number[]>([])
@@ -167,6 +168,15 @@ export default function ProductEditorPage({
 
   if (!canAccess && guardContent) {
     return <div className="space-y-4 p-6 lg:p-8">{guardContent}</div>
+  }
+
+  if (!capsLoading && !canManageCatalog) {
+    return (
+      <NoAccessState
+        title="Products"
+        description="You don’t have permission to manage products with your role."
+      />
+    )
   }
 
   if (isLoading || product === undefined) {

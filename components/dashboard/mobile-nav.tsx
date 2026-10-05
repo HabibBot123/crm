@@ -3,18 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
-import {
-  LayoutDashboard,
-  Package,
-  Tag,
-  Users,
-  FileText,
-  UserPlus,
-  Settings,
-  Menu,
-  X,
-  Palette,
-} from "lucide-react"
+import { Menu, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
@@ -22,23 +11,28 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { useAuth } from "@/hooks/use-auth"
 import { useCurrentOrganization } from "@/components/providers/organization-provider"
 import { getInitials } from "@/components/dashboard/user-avatar"
-
-const navItems = [
-  { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Products", href: "/dashboard/products", icon: Package },
-  { label: "Offers", href: "/dashboard/offers", icon: Tag },
-  { label: "Clients", href: "/dashboard/clients", icon: Users },
-  { label: "Content", href: "/dashboard/content", icon: FileText },
-  { label: "Branding", href: "/dashboard/branding", icon: Palette },
-  { label: "Team", href: "/dashboard/team", icon: UserPlus },
-  { label: "Settings", href: "/dashboard/settings", icon: Settings },
-]
+import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
+import {
+  DASHBOARD_NAV_GROUPS,
+  filterDashboardNavGroups,
+  flattenDashboardNav,
+  isDashboardNavActive,
+} from "@/lib/permissions/dashboard-nav"
 
 export function MobileNav() {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const { user } = useAuth()
   const { currentOrganization } = useCurrentOrganization()
+  const { can, isLoading: capabilitiesLoading, mode } = useOrgCapabilities()
+
+  const navItems = flattenDashboardNav(
+    filterDashboardNavGroups(DASHBOARD_NAV_GROUPS, {
+      can,
+      requiresTeamPlan: mode.requiresTeamPlan,
+      capabilitiesLoading,
+    })
+  )
 
   const fullName = (user?.user_metadata?.full_name as string | undefined)?.trim() || null
   const email = user?.email ?? null
@@ -69,7 +63,7 @@ export function MobileNav() {
             <nav className="flex-1 overflow-y-auto p-4">
               <ul className="space-y-1">
                 {navItems.map((item) => {
-                  const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href))
+                  const isActive = isDashboardNavActive(pathname, item.href)
                   return (
                     <li key={item.href}>
                       <Link

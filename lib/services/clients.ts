@@ -5,7 +5,6 @@ export type ClientSummary = {
   organization_id: number
   client_key: string
   user_id: string | null
-  buyer_email: string | null
   client_display: string
   client_email: string | null
   total_spent: number
@@ -21,6 +20,7 @@ export type ClientsPage = {
 }
 
 export type FetchClientsPageParams = {
+  supabase: SupabaseClient
   organizationId: number
   page: number
   pageSize: number
@@ -28,6 +28,7 @@ export type FetchClientsPageParams = {
 }
 
 export type FetchClientDetailParams = {
+  supabase: SupabaseClient
   organizationId: number
   clientKey: string
 }
@@ -39,7 +40,6 @@ export type ClientEnrollmentRow = {
   offer_id: number
   offer_title: string
   user_id: string | null
-  buyer_email: string | null
   client_name: string | null
   client_email: string | null
   client_display: string
@@ -53,14 +53,11 @@ export type ClientEnrollmentRow = {
 
 /** Client aggregated from view rows (one per client, with all their enrollments). */
 export type ClientWithEnrollments = {
-  /** Stable key: user_id when set, else buyer_email. */
   clientKey: string
   user_id: string | null
-  buyer_email: string | null
   client_display: string
   client_email: string | null
   email_display: string
-  /** Email for mailto (null when neither client_email nor buyer_email). */
   email_for_mailto: string | null
   has_account: boolean
   total_spent: number
@@ -73,33 +70,16 @@ export type ClientWithEnrollments = {
     enrollment_expires_at: string | null
     enrollment_created_at: string
   }[]
-  /** Derived: "active" if any enrollment active, "expired" if all expired, "cancelled" if all cancelled, else "paused". */
   status: "active" | "expired" | "cancelled" | "paused"
 }
 
-export async function fetchClientEnrollmentsByOrganization(
-  supabase: SupabaseClient,
-  organizationId: number
-): Promise<ClientEnrollmentRow[]> {
-  const { data, error } = await supabase
-    .from("organization_client_enrollments")
-    .select("*")
-    .eq("organization_id", organizationId)
-    .order("enrollment_started_at", { ascending: false })
-
-  if (error) throw error
-  return (data ?? []) as ClientEnrollmentRow[]
-}
-
-/** Group view rows by client (user_id or buyer_email) and derive status. */
 export function groupClientEnrollmentRows(
   rows: ClientEnrollmentRow[]
 ): ClientWithEnrollments[] {
   const byKey = new Map<string, ClientWithEnrollments>()
 
   for (const row of rows) {
-    const key =
-      row.user_id ?? row.buyer_email ?? `unknown-${row.enrollment_id}`
+    const key = row.user_id ?? row.client_email ?? String(row.enrollment_id)
     const existing = byKey.get(key)
 
     const enrollment = {
@@ -113,19 +93,17 @@ export function groupClientEnrollmentRows(
     }
 
     if (!existing) {
-      const status = deriveClientStatus([row.enrollment_status])
       byKey.set(key, {
         clientKey: key,
         user_id: row.user_id,
-        buyer_email: row.buyer_email,
         client_display: row.client_display,
         client_email: row.client_email,
-        email_display: row.client_email ?? row.buyer_email ?? "—",
-        email_for_mailto: row.client_email ?? row.buyer_email ?? null,
+        email_display: row.client_email ?? "—",
+        email_for_mailto: row.client_email,
         has_account: row.user_id != null,
         total_spent: Number(row.total_spent),
         enrollments: [enrollment],
-        status,
+        status: deriveClientStatus([row.enrollment_status]),
       })
     } else {
       existing.enrollments.push(enrollment)
@@ -143,69 +121,96 @@ export function groupClientEnrollmentRows(
   )
 }
 
-/** Fetch view rows and return grouped clients. Single entry point for the clients page. */
-export async function fetchClientsByOrganization(
-  supabase: SupabaseClient,
-  organizationId: number
-): Promise<ClientWithEnrollments[]> {
-  const rows = await fetchClientEnrollmentsByOrganization(
-    supabase,
-    organizationId
-  )
-  return groupClientEnrollmentRows(rows)
-}
-
-/** Fetch paginated clients list via API (uses v_organization_clients in API with admin). */
 export async function fetchClientsPage(
   params: FetchClientsPageParams
 ): Promise<ClientsPage> {
-  const { organizationId, page, pageSize, search } = params
-  const searchParams = new URLSearchParams({
-    page: String(page),
-    pageSize: String(pageSize),
-  })
-  if (search?.trim()) searchParams.set("search", search.trim())
+  const { supabase, organizationId, page, pageSize, search } = params
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
 
-  const res = await fetch(
-    `/api/organizations/${organizationId}/clients?${searchParams.toString()}`,
-    { method: "GET" }
-  )
+  let query = supabase
+    .from("v_organization_clients")
+    .select("*", { count: "exact" })
+    .eq("organization_id", organizationId)
+    .order("first_enrollment_started_at", { ascending: false })
+    .range(from, to)
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    const message =
-      body && typeof (body as { error?: unknown }).error === "string"
-        ? (body as { error: string }).error
-        : "Failed to load clients"
-    throw new Error(message)
+  const term = search?.trim()
+  if (term) {
+    const q = term.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_").replace(/'/g, "''")
+    query = query.or(`client_display.ilike.%${q}%,client_email.ilike.%${q}%`)
   }
 
-  return res.json() as Promise<ClientsPage>
+  const { data, error, count } = await query
+  if (error) throw error
+
+  return {
+    items: (data ?? []) as ClientSummary[],
+    total: count ?? 0,
+  }
 }
 
-/** Fetch one client's detail (enrollments) via API. */
+type EnrollmentJoinRow = {
+  id: number
+  organization_id: number
+  offer_id: number
+  user_id: string | null
+  buyer_email: string | null
+  status: string
+  started_at: string
+  expires_at: string | null
+  created_at: string
+  updated_at: string
+  offers: { title: string } | { title: string }[] | null
+  profiles: { full_name: string | null } | { full_name: string | null }[] | null
+}
+
 export async function fetchClientDetail(
   params: FetchClientDetailParams
 ): Promise<ClientWithEnrollments | null> {
-  const { organizationId, clientKey } = params
-  const searchParams = new URLSearchParams({ clientKey })
+  const { supabase, organizationId, clientKey } = params
+  const key = clientKey.trim()
 
-  const res = await fetch(
-    `/api/organizations/${organizationId}/clients?${searchParams.toString()}`,
-    { method: "GET" }
-  )
+  let q = supabase
+    .from("enrollments")
+    .select(
+      "id, organization_id, offer_id, user_id, buyer_email, status, started_at, expires_at, created_at, updated_at, offers(title), profiles(full_name)"
+    )
+    .eq("organization_id", organizationId)
+    .order("started_at", { ascending: false })
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    const message =
-      body && typeof (body as { error?: unknown }).error === "string"
-        ? (body as { error: string }).error
-        : "Failed to load client detail"
-    throw new Error(message)
-  }
+  q = key.includes("@") ? q.eq("buyer_email", key) : q.eq("user_id", key)
 
-  const data = (await res.json()) as { client: ClientWithEnrollments | null }
-  return data.client
+  const { data, error } = await q
+  if (error) throw error
+
+  const enrollments = (data ?? []) as EnrollmentJoinRow[]
+  if (enrollments.length === 0) return null
+
+  const rows: ClientEnrollmentRow[] = enrollments.map((e) => {
+    const offer = Array.isArray(e.offers) ? e.offers[0] : e.offers
+    const prof = e.profiles
+    const p = Array.isArray(prof) ? prof[0] : prof
+    const fullName = p?.full_name ?? null
+    return {
+      organization_id: e.organization_id,
+      enrollment_id: e.id,
+      offer_id: e.offer_id,
+      offer_title: offer?.title ?? "",
+      user_id: e.user_id,
+      client_name: fullName,
+      client_email: e.buyer_email,
+      client_display: fullName ?? e.buyer_email ?? "—",
+      enrollment_status: e.status as ClientEnrollmentRow["enrollment_status"],
+      enrollment_started_at: e.started_at,
+      enrollment_expires_at: e.expires_at,
+      enrollment_created_at: e.created_at,
+      enrollment_updated_at: e.updated_at,
+      total_spent: 0,
+    }
+  })
+
+  return groupClientEnrollmentRows(rows)[0] ?? null
 }
 
 function deriveClientStatus(

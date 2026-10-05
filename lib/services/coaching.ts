@@ -5,12 +5,12 @@ function first<T>(x: T | T[] | null): T | null {
   return x == null ? null : Array.isArray(x) ? x[0] ?? null : x
 }
 
-/** Extract full_name from a user relation (object or array). */
+/** Extract full_name from an embedded `profiles` relation (object or array). */
 function fullNameFrom(
-  u: { full_name: string | null } | { full_name: string | null }[] | null | undefined
+  p: { full_name: string | null } | { full_name: string | null }[] | null | undefined
 ): string | null {
-  if (u == null) return null
-  const o = Array.isArray(u) ? u[0] : u
+  if (p == null) return null
+  const o = Array.isArray(p) ? p[0] : p
   return o?.full_name ?? null
 }
 
@@ -154,7 +154,7 @@ export async function fetchOrganizationMembers(
 ): Promise<OrganizationMemberForSelect[]> {
   const { data, error } = await supabase
     .from("organization_members")
-    .select("id, user_id, role, users(full_name)")
+    .select("id, user_id, role, profiles(full_name)")
     .eq("organization_id", organizationId)
     .eq("status", "active")
     .order("id", { ascending: true })
@@ -164,13 +164,13 @@ export async function fetchOrganizationMembers(
     id: number
     user_id: string
     role: string
-    users: { full_name: string | null } | { full_name: string | null }[] | null
+    profiles: { full_name: string | null } | { full_name: string | null }[] | null
   }[]
   return rows.map((r) => ({
     id: r.id,
     user_id: r.user_id,
     role: r.role,
-    display_name: fullNameFrom(r.users),
+    display_name: fullNameFrom(r.profiles),
   }))
 }
 
@@ -198,8 +198,8 @@ export async function fetchCoachingSessionsForOrg(
       scheduled_at,
       duration_minutes,
       completed_at,
-      enrollment_products ( products ( title ), enrollments ( user_id, buyer_email, users ( full_name ) ) ),
-      coaching_assignments ( organization_members ( user_id, users ( full_name ) ) )
+      enrollment_products ( products ( title ), enrollments ( user_id, buyer_email, profiles ( full_name ) ) ),
+      coaching_assignments ( organization_members ( user_id, profiles ( full_name ) ) )
     `,
       { count: "exact" }
     )
@@ -209,18 +209,18 @@ export async function fetchCoachingSessionsForOrg(
 
   if (error) throw error
 
-  type UserRow = { full_name: string | null } | { full_name: string | null }[] | null
+  type ProfileRow = { full_name: string | null } | { full_name: string | null }[] | null
   type EpRow = {
     products: { title: string } | { title: string }[] | null
     enrollments:
-      | { user_id: string | null; buyer_email: string | null; users: UserRow }
-      | { user_id: string | null; buyer_email: string | null; users: UserRow }[]
+      | { user_id: string | null; buyer_email: string | null; profiles: ProfileRow }
+      | { user_id: string | null; buyer_email: string | null; profiles: ProfileRow }[]
       | null
   }
   type CaRow = {
     organization_members:
-      | { user_id: string; users: UserRow }
-      | { user_id: string; users: UserRow }[]
+      | { user_id: string; profiles: ProfileRow }
+      | { user_id: string; profiles: ProfileRow }[]
       | null
   }
   type SessionRow = {
@@ -244,10 +244,10 @@ export async function fetchCoachingSessionsForOrg(
     items: sessions.map((s) => {
       const ep = first(s.enrollment_products)
       const enr = first(ep?.enrollments)
-      const clientDisplay = fullNameFrom(enr?.users) ?? enr?.buyer_email ?? "—"
+      const clientDisplay = fullNameFrom(enr?.profiles) ?? enr?.buyer_email ?? "—"
       const ca = first(s.coaching_assignments)
       const om = first(ca?.organization_members)
-      const coachDisplay = fullNameFrom(om?.users) ?? null
+      const coachDisplay = fullNameFrom(om?.profiles) ?? null
       const prod = ep?.products
       const productTitle = prod ? (Array.isArray(prod) ? prod[0]?.title : prod.title) ?? null : null
       return {

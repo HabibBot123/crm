@@ -44,6 +44,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { toast } from "sonner"
+import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
 
 const PACKS_PAGE_SIZE = 10
 const SESSIONS_PAGE_SIZE = 10
@@ -69,6 +70,11 @@ function formatDuration(minutes: number): string {
 export default function CoachingPage() {
   const { supabase } = useAuth()
   const { currentOrganization, isLoading: orgLoading } = useCurrentOrganization()
+  const { mode: orgMode, can } = useOrgCapabilities()
+  const canViewCoaching = can("coaching.view")
+  const canAssignCoach = orgMode.isTeam && can("coaching.assign")
+  const canCreateSession = can("coaching.sessions.create")
+  const canCompleteSession = can("coaching.sessions.complete")
   const queryClient = useQueryClient()
   const [sessionDialogPack, setSessionDialogPack] = useState<CoachingEnrollmentProduct | null>(null)
   const [packsPage, setPacksPage] = useState(1)
@@ -118,15 +124,35 @@ export default function CoachingPage() {
     )
   }
 
+  if (!orgLoading && !canViewCoaching) {
+    return (
+      <div className="space-y-4 p-6 lg:p-8">
+        <PageHeader title="Coaching" subtitle="Track purchased coaching packs and sessions." />
+        <EmptyState
+          icon={MessageCircle}
+          title="No access"
+          description="You don’t have permission to view coaching packs for this organization."
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4 p-6 lg:p-8">
-      <PageHeader title="Coaching" subtitle="Assign coaches and manage sessions" />
+      <PageHeader
+        title="Coaching"
+        subtitle={
+          canAssignCoach
+            ? "Assign coaches to purchased packs. Sessions are optional tracking for later payouts."
+            : "Track purchased coaching packs and sessions."
+        }
+      />
 
-      <Tabs defaultValue="coaching" className="space-y-4">
+      <Tabs defaultValue="packs" className="space-y-4">
         <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="coaching" className="gap-2">
+          <TabsTrigger value="packs" className="gap-2">
             <MessageCircle className="h-4 w-4" />
-            Coaching
+            Packs
           </TabsTrigger>
           <TabsTrigger value="sessions" className="gap-2">
             <Calendar className="h-4 w-4" />
@@ -134,14 +160,18 @@ export default function CoachingPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="coaching" className="space-y-3">
+        <TabsContent value="packs" className="space-y-3">
           {isLoading ? (
             <LoadingRows count={3} />
           ) : packs.length === 0 ? (
             <EmptyState
               icon={MessageCircle}
               title="No coaching packs"
-              description="Coaching packs will appear here once clients enroll."
+              description={
+                canAssignCoach
+                  ? "Packs appear here when clients buy a coaching product. Assign a coach to each pack."
+                  : "Packs appear here when clients buy a coaching product."
+              }
             />
           ) : (
             <ul className="space-y-3">
@@ -150,6 +180,7 @@ export default function CoachingPage() {
                   key={pack.enrollment_product_id}
                   pack={pack}
                   organizationId={orgId}
+                  canAssignCoach={canAssignCoach}
                   onAssign={(memberId) =>
                     assignMutation.mutate({
                       enrollmentProductId: pack.enrollment_product_id,
@@ -157,7 +188,9 @@ export default function CoachingPage() {
                     })
                   }
                   onNewSession={
-                    pack.coach_full_name != null && pack.user_id != null
+                    canCreateSession &&
+                    pack.coach_full_name != null &&
+                    pack.user_id != null
                       ? () => setSessionDialogPack(pack)
                       : undefined
                   }
@@ -180,8 +213,8 @@ export default function CoachingPage() {
           ) : sessions.length === 0 ? (
             <EmptyState
               icon={Calendar}
-              title="No sessions yet"
-              description="Assign a coach to a pack, then create a session."
+              title="No sessions logged"
+              description="Optional: after assigning a coach, log sessions here. This is tracking only — not a booking calendar."
             />
           ) : (
             <ul className="space-y-3">
@@ -189,6 +222,7 @@ export default function CoachingPage() {
                 <SessionRow
                   key={session.id}
                   session={session}
+                  canComplete={canCompleteSession}
                   onComplete={(completed) =>
                     completeMutation.mutate({ sessionId: session.id, completed })
                   }
@@ -234,12 +268,14 @@ export default function CoachingPage() {
 function PackRow({
   pack,
   organizationId,
+  canAssignCoach,
   onAssign,
   onNewSession,
   assignPending,
 }: {
   pack: CoachingEnrollmentProduct
   organizationId: number | null
+  canAssignCoach: boolean
   onAssign: (organizationMemberId: number) => void
   onNewSession?: () => void
   assignPending: boolean
@@ -275,7 +311,7 @@ function PackRow({
         )}
       </div>
       <div className="flex items-center gap-2">
-        {!pack.coach_full_name && (
+        {canAssignCoach && !pack.coach_full_name && (
           <Popover open={assignOpen} onOpenChange={handleAssignOpenChange}>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" disabled={assignPending} className="w-[200px] justify-between">
@@ -342,7 +378,7 @@ function PackRow({
             {onNewSession ? (
               <Button size="sm" onClick={onNewSession}>
                 <Plus className="mr-1 h-4 w-4" />
-                New session
+                Log session
               </Button>
             ) : (
               <div
@@ -362,10 +398,12 @@ function PackRow({
 
 function SessionRow({
   session,
+  canComplete,
   onComplete,
   completePending,
 }: {
   session: CoachingSessionRow
+  canComplete: boolean
   onComplete: (completed: boolean) => void
   completePending: boolean
 }) {
@@ -406,7 +444,7 @@ function SessionRow({
       <div className="flex items-center gap-2">
         {isCompleted ? (
           <Badge className="bg-success/10 text-success border-success/20">Completed</Badge>
-        ) : (
+        ) : canComplete ? (
           <Button
             size="sm"
             variant="outline"
@@ -416,7 +454,7 @@ function SessionRow({
             <Check className="mr-1 h-4 w-4" />
             Mark completed
           </Button>
-        )}
+        ) : null}
       </div>
     </RichListItem>
   )

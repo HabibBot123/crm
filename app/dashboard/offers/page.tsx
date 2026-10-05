@@ -24,6 +24,8 @@ import { PaginationControls } from "@/components/dashboard/pagination-controls"
 import { PaginationSummary } from "@/components/dashboard/pagination-summary"
 import { StatusBadge } from "@/components/dashboard/status-badge"
 import { RichListItem } from "@/components/dashboard/rich-list-item"
+import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
+import { NoAccessState } from "@/components/dashboard/no-access-state"
 
 const billingTypeIcon: Record<string, typeof Package> = {
   subscription: Repeat,
@@ -110,12 +112,10 @@ function OfferActions({
 export default function OffersPage() {
   const { canAccess, guardContent, currentOrganization } = useCoachAccessGuard({
     requireOrg: true,
-    requireStripe: true,
     noOrgMessage: "Select an organization to view offers.",
-    stripeDescription:
-      "To create and manage offers, you need to complete Stripe Connect onboarding for this organization.",
-    stripeUseRouter: true,
   })
+  const { can, isLoading: capsLoading } = useOrgCapabilities()
+  const canManageCatalog = can("catalog.manage")
   const [page, setPage] = useState(1)
   const [archivingId, setArchivingId] = useState<number | null>(null)
 
@@ -135,6 +135,15 @@ export default function OffersPage() {
 
   if (!canAccess && guardContent) {
     return <div className="space-y-4 p-6 lg:p-8">{guardContent}</div>
+  }
+
+  if (!capsLoading && !canManageCatalog) {
+    return (
+      <NoAccessState
+        title="Offers"
+        description="You don’t have permission to manage offers with your role."
+      />
+    )
   }
 
   const subtitle =
@@ -302,7 +311,7 @@ export default function OffersPage() {
                             archivingId={archivingId}
                             setArchivingId={setArchivingId}
                             archiveMutation={archiveMutation}
-                          />
+                              />
                         </td>
                       </tr>
                     )

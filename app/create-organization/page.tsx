@@ -11,10 +11,12 @@ import { useAuth } from "@/hooks/use-auth"
 import { useOrganizations } from "@/hooks/use-organizations"
 import { toast } from "sonner"
 
+const CURRENT_ORG_STORAGE_KEY = "crm-sport-current-org-id"
+
 export default function CreateOrganizationPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { supabase, user, isLoading: authLoading } = useAuth()
+  const { user, isLoading: authLoading } = useAuth()
   const { organizations, isLoading: orgsLoading } = useOrganizations()
   const [slug, setSlug] = useState("")
   const [name, setName] = useState("")
@@ -26,12 +28,8 @@ export default function CreateOrganizationPage() {
     if (isLoading) return
     if (!user) {
       router.replace("/login")
-      return
     }
-    if (organizations.length > 0) {
-      router.replace("/dashboard")
-    }
-  }, [user, isLoading, organizations.length, router])
+  }, [user, isLoading, router])
 
   function slugFromName(value: string) {
     return value
@@ -51,10 +49,6 @@ export default function CreateOrganizationPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!user?.id) return
-    if (organizations.length > 0) {
-      router.replace("/dashboard")
-      return
-    }
 
     const slugValue = slug.trim().toLowerCase()
     const nameValue = name.trim()
@@ -81,17 +75,27 @@ export default function CreateOrganizationPage() {
     setLoading(false)
 
     if (!res.ok) {
-      toast.error(data.error ?? "Failed to create organization")
+      toast.error(
+        typeof data.error === "string" ? data.error : "Failed to create organization"
+      )
       return
     }
 
+    const organizationId =
+      typeof data.organization_id === "number"
+        ? data.organization_id
+        : Number(data.organization_id)
+
     await queryClient.invalidateQueries({ queryKey: ["organizations"] })
+    if (Number.isFinite(organizationId) && organizationId > 0) {
+      localStorage.setItem(CURRENT_ORG_STORAGE_KEY, String(organizationId))
+    }
     toast.success("Organization created successfully")
     router.refresh()
     router.push("/dashboard")
   }
 
-  if (isLoading || !user || organizations.length > 0) {
+  if (isLoading || !user) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <p className="text-muted-foreground">Loading…</p>
@@ -112,6 +116,12 @@ export default function CreateOrganizationPage() {
           <p className="mt-2 text-muted-foreground">
             Set up your coaching business. This will be your workspace for products, clients, and team members.
           </p>
+          {organizations.length > 0 && (
+            <p className="mt-2 text-sm text-muted-foreground">
+              You already belong to {organizations.length === 1 ? "an organization" : "organizations"}.
+              Creating a new one makes you its owner; you can switch anytime from the sidebar.
+            </p>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">

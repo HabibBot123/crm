@@ -11,16 +11,7 @@ alwaysApply: true
 
 ---
 
-## 2. Self-Improvement Loop
-
-- After ANY correction from the user: update `/lessons.mdc` with the pattern
-- Write rules for yourself that prevent the same mistake
-- Ruthlessly iterate on these lessons until mistake rate drops
-- Review lessons at session start for relevant project
-
----
-
-## 3. Verification Before Done
+## 2. Verification Before Done
 
 - Never mark a task complete without proving it works
 - Diff behavior between main and your changes when relevant
@@ -29,7 +20,7 @@ alwaysApply: true
 
 ---
 
-## 4. Demand Elegance (Balanced)
+## 3. Demand Elegance (Balanced)
 
 - For non-trivial changes: pause and ask "is there a more elegant way?"
 - If a fix feels hacky: "Knowing everything I know now, implement the elegant solution"
@@ -38,7 +29,7 @@ alwaysApply: true
 
 ---
 
-## 5. Autonomous Bug Fixing
+## 4. Autonomous Bug Fixing
 
 - When given a bug report: just fix it. Don't ask for hand-holding
 - Point at logs, errors, failing tests — then resolve them
@@ -47,7 +38,7 @@ alwaysApply: true
 
 ---
 
-## 6. Supabase + Data Access Architecture
+## 5. Supabase + Data Access Architecture
 
 Because the project uses **Supabase with Row Level Security (RLS)**, all database access must follow a **clear and structured architecture**.
 
@@ -135,13 +126,13 @@ This ensures:
 
 ---
 
-## 7. Dashboard UX Patterns (Prescriptive)
+## 6. Dashboard UX Patterns (Prescriptive)
 
 Tout le contenu UX (couleurs, fonts, layout primitives, patterns lists/tables, états, etc.) est centralisé dans `/.cursor/rules/design-system-ux.mdc`.
 
 ---
 
-## 8. Other Rules
+## 7. Other Rules
 
 - Never typecast. Never use `as`
 - Use **React Query** for caching

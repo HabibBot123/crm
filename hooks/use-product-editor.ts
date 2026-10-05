@@ -152,11 +152,8 @@ export function useUpsertCoachingDetails(productId: number) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: {
-      sessions_count: number
-      period_months: number | null
-      delivery_mode: DeliveryMode | null
-    }) => upsertProductCoaching(supabase, productId, input),
+    mutationFn: (input: { delivery_mode: DeliveryMode | null }) =>
+      upsertProductCoaching(supabase, productId, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: productQueryKey(productId) })
       toast.success("Coaching details saved")

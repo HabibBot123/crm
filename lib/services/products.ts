@@ -184,7 +184,6 @@ export async function createProduct(
       organization_id: input.organization_id,
       type: input.type,
       title: input.title.trim(),
-      slug: null,
       description: input.description?.trim() || null,
       status: input.status ?? "draft",
     })
@@ -465,8 +464,6 @@ export async function removeModuleItem(
 }
 
 export type UpsertProductCoachingInput = {
-  sessions_count: number
-  period_months?: number | null
   delivery_mode?: DeliveryMode | null
 }
 
@@ -480,8 +477,8 @@ export async function upsertProductCoaching(
     .upsert(
       {
         product_id: productId,
-        sessions_count: input.sessions_count,
-        period_months: input.period_months ?? null,
+        sessions_count: 0,
+        period_months: null,
         delivery_mode: input.delivery_mode ?? null,
       },
       { onConflict: "product_id" }

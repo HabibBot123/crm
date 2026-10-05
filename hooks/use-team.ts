@@ -8,9 +8,11 @@ import {
   cancelTeamInvitation,
   changeTeamMemberRole,
   revokeTeamAccess,
+  updateMemberCommissionDefaults,
   type CancelTeamInvitationInput,
   type ChangeTeamMemberRoleInput,
   type RevokeTeamAccessInput,
+  type UpdateMemberCommissionDefaultsInput,
 } from "@/lib/services/team"
 import { toast } from "sonner"
 import { useAuth } from "@/hooks/use-auth"
@@ -47,6 +49,12 @@ export type InviteTeamMemberVariables = {
   organizationId: number
   email: string
   role: Exclude<TeamMemberRole, "owner">
+  defaultCommissionRateSales?: number | null
+  defaultCommissionFixedSales?: number | null
+  defaultCommissionRateAmbassador?: number | null
+  defaultCommissionFixedAmbassador?: number | null
+  defaultCommissionRateCoach?: number | null
+  defaultCommissionFixedCoach?: number | null
 }
 
 export function useInviteTeamMember(organizationId: number | null) {
@@ -62,14 +70,18 @@ export function useInviteTeamMember(organizationId: number | null) {
         body: JSON.stringify({
           email: variables.email,
           role: variables.role,
+          default_commission_rate_sales: variables.defaultCommissionRateSales ?? null,
+          default_commission_fixed_sales: variables.defaultCommissionFixedSales ?? null,
+          default_commission_rate_ambassador: variables.defaultCommissionRateAmbassador ?? null,
+          default_commission_fixed_ambassador: variables.defaultCommissionFixedAmbassador ?? null,
+          default_commission_rate_coach: variables.defaultCommissionRateCoach ?? null,
+          default_commission_fixed_coach: variables.defaultCommissionFixedCoach ?? null,
         }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => null)
         const message =
-          body && typeof (body as { error?: unknown }).error === "string"
-            ? (body as { error: string }).error
-            : "Failed to send invitation"
+          body && typeof body.error === "string" ? body.error : "Failed to send invitation"
         throw new Error(message)
       }
     },
@@ -170,6 +182,50 @@ export function useRevokeTeamAccess(organizationId: number | null) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-members"] })
       toast.success("Access revoked")
+    },
+    onError: (e) => {
+      toast.error(e.message)
+    },
+  })
+}
+
+export type UpdateMemberCommissionDefaultsVariables = {
+  organizationId: number
+  memberId: number
+  defaultCommissionRateSales: number | null
+  defaultCommissionFixedSales: number | null
+  defaultCommissionRateAmbassador: number | null
+  defaultCommissionFixedAmbassador: number | null
+  defaultCommissionRateCoach: number | null
+  defaultCommissionFixedCoach: number | null
+}
+
+export function useUpdateMemberCommissionDefaults(organizationId: number | null) {
+  const queryClient = useQueryClient()
+  const { user, supabase } = useAuth()
+
+  return useMutation({
+    mutationFn: async (variables: UpdateMemberCommissionDefaultsVariables) => {
+      if (!variables.organizationId) throw new Error("organizationId is required")
+      if (!user) throw new Error("Unauthorized")
+
+      await updateMemberCommissionDefaults(supabase, {
+        organizationId: variables.organizationId,
+        memberId: variables.memberId,
+        requesterUserId: user.id,
+        defaultCommissionRateSales: variables.defaultCommissionRateSales,
+        defaultCommissionFixedSales: variables.defaultCommissionFixedSales,
+        defaultCommissionRateAmbassador: variables.defaultCommissionRateAmbassador,
+        defaultCommissionFixedAmbassador: variables.defaultCommissionFixedAmbassador,
+        defaultCommissionRateCoach: variables.defaultCommissionRateCoach,
+        defaultCommissionFixedCoach: variables.defaultCommissionFixedCoach,
+      } satisfies UpdateMemberCommissionDefaultsInput)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["team-members"] })
+      queryClient.invalidateQueries({ queryKey: ["crm-attribution-members"] })
+      queryClient.invalidateQueries({ queryKey: ["crm-sales-members"] })
+      toast.success("Commission defaults updated")
     },
     onError: (e) => {
       toast.error(e.message)

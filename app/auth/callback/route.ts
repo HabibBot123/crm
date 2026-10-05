@@ -35,17 +35,16 @@ export async function GET(request: Request) {
       const fullName = data.user.user_metadata?.full_name ?? null
 
       if (isSignupSource(signupSourceParam)) {
-        const { error: upsertError } = await admin.from('users').upsert(
+        const { error: upsertError } = await admin.from('profiles').upsert(
           {
-            id: userId,
-            email,
+            user_id: userId,
             full_name: fullName,
             signup_source: signupSourceParam,
           },
-          { onConflict: 'id' }
+          { onConflict: 'user_id' }
         )
         if (upsertError) {
-          console.error('Users signup_source upsert failed:', upsertError.message)
+          console.error('Profiles signup_source upsert failed:', upsertError.message)
         }
         const { error: emailError } = await sendWelcomeEmail({
           to: email,

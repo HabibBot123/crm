@@ -9,9 +9,16 @@ import {
   UserX,
   Calendar,
   Package,
+  Plus,
 } from "lucide-react"
 import { useCurrentOrganization } from "@/components/providers/organization-provider"
-import { useClients, useClientDetail, type ClientSummary } from "@/hooks/use-clients"
+import {
+  useClients,
+  useClientDetail,
+  useCreateManualEnrollment,
+  type ClientSummary,
+} from "@/hooks/use-clients"
+import { useOffers } from "@/hooks/use-offers"
 import { PaginationControls } from "@/components/dashboard/pagination-controls"
 import { PaginationSummary } from "@/components/dashboard/pagination-summary"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -30,6 +37,8 @@ import { PageHeader } from "@/components/dashboard/page-header"
 import { SectionCard } from "@/components/dashboard/section-card"
 import { LoadingRows } from "@/components/dashboard/loading-rows"
 import { EmptyState } from "@/components/dashboard/empty-state"
+import { AddManualEnrollmentDialog } from "@/components/dashboard/clients/add-manual-enrollment-dialog"
+import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
 
 const statusConfig: Record<
   string,
@@ -86,10 +95,14 @@ const perPage = 10
 
 export default function ClientsPage() {
   const { currentOrganization, isLoading: orgLoading } = useCurrentOrganization()
+  const { can } = useOrgCapabilities()
+  const canViewClients = can("clients.view")
+  const canEnrollManual = can("clients.enroll_manual")
   const [searchInput, setSearchInput] = useState("")
   const [search, setSearch] = useState("")
   const [selectedClientKey, setSelectedClientKey] = useState<string | null>(null)
   const [page, setPage] = useState(1)
+  const [addOpen, setAddOpen] = useState(false)
 
   const applySearch = () => {
     setSearch(searchInput.trim())
@@ -108,6 +121,12 @@ export default function ClientsPage() {
     clientKey: selectedClientKey,
   })
 
+  const { offers, isLoading: offersLoading } = useOffers(
+    currentOrganization?.id ?? null,
+    "active"
+  )
+  const createManual = useCreateManualEnrollment(currentOrganization?.id ?? null)
+
   const items = data.items
   const total = data.total
   const totalPages = Math.max(1, Math.ceil(total / perPage))
@@ -123,11 +142,54 @@ export default function ClientsPage() {
     )
   }
 
+  if (!orgLoading && !canViewClients) {
+    return (
+      <div className="space-y-4 p-6 lg:p-8">
+        <PageHeader title="Clients" subtitle="Clients and enrollments linked to your offers" />
+        <EmptyState
+          icon={Users}
+          title="No access"
+          description="You don’t have permission to view clients for this organization."
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4 p-6 lg:p-8">
       <PageHeader
         title="Clients"
         subtitle="Clients and enrollments linked to your offers"
+      >
+        {canEnrollManual ? (
+          <Button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            disabled={!currentOrganization}
+          >
+            <Plus className="mr-1.5 h-4 w-4" />
+            Add enrollment
+          </Button>
+        ) : null}
+      </PageHeader>
+
+      <AddManualEnrollmentDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        offers={offers}
+        offersLoading={offersLoading}
+        isPending={createManual.isPending}
+        onSubmit={async (input) => {
+          if (!currentOrganization) return
+          await createManual.mutateAsync({
+            organizationId: currentOrganization.id,
+            offerId: input.offerId,
+            buyerEmail: input.buyerEmail,
+            buyerName: input.buyerName,
+            priceCents: input.priceCents,
+            accessDurationMonths: input.accessDurationMonths,
+          })
+        }}
       />
 
       <div className="flex items-center gap-2">
@@ -156,7 +218,11 @@ export default function ClientsPage() {
         <EmptyState
           icon={Users}
           title={total === 0 && !search.trim() ? "No clients yet" : "No clients match your search"}
-          description={total === 0 && !search.trim() ? "Enrollments will appear here after purchases." : undefined}
+          description={
+            total === 0 && !search.trim()
+              ? "Enrollments appear after purchases, or add one manually."
+              : undefined
+          }
         />
       ) : (
         <>
@@ -164,7 +230,7 @@ export default function ClientsPage() {
           <div className="space-y-3 lg:hidden">
             {items.map((client: ClientSummary) => {
               const config = getStatusConfig(client.status)
-              const emailDisplay = client.client_email ?? client.buyer_email ?? "—"
+              const emailDisplay = client.client_email ?? "—"
               return (
                 <button
                   key={client.client_key}
@@ -223,7 +289,7 @@ export default function ClientsPage() {
                 <tbody>
                   {items.map((client: ClientSummary) => {
                     const config = getStatusConfig(client.status)
-                    const emailDisplay = client.client_email ?? client.buyer_email ?? "—"
+                    const emailDisplay = client.client_email ?? "—"
                     return (
                       <tr
                         key={client.client_key}

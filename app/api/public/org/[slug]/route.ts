@@ -108,17 +108,7 @@ export async function GET(
       ),
   }))
 
-  const visibleIds: number[] = Array.isArray(organization.branding?.offers_display?.visible_offer_ids)
-    ? organization.branding.offers_display.visible_offer_ids.filter(
-        (id: unknown): id is number => typeof id === "number" && Number.isFinite(id)
-      )
-    : []
-  const offers =
-    visibleIds.length > 0
-      ? visibleIds
-          .map((id: number) => rawOffers.find((o) => o.id === id) ?? null)
-          .filter((o): o is PublicOrgOffer => o != null)
-      : rawOffers
+  const offers = rawOffers
 
   const data = {
     organization,

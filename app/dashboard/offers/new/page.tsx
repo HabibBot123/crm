@@ -17,6 +17,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useCoachAccessGuard } from "@/hooks/use-access-guard"
+import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
+import { NoAccessState } from "@/components/dashboard/no-access-state"
 import { type Product } from "@/lib/services/products"
 import {
   deriveBillingType,
@@ -27,16 +29,15 @@ import { toast } from "sonner"
 import { OFFER_CURRENCIES } from "@/lib/constants/offers"
 import { useCreateOffer } from "@/hooks/use-offers"
 import { useProducts } from "@/hooks/use-products"
+import { useBusinessUnits } from "@/hooks/use-business-units"
 
 export default function NewOfferPage() {
   const router = useRouter()
   const { canAccess, guardContent, currentOrganization } = useCoachAccessGuard({
     requireOrg: true,
-    requireStripe: true,
     noOrgMessage: "Select an organization to create offers.",
-    stripeDescription:
-      "To create offers, you need to complete Stripe Connect onboarding for this organization.",
   })
+  const { can, isLoading: capsLoading } = useOrgCapabilities()
 
   const [step, setStep] = useState<1 | 2>(1)
   const [selectedProductIds, setSelectedProductIds] = useState<number[]>([])
@@ -46,8 +47,12 @@ export default function NewOfferPage() {
   const [price, setPrice] = useState("")
   const [currency, setCurrency] = useState("eur")
   const [interval, setInterval] = useState<"month" | "year">("month")
-  const [billingTypeOverride, setBillingTypeOverride] = useState<"one_time" | "installment" | null>(null)
+  const [billingType, setBillingType] = useState<BillingType>("one_time")
   const [installmentCount, setInstallmentCount] = useState("3")
+  const [accessMode, setAccessMode] = useState<"lifetime" | "months">("lifetime")
+  const [accessMonths, setAccessMonths] = useState("6")
+  const [sessionsCount, setSessionsCount] = useState("8")
+  const [businessUnitId, setBusinessUnitId] = useState("none")
 
   // This page is a “product picker” for offer creation; we still keep it bounded.
   const PRODUCTS_PICKER_PAGE_SIZE = 200
@@ -63,21 +68,19 @@ export default function NewOfferPage() {
     selectedProductIds.includes(p.id)
   )
 
-  const autoBillingType = selectedProducts.length > 0
-    ? deriveBillingType(selectedProducts.map((p) => p.type))
-    : null
+  const suggestedBillingType =
+    selectedProducts.length > 0
+      ? deriveBillingType(selectedProducts.map((p) => p.type))
+      : null
 
-  // Final billing type: if auto is subscription, locked in. Otherwise user can pick one_time or installment
-  const effectiveBillingType: BillingType | null =
-    autoBillingType === "subscription"
-      ? "subscription"
-      : billingTypeOverride ?? autoBillingType
+  const hasCoaching = selectedProducts.some((p) => p.type === "coaching")
 
   const isBundle =
     selectedProducts.some((p) => p.type === "course") &&
     selectedProducts.some((p) => p.type === "coaching")
 
   const createMutation = useCreateOffer(currentOrganization?.id ?? null)
+  const { units: businessUnits } = useBusinessUnits(currentOrganization?.id ?? null)
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -90,10 +93,24 @@ export default function NewOfferPage() {
       toast.error("A valid price is required")
       return
     }
-    if (effectiveBillingType === "installment") {
+    if (billingType === "installment") {
       const count = parseInt(installmentCount, 10)
       if (!count || count < 2) {
         toast.error("Installment count must be at least 2")
+        return
+      }
+    }
+    const accessDurationMonths =
+      accessMode === "lifetime" ? null : parseInt(accessMonths, 10)
+    if (accessMode === "months" && (!accessDurationMonths || accessDurationMonths < 1)) {
+      toast.error("Access duration must be at least 1 month")
+      return
+    }
+    let parsedSessions: number | null = null
+    if (hasCoaching) {
+      parsedSessions = parseInt(sessionsCount, 10)
+      if (!parsedSessions || parsedSessions < 1) {
+        toast.error("Sessions included must be at least 1 for coaching offers")
         return
       }
     }
@@ -108,14 +125,15 @@ export default function NewOfferPage() {
         title: title.trim(),
         description: description.trim() || null,
         key_features: normalizedKeyFeatures.length > 0 ? normalizedKeyFeatures : null,
-        billing_type: effectiveBillingType!,
+        billing_type: billingType,
         price: Math.round(parseFloat(price) * 100),
         currency,
-        interval: effectiveBillingType === "subscription" ? interval : null,
+        interval: billingType === "subscription" ? interval : null,
         installment_count:
-          effectiveBillingType === "installment"
-            ? parseInt(installmentCount, 10)
-            : null,
+          billingType === "installment" ? parseInt(installmentCount, 10) : null,
+        access_duration_months: accessDurationMonths,
+        sessions_count: parsedSessions,
+        business_unit_id: businessUnitId === "none" ? null : Number(businessUnitId),
         product_ids: selectedProductIds,
       },
       {
@@ -132,12 +150,24 @@ export default function NewOfferPage() {
         ? prev.filter((id) => id !== product.id)
         : [...prev, product.id]
     )
-    // Reset billing type override when selection changes
-    setBillingTypeOverride(null)
+  }
+
+  const goToStep2 = () => {
+    if (suggestedBillingType) setBillingType(suggestedBillingType)
+    setStep(2)
   }
 
   if (!canAccess && guardContent) {
     return <div className="p-4 lg:p-8">{guardContent}</div>
+  }
+
+  if (!capsLoading && !can("catalog.manage")) {
+    return (
+      <NoAccessState
+        title="Offers"
+        description="You don’t have permission to manage offers with your role."
+      />
+    )
   }
 
   return (
@@ -218,19 +248,22 @@ export default function NewOfferPage() {
           {selectedProductIds.length > 0 && (
             <div className="mt-6 space-y-3">
               <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm">
-                <span className="text-muted-foreground">Auto-detected billing: </span>
+                <span className="text-muted-foreground">Suggested billing: </span>
                 <span className="font-medium text-foreground capitalize">
-                  {autoBillingType === "subscription"
-                    ? "Subscription (recurring)"
-                    : "One-time payment (or installments)"}
+                  {suggestedBillingType === "subscription"
+                    ? "Subscription"
+                    : "One-time (or installments)"}
                 </span>
                 {isBundle && (
                   <Badge variant="secondary" className="ml-2 text-xs">
                     Bundle
                   </Badge>
                 )}
+                <p className="mt-1 text-xs text-muted-foreground">
+                  You can change billing type on the next step.
+                </p>
               </div>
-              <Button onClick={() => setStep(2)} className="w-full">
+              <Button onClick={goToStep2} className="w-full">
                 Continue to pricing
               </Button>
             </div>
@@ -323,36 +356,103 @@ export default function NewOfferPage() {
             </div>
           </div>
 
-          {/* Billing type selector for non-subscription */}
-          {autoBillingType !== "subscription" && (
+          <div className="space-y-2">
+            <Label htmlFor="new-offer-bu">Business unit</Label>
+            <Select value={businessUnitId} onValueChange={setBusinessUnitId}>
+              <SelectTrigger id="new-offer-bu">
+                <SelectValue placeholder="Organization-wide" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None (organization-wide)</SelectItem>
+                {businessUnits.map((unit) => (
+                  <SelectItem key={unit.id} value={String(unit.id)}>
+                    {unit.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Optional. Create one offer per BU if the same package is sold in several units.
+            </p>
+          </div>
+
+          {/* Billing type — free choice */}
+          <div className="space-y-2">
+            <Label>Payment type</Label>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {(
+                [
+                  { value: "one_time", label: "One-time" },
+                  { value: "subscription", label: "Subscription" },
+                  { value: "installment", label: "Installments" },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setBillingType(opt.value)}
+                  className={cn(
+                    "rounded-lg border-2 p-3 text-sm font-medium transition-colors focus:outline-none",
+                    billingType === opt.value
+                      ? "border-primary bg-primary/5 text-foreground"
+                      : "border-border text-muted-foreground hover:border-primary/40"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Access duration</Label>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setAccessMode("lifetime")}
+                className={cn(
+                  "flex-1 rounded-lg border-2 p-3 text-sm font-medium transition-colors focus:outline-none",
+                  accessMode === "lifetime"
+                    ? "border-primary bg-primary/5 text-foreground"
+                    : "border-border text-muted-foreground hover:border-primary/40"
+                )}
+              >
+                Lifetime
+              </button>
+              <button
+                type="button"
+                onClick={() => setAccessMode("months")}
+                className={cn(
+                  "flex-1 rounded-lg border-2 p-3 text-sm font-medium transition-colors focus:outline-none",
+                  accessMode === "months"
+                    ? "border-primary bg-primary/5 text-foreground"
+                    : "border-border text-muted-foreground hover:border-primary/40"
+                )}
+              >
+                Limited months
+              </button>
+            </div>
+            {accessMode === "months" && (
+              <Input
+                type="number"
+                min={1}
+                value={accessMonths}
+                onChange={(e) => setAccessMonths(e.target.value)}
+                placeholder="e.g. 6"
+              />
+            )}
+          </div>
+
+          {hasCoaching && (
             <div className="space-y-2">
-              <Label>Payment type</Label>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setBillingTypeOverride("one_time")}
-                  className={cn(
-                    "flex-1 rounded-lg border-2 p-3 text-sm font-medium transition-colors focus:outline-none",
-                    (billingTypeOverride ?? "one_time") === "one_time"
-                      ? "border-primary bg-primary/5 text-foreground"
-                      : "border-border text-muted-foreground hover:border-primary/40"
-                  )}
-                >
-                  Single payment
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBillingTypeOverride("installment")}
-                  className={cn(
-                    "flex-1 rounded-lg border-2 p-3 text-sm font-medium transition-colors focus:outline-none",
-                    billingTypeOverride === "installment"
-                      ? "border-primary bg-primary/5 text-foreground"
-                      : "border-border text-muted-foreground hover:border-primary/40"
-                  )}
-                >
-                  Installments
-                </button>
-              </div>
+              <Label htmlFor="sessions-count">Coaching sessions included</Label>
+              <Input
+                id="sessions-count"
+                type="number"
+                min={1}
+                value={sessionsCount}
+                onChange={(e) => setSessionsCount(e.target.value)}
+              />
             </div>
           )}
 
@@ -388,7 +488,7 @@ export default function NewOfferPage() {
           </div>
 
           {/* Subscription interval */}
-          {effectiveBillingType === "subscription" && (
+          {billingType === "subscription" && (
             <div className="space-y-2">
               <Label htmlFor="interval">Billing interval</Label>
               <Select
@@ -407,7 +507,7 @@ export default function NewOfferPage() {
           )}
 
           {/* Installment count */}
-          {effectiveBillingType === "installment" && (
+          {billingType === "installment" && (
             <div className="space-y-2">
               <Label htmlFor="installment-count">Number of payments</Label>
               <Input

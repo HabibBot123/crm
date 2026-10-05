@@ -8,18 +8,18 @@ import { Button } from "@/components/ui/button"
 import { RichListItem } from "@/components/dashboard/rich-list-item"
 import { LoadingRows } from "@/components/dashboard/loading-rows"
 import { EmptyState } from "@/components/dashboard/empty-state"
-import { formatProductDate, productTypeBadgeClassName, productTypeLabel } from "@/lib/coached"
+import {
+  formatProductDate,
+  productTypeBadgeClassName,
+  productTypeLabel,
+  programHref,
+} from "@/lib/coached"
 import { cn } from "@/lib/utils"
 
 function CourseRow({ product }: { product: CoachedProduct }) {
-  const href =
-    product.product_type === "coaching"
-      ? `/coached/${product.organization_slug}/coaching/${product.product_id}`
-      : `/coached/${product.organization_slug}/courses/${product.product_id}`
-
   return (
     <RichListItem className="p-0">
-      <Link href={href} className="flex w-full min-w-0 items-center gap-4 p-4">
+      <Link href={programHref(product)} className="flex w-full min-w-0 items-center gap-4 p-4">
         <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
           {product.cover_image_url ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -34,7 +34,10 @@ function CourseRow({ product }: { product: CoachedProduct }) {
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <Badge
               variant="outline"
-              className={cn("text-[10px] font-normal normal-case", productTypeBadgeClassName(product.product_type))}
+              className={cn(
+                "text-[10px] font-normal normal-case",
+                productTypeBadgeClassName(product.product_type)
+              )}
             >
               {productTypeLabel(product.product_type)}
             </Badge>
@@ -58,25 +61,19 @@ function CourseRow({ product }: { product: CoachedProduct }) {
   )
 }
 
-function uniqueProducts(products: CoachedProduct[]): CoachedProduct[] {
-  const seen = new Set<number>()
-  return products.filter((p) => {
-    if (seen.has(p.product_id)) return false
-    seen.add(p.product_id)
-    return true
-  })
-}
-
 export default function CoachingCoursesPage() {
   const { coachedProducts, isLoading } = useCoached()
-  const products = uniqueProducts(coachedProducts)
 
   if (isLoading) {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">My programs</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Everything you can open from your coaches</p>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
+            My programs
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Courses and coaching you can open
+          </p>
         </div>
         <LoadingRows count={5} />
       </div>
@@ -86,24 +83,28 @@ export default function CoachingCoursesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">My programs</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Courses and content you have access to</p>
+        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
+          My programs
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Courses and coaching you have access to
+        </p>
       </div>
 
-      {products.length > 0 ? (
+      {coachedProducts.length > 0 ? (
         <ul className="space-y-3">
-          {products.map((p) => (
-            <CourseRow key={p.product_id} product={p} />
+          {coachedProducts.map((p) => (
+            <CourseRow key={p.enrollment_product_id} product={p} />
           ))}
         </ul>
       ) : (
         <EmptyState
           icon={BookOpen}
           title="No programs yet"
-          description="Buy an offer from a coach’s public page to see programs here."
+          description="When you buy an offer, your programs appear here. Ask your coach for their store page link."
           action={
             <Button size="sm" variant="secondary" asChild>
-              <Link href="/coached/coaches">Go to coaches</Link>
+              <Link href="/coached/coaches">Go to organizations</Link>
             </Button>
           }
         />

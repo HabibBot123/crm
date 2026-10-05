@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
   const rawPaymentLinkId = body.paymentLinkId ?? null
   const emailInput = (body.email ?? "").trim().toLowerCase()
   const fullName = (body.fullName ?? "").trim() || null
+  const hasBuyerEmail = emailInput.length > 0
 
   const offerId = typeof rawOfferId === "number" ? rawOfferId : Number(rawOfferId)
   const paymentLinkId =
@@ -35,10 +36,6 @@ export async function POST(req: NextRequest) {
 
   if (!offerId || !Number.isFinite(offerId)) {
     return NextResponse.json({ error: "offerId is required" }, { status: 400 })
-  }
-
-  if (!emailInput) {
-    return NextResponse.json({ error: "email is required" }, { status: 400 })
   }
 
   try {
@@ -58,6 +55,36 @@ export async function POST(req: NextRequest) {
     if (offer.status !== "active") {
       return NextResponse.json(
         { error: "Offer must be published before checkout" },
+        { status: 400 }
+      )
+    }
+
+    const { data: linkedProducts, error: productsError } = await supabase
+      .from("offer_products")
+      .select("product_id, products!inner(id, status)")
+      .eq("offer_id", offer.id)
+
+    if (productsError) {
+      return NextResponse.json(
+        { error: "Unable to validate offer products" },
+        { status: 500 }
+      )
+    }
+
+    const rows = linkedProducts ?? []
+    const activeProductCount = rows.filter((row) => {
+      if (row == null || typeof row !== "object") return false
+      if (!("products" in row)) return false
+      const products = row.products
+      const product = Array.isArray(products) ? products[0] : products
+      if (product == null || typeof product !== "object") return false
+      if (!("status" in product)) return false
+      return product.status === "published"
+    }).length
+
+    if (activeProductCount === 0) {
+      return NextResponse.json(
+        { error: "This offer has no active products and cannot be purchased" },
         { status: 400 }
       )
     }
@@ -135,61 +162,70 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 3) Find or create a Stripe customer on the coach's account for this email
-    const email = emailInput
+    // 3) Optional: find or create Stripe customer when email was collected upstream.
+    // Direct checkout (interstitial) leaves email empty — Stripe Checkout collects it.
     let stripeCustomerId: string | null = null
 
-    // Try from existing enrollments for this coach + email
-    const { data: existingEnrollment } = await supabase
-      .from("enrollments")
-      .select("stripe_customer_id")
-      .eq("organization_id", offer.organization_id)
-      .eq("buyer_email", email)
-      .not("stripe_customer_id", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    if (hasBuyerEmail) {
+      const email = emailInput
+      const { data: existingEnrollment } = await supabase
+        .from("enrollments")
+        .select("stripe_customer_id")
+        .eq("organization_id", offer.organization_id)
+        .eq("buyer_email", email)
+        .not("stripe_customer_id", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
 
-    if (existingEnrollment?.stripe_customer_id) {
-      stripeCustomerId = existingEnrollment.stripe_customer_id
-    } else {
-      // Try to reuse an existing customer on Stripe with this email
-      const customers = await stripe.customers.list(
-        { email, limit: 1 },
-        { stripeAccount: org.stripe_account_id }
-      )
-
-      if (customers.data.length > 0) {
-        stripeCustomerId = customers.data[0]!.id
+      if (existingEnrollment?.stripe_customer_id) {
+        stripeCustomerId = existingEnrollment.stripe_customer_id
       } else {
-        // Create a new customer on the coach's Stripe account
-        const customer = await stripe.customers.create(
-          {
-            email,
-            name: fullName || undefined,
-          },
+        const customers = await stripe.customers.list(
+          { email, limit: 1 },
           { stripeAccount: org.stripe_account_id }
         )
-        stripeCustomerId = customer.id
+
+        if (customers.data.length > 0) {
+          stripeCustomerId = customers.data[0]!.id
+        } else {
+          const customer = await stripe.customers.create(
+            {
+              email,
+              name: fullName || undefined,
+            },
+            { stripeAccount: org.stripe_account_id }
+          )
+          stripeCustomerId = customer.id
+        }
       }
     }
 
     // 4) Create Checkout Session on the coach's Stripe account
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
     const baseAppUrl = appUrl.replace(/\/$/, "")
+    const orgSlug = typeof org.slug === "string" ? org.slug : ""
 
     const displayPriceCents =
       isInstallmentFlow && effectiveInstallmentCount != null && effectiveInstallmentCount > 0
         ? Math.round(effectivePrice / effectiveInstallmentCount)
         : effectivePrice
 
+    // Success always returns to CoachStack (account linking / delivery), never the coach's site.
     const successUrl =
       `${baseAppUrl}/order-success` +
       `?product=${encodeURIComponent(offer.title)}` +
       `&coach=${encodeURIComponent(org.name ?? "")}` +
       `&price=${encodeURIComponent(String(displayPriceCents))}` +
       `&currency=${encodeURIComponent(offer.currency)}`
-    const cancelUrl = `${baseAppUrl}/org/${(org as { slug?: string }).slug ?? ""}/buy/${offer.id}`
+
+    // Cancel returns to the same CoachStack checkout entry (retry), not an arbitrary external URL.
+    const cancelUrl =
+      orgSlug.length > 0
+        ? `${baseAppUrl}/org/${orgSlug}/buy/${offer.id}${
+            paymentLinkId != null ? `?variantId=${paymentLinkId}` : ""
+          }`
+        : `${baseAppUrl}/`
 
     // Installments use a recurring price → must use subscription mode (with cancel_after_cycles)
     const isSubscription =
@@ -208,11 +244,15 @@ export async function POST(req: NextRequest) {
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: isSubscription ? "subscription" : "payment",
       line_items: [{ price: stripePriceId, quantity: 1 }],
-      customer: stripeCustomerId ?? undefined,
-      customer_email: stripeCustomerId ? undefined : email,
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata: sessionMetadata,
+      name_collection: {
+        individual: {
+          enabled: true,
+          optional: false,
+        },
+      },
       ...(!isSubscription
         ? { invoice_creation: { enabled: true } }
         : {}),
@@ -227,6 +267,12 @@ export async function POST(req: NextRequest) {
             },
           }
         : {}),
+    }
+
+    if (stripeCustomerId) {
+      sessionParams.customer = stripeCustomerId
+    } else if (hasBuyerEmail) {
+      sessionParams.customer_email = emailInput
     }
 
     const session = await stripe.checkout.sessions.create(

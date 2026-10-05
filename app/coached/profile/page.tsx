@@ -255,6 +255,13 @@ export default function CoachedProfilePage() {
             </CardContent>
           </Card>
 
+          <Button variant="outline" className="w-full gap-2" asChild>
+            <Link href="/dashboard">
+              <ExternalLink className="h-4 w-4" />
+              Open coach workspace
+            </Link>
+          </Button>
+
           <Button
             variant="outline"
             className="w-full gap-2 text-destructive hover:bg-destructive/5 hover:text-destructive"

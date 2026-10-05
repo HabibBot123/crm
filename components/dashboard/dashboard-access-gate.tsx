@@ -11,8 +11,9 @@ type Props = {
  * - authenticated coach user
  * - selected organization
  *
- * Stripe Connect onboarding is enforced only on specific pages
- * (e.g. products, offers) that explicitly opt in via `useCoachAccessGuard`.
+ * Stripe Connect is not required to browse the dashboard or build draft
+ * products/offers. It is enforced only at payment activation
+ * (publish offer / create Stripe price / live checkout).
  *
  * This gate is applied globally in the dashboard layout.
  */

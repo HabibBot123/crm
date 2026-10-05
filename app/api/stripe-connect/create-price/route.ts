@@ -29,9 +29,9 @@ export async function POST(req: NextRequest) {
     return badRequest("offerId is required")
   }
 
-  if (!org.stripe_account_id) {
+  if (!org.stripe_account_id || !org.stripe_onboarding_completed) {
     return badRequest(
-      "This organization does not have a Stripe Connect account. Complete onboarding first."
+      "Connect Stripe to publish this offer."
     )
   }
 

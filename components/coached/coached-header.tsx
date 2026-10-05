@@ -8,8 +8,8 @@ import { cn } from "@/lib/utils"
 
 const desktopNavItems = [
   { label: "Home", href: "/coached", icon: Home },
-  { label: "Coaches", href: "/coached/coaches", icon: Users },
-  { label: "My Programs", href: "/coached/courses", icon: BookOpen },
+  { label: "Organizations", href: "/coached/coaches", icon: Users },
+  { label: "Programs", href: "/coached/courses", icon: BookOpen },
   { label: "Profile", href: "/coached/profile", icon: User },
 ]
 

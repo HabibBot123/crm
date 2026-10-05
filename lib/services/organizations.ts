@@ -1,6 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { parseOrganizationBrandingJson } from "@/schemas/organization-branding.schema"
+import {
+  parseOrganizationMode,
+  type OrganizationMode,
+} from "@/lib/permissions/org-capabilities"
 import type { BillingType } from "./offers"
+
+export type { OrganizationMode }
 
 export type OrganizationBranding = {
   logo_url?: string | null
@@ -29,6 +35,7 @@ export type OrganizationDisplay = {
   slug: string
   stripe_account_id: string | null
   stripe_onboarding_completed: boolean
+  mode: OrganizationMode
   branding?: OrganizationBranding | null
 }
 
@@ -51,13 +58,21 @@ export async function fetchOrganizationsByIds(
 
   const { data, error } = await supabase
     .from("organizations")
-    .select("id, name, slug, stripe_account_id, stripe_onboarding_completed, branding")
+    .select("id, name, slug, stripe_account_id, stripe_onboarding_completed, mode, branding")
     .in("id", ids)
     .is("deleted_at", null)
     .order("name", { ascending: true })
 
   if (error) throw error
-  return (data ?? []) as OrganizationDisplay[]
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    stripe_account_id: row.stripe_account_id,
+    stripe_onboarding_completed: Boolean(row.stripe_onboarding_completed),
+    mode: parseOrganizationMode(row.mode),
+    branding: row.branding,
+  }))
 }
 
 /** Fetch organizations for a user: query organization_members (user_id) + join organizations (single query). */
@@ -71,7 +86,7 @@ export async function fetchOrganizationsWithMember(
       `
       id,
       role,
-      organizations(id,name,slug,stripe_account_id,stripe_onboarding_completed)
+      organizations(id,name,slug,stripe_account_id,stripe_onboarding_completed,mode)
     `
     )
     .eq("user_id", userId)
@@ -79,10 +94,19 @@ export async function fetchOrganizationsWithMember(
 
   if (error) throw error
 
+  type OrgJoin = {
+    id: number
+    name: string
+    slug: string
+    stripe_account_id: string | null
+    stripe_onboarding_completed: boolean | null
+    mode: unknown
+  }
+
   const rows = (data ?? []) as {
     id: number
     role: string
-    organizations: OrganizationDisplay | OrganizationDisplay[] | null
+    organizations: OrgJoin | OrgJoin[] | null
   }[]
 
   const result: Organization[] = []
@@ -90,7 +114,12 @@ export async function fetchOrganizationsWithMember(
     const org = Array.isArray(row.organizations) ? row.organizations[0] : row.organizations
     if (!org) continue
     result.push({
-      ...org,
+      id: org.id,
+      name: org.name,
+      slug: org.slug,
+      stripe_account_id: org.stripe_account_id,
+      stripe_onboarding_completed: Boolean(org.stripe_onboarding_completed),
+      mode: parseOrganizationMode(org.mode),
       member_id: row.id,
       member_role: row.role,
     })

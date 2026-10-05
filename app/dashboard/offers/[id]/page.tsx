@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { use, useState } from "react"
 import Link from "next/link"
@@ -40,11 +40,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useCoachAccessGuard } from "@/hooks/use-access-guard"
+import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
+import { NoAccessState } from "@/components/dashboard/no-access-state"
 import {
   type OfferWithDetails,
   type OfferVariant,
 } from "@/lib/services/offers"
-import { formatAmountFromCents, buildOrgUrl } from "@/lib/utils"
+import { formatAmountFromCents, buildOrgUrl, cn } from "@/lib/utils"
 import { OFFER_CURRENCIES } from "@/lib/constants/offers"
 import { toast } from "sonner"
 import {
@@ -52,9 +54,13 @@ import {
   useDeleteOfferVariant,
   useGenerateOfferVariantPrice,
   useOffer,
+  useOfferEnrollmentCount,
   usePublishOffer,
   useUpdateOffer,
+  useUpsertOfferProducts,
 } from "@/hooks/use-offers"
+import { useProducts } from "@/hooks/use-products"
+import { useBusinessUnits } from "@/hooks/use-business-units"
 import type { updateOffer } from "@/lib/services/offers"
 
 const statusStyles: Record<string, string> = {
@@ -98,12 +104,12 @@ export default function OfferEditorPage({
   const queryClient = useQueryClient()
   const { canAccess, guardContent, currentOrganization } = useCoachAccessGuard({
     requireOrg: true,
-    requireStripe: true,
     noOrgMessage: "Select an organization to edit offers.",
-    stripeDescription:
-      "To edit offers, you need to complete Stripe Connect onboarding for this organization.",
   })
+  const { can, isLoading: capsLoading } = useOrgCapabilities()
+  const canManageCatalog = can("catalog.manage")
   const offerId = Number(id)
+  const stripeReady = currentOrganization?.stripe_onboarding_completed === true
 
   const [deleteVariantId, setDeleteVariantId] = useState<number | null>(null)
   const [generatingVariantId, setGeneratingVariantId] = useState<number | null>(null)
@@ -123,8 +129,39 @@ export default function OfferEditorPage({
 
   const generateVariantMutation = useGenerateOfferVariantPrice(offerId)
 
+  function requireStripeToSell() {
+    if (stripeReady) return true
+    toast.error("Connect Stripe to publish this offer.")
+    router.push("/dashboard/stripe-connect")
+    return false
+  }
+
+  function handlePublish() {
+    if (!requireStripeToSell()) return
+    publishMutation.mutate()
+  }
+
+  function handleGenerateVariantPrice(variantId: number) {
+    if (!currentOrganization?.id) return
+    if (!requireStripeToSell()) return
+    setGeneratingVariantId(variantId)
+    generateVariantMutation.mutate(
+      { organizationId: currentOrganization.id, paymentLinkId: variantId },
+      { onSettled: () => setGeneratingVariantId(null) }
+    )
+  }
+
   if (!canAccess && guardContent) {
     return <div className="p-4 lg:p-8">{guardContent}</div>
+  }
+
+  if (!capsLoading && !canManageCatalog) {
+    return (
+      <NoAccessState
+        title="Offers"
+        description="You don’t have permission to manage offers with your role."
+      />
+    )
   }
 
   if (isLoading || offer === undefined) {
@@ -171,7 +208,7 @@ export default function OfferEditorPage({
           <Button
             size="sm"
             className="gap-2"
-            onClick={() => publishMutation.mutate()}
+            onClick={handlePublish}
             disabled={publishMutation.isPending}
           >
             {publishMutation.isPending ? (
@@ -179,10 +216,24 @@ export default function OfferEditorPage({
             ) : (
               <Send className="h-3.5 w-3.5" />
             )}
-            {publishMutation.isPending ? "Publishing…" : "Publish"}
+            {publishMutation.isPending ? "Publishing..." : "Publish"}
           </Button>
         )}
       </div>
+
+      {offer.status === "draft" && !stripeReady && (
+        <div className="mt-4 rounded-xl border border-border bg-muted/40 p-4">
+          <p className="text-sm font-medium text-foreground">
+            Build your offer first. Connect Stripe when you&apos;re ready to sell.
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            You can edit drafts freely. Publishing creates Stripe prices and unlocks live checkout.
+          </p>
+          <Button className="mt-3" size="sm" asChild>
+            <Link href="/dashboard/stripe-connect">Connect Stripe</Link>
+          </Button>
+        </div>
+      )}
 
       <Tabs defaultValue="overview" className="mt-8">
         <TabsList>
@@ -194,6 +245,7 @@ export default function OfferEditorPage({
         <TabsContent value="overview" className="mt-6">
           <OverviewTab
             offer={offer}
+            organizationId={currentOrganization?.id ?? null}
             onSave={(input) => updateOfferMutation.mutate(input)}
             savePending={updateOfferMutation.isPending}
           />
@@ -205,14 +257,7 @@ export default function OfferEditorPage({
             orgSlug={currentOrganization?.slug ?? undefined}
             onAddVariant={(input) => addVariantMutation.mutate(input)}
             onDeleteVariant={(variantId) => setDeleteVariantId(variantId)}
-            onGeneratePrice={(variantId) => {
-              if (!currentOrganization?.id) return
-              setGeneratingVariantId(variantId)
-              generateVariantMutation.mutate(
-                { organizationId: currentOrganization.id, paymentLinkId: variantId },
-                { onSettled: () => setGeneratingVariantId(null) }
-              )
-            }}
+            onGeneratePrice={handleGenerateVariantPrice}
             addPending={addVariantMutation.isPending}
             generatingVariantId={generatingVariantId}
           />
@@ -241,7 +286,7 @@ export default function OfferEditorPage({
                   {offer.status === "archived"
                     ? "Archived"
                     : updateOfferMutation.isPending
-                      ? "Archiving…"
+                      ? "Archiving..."
                       : "Archive"}
                 </Button>
               </div>
@@ -270,7 +315,7 @@ export default function OfferEditorPage({
               onClick={() => deleteVariantId !== null && deleteVariantMutation.mutate(deleteVariantId)}
               disabled={deleteVariantMutation.isPending}
             >
-              {deleteVariantMutation.isPending ? "Deleting…" : "Delete"}
+              {deleteVariantMutation.isPending ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -285,10 +330,12 @@ export default function OfferEditorPage({
 
 function OverviewTab({
   offer,
+  organizationId,
   onSave,
   savePending,
 }: {
   offer: OfferWithDetails
+  organizationId: number | null
   onSave: (input: Parameters<typeof updateOffer>[2]) => void
   savePending: boolean
 }) {
@@ -303,12 +350,55 @@ function OverviewTab({
   const [installmentCount, setInstallmentCount] = useState(
     String(offer.installment_count ?? "3")
   )
+  const [accessMode, setAccessMode] = useState<"lifetime" | "months">(
+    offer.access_duration_months != null ? "months" : "lifetime"
+  )
+  const [accessMonths, setAccessMonths] = useState(
+    String(offer.access_duration_months ?? 6)
+  )
+  const [sessionsCount, setSessionsCount] = useState(
+    String(offer.sessions_count ?? 8)
+  )
+  const [businessUnitId, setBusinessUnitId] = useState<string>(
+    offer.business_unit_id == null ? "none" : String(offer.business_unit_id)
+  )
+  const [selectedProductIds, setSelectedProductIds] = useState(
+    offer.offer_products.map((op) => op.product_id)
+  )
+
+  const enrollmentCountQuery = useOfferEnrollmentCount(offer.id, true)
+  const canEditProducts = (enrollmentCountQuery.data ?? 1) === 0
+  const upsertProductsMutation = useUpsertOfferProducts(organizationId, offer.id)
+  const { data: productsPage } = useProducts(organizationId, 1, 200)
+  const { units: businessUnits } = useBusinessUnits(organizationId)
+  const publishedProducts = (productsPage?.items ?? []).filter(
+    (p) => p.status === "published"
+  )
+
+  const hasCoaching = offer.offer_products.some((op) => op.products?.type === "coaching")
+    || selectedProductIds.some((id) =>
+      publishedProducts.find((p) => p.id === id)?.type === "coaching"
+    )
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault()
     const parsedPrice = parseFloat(price)
     if (isNaN(parsedPrice) || parsedPrice <= 0) {
       return
+    }
+    const accessDurationMonths =
+      accessMode === "lifetime" ? null : parseInt(accessMonths, 10)
+    if (accessMode === "months" && (!accessDurationMonths || accessDurationMonths < 1)) {
+      toast.error("Access duration must be at least 1 month")
+      return
+    }
+    let parsedSessions: number | null = null
+    if (hasCoaching) {
+      parsedSessions = parseInt(sessionsCount, 10)
+      if (!parsedSessions || parsedSessions < 1) {
+        toast.error("Sessions included must be at least 1 for coaching offers")
+        return
+      }
     }
     const normalizedKeyFeatures = keyFeatures
       .map((f) => f.trim())
@@ -326,43 +416,105 @@ function OverviewTab({
         offer.billing_type === "installment"
           ? parseInt(installmentCount, 10) || null
           : null,
+      access_duration_months: accessDurationMonths,
+      sessions_count: hasCoaching ? parsedSessions : null,
+      business_unit_id: businessUnitId === "none" ? null : Number(businessUnitId),
     })
+  }
+
+  const toggleProduct = (productId: number) => {
+    setSelectedProductIds((prev) =>
+      prev.includes(productId)
+        ? prev.filter((id) => id !== productId)
+        : [...prev, productId]
+    )
   }
 
   return (
     <div className="max-w-2xl space-y-8">
-      {/* Products included */}
-      <div className="rounded-xl border border-border bg-card p-5">
-        <h3 className="text-sm font-semibold text-foreground mb-3">
-          Included products
-        </h3>
-        {offer.offer_products.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No products linked.</p>
+      <div className="rounded-xl border border-border bg-card p-5 space-y-3">
+        <h3 className="text-sm font-semibold text-foreground">Included products</h3>
+        {canEditProducts ? (
+          <>
+            <p className="text-xs text-muted-foreground">
+              No purchases yet  -  you can change the products in this offer.
+            </p>
+            <div className="space-y-2">
+              {publishedProducts.map((product) => {
+                const selected = selectedProductIds.includes(product.id)
+                return (
+                  <button
+                    key={product.id}
+                    type="button"
+                    onClick={() => toggleProduct(product.id)}
+                    className={cn(
+                      "w-full flex items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors",
+                      selected
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/40"
+                    )}
+                  >
+                    {product.type === "course" ? (
+                      <BookOpen className="h-4 w-4 text-primary shrink-0" />
+                    ) : (
+                      <MessageCircle className="h-4 w-4 text-primary shrink-0" />
+                    )}
+                    <span className="flex-1 font-medium">{product.title}</span>
+                    <Badge variant="secondary" className="text-xs capitalize">
+                      {product.type}
+                    </Badge>
+                  </button>
+                )
+              })}
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              disabled={
+                upsertProductsMutation.isPending || selectedProductIds.length === 0
+              }
+              onClick={() => upsertProductsMutation.mutate(selectedProductIds)}
+            >
+              {upsertProductsMutation.isPending ? "Saving..." : "Save products"}
+            </Button>
+          </>
         ) : (
-          <div className="flex flex-wrap gap-2">
-            {offer.offer_products.map((op) => (
-              <div
-                key={op.id}
-                className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2"
-              >
-                {op.products?.type === "course" ? (
-                  <BookOpen className="h-4 w-4 text-primary shrink-0" />
-                ) : (
-                  <MessageCircle className="h-4 w-4 text-primary shrink-0" />
-                )}
-                <span className="text-sm font-medium text-foreground">
-                  {op.products?.title ?? "Unknown product"}
-                </span>
-                <Badge variant="secondary" className="text-xs capitalize">
-                  {op.products?.type}
-                </Badge>
+          <>
+            {offer.offer_products.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No products linked.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {offer.offer_products.map((op) => (
+                  <div
+                    key={op.id}
+                    className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2"
+                  >
+                    {op.products?.type === "course" ? (
+                      <BookOpen className="h-4 w-4 text-primary shrink-0" />
+                    ) : (
+                      <MessageCircle className="h-4 w-4 text-primary shrink-0" />
+                    )}
+                    <span className="text-sm font-medium text-foreground">
+                      {op.products?.title ?? "Unknown product"}
+                    </span>
+                    <Badge variant="secondary" className="text-xs capitalize">
+                      {op.products?.type}
+                    </Badge>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              This offer already has purchases. To change products, create a new offer
+              and archive this one.
+            </p>
+            <Button type="button" size="sm" variant="outline" asChild>
+              <Link href="/dashboard/offers/new">Create new offer</Link>
+            </Button>
+          </>
         )}
       </div>
 
-      {/* Edit form */}
       <form onSubmit={handleSave} className="space-y-6">
         <div className="space-y-2">
           <Label htmlFor="offer-title">Offer name</Label>
@@ -424,6 +576,79 @@ function OverviewTab({
             ))}
           </div>
         </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="offer-business-unit">Business unit</Label>
+          <Select value={businessUnitId} onValueChange={setBusinessUnitId}>
+            <SelectTrigger id="offer-business-unit">
+              <SelectValue placeholder="Organization-wide" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None (organization-wide)</SelectItem>
+              {businessUnits.map((unit) => (
+                <SelectItem key={unit.id} value={String(unit.id)}>
+                  {unit.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Optional. Enrollments for this offer inherit this BU for permissions and reporting.
+            One offer per BU if you need the same product in multiple units.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Access duration</Label>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setAccessMode("lifetime")}
+              className={cn(
+                "flex-1 rounded-lg border-2 p-3 text-sm font-medium transition-colors",
+                accessMode === "lifetime"
+                  ? "border-primary bg-primary/5"
+                  : "border-border text-muted-foreground"
+              )}
+            >
+              Lifetime
+            </button>
+            <button
+              type="button"
+              onClick={() => setAccessMode("months")}
+              className={cn(
+                "flex-1 rounded-lg border-2 p-3 text-sm font-medium transition-colors",
+                accessMode === "months"
+                  ? "border-primary bg-primary/5"
+                  : "border-border text-muted-foreground"
+              )}
+            >
+              Limited months
+            </button>
+          </div>
+          {accessMode === "months" && (
+            <Input
+              type="number"
+              min={1}
+              value={accessMonths}
+              onChange={(e) => setAccessMonths(e.target.value)}
+            />
+          )}
+        </div>
+
+        {hasCoaching && (
+          <div className="space-y-2">
+            <Label htmlFor="offer-sessions">Coaching sessions included</Label>
+            <Input
+              id="offer-sessions"
+              type="number"
+              min={1}
+              value={sessionsCount}
+              onChange={(e) => setSessionsCount(e.target.value)}
+            />
+          </div>
+        )}
+
         <div className="grid grid-cols-[1fr_auto] gap-3">
           <div className="space-y-2">
             <Label htmlFor="offer-price">Price</Label>
@@ -434,21 +659,11 @@ function OverviewTab({
               step="0.01"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
-              disabled={offer.status === "active"}
             />
-            {offer.status === "active" && (
-              <p className="text-xs text-muted-foreground">
-                Price is locked once the offer is published (Stripe price is immutable).
-              </p>
-            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="offer-currency">Currency</Label>
-            <Select
-              value={currency}
-              onValueChange={setCurrency}
-              disabled={offer.status === "active"}
-            >
+            <Select value={currency} onValueChange={setCurrency}>
               <SelectTrigger id="offer-currency" className="w-24">
                 <SelectValue />
               </SelectTrigger>
@@ -469,7 +684,6 @@ function OverviewTab({
             <Select
               value={interval}
               onValueChange={(v) => setInterval(v as "month" | "year")}
-              disabled={offer.status === "active"}
             >
               <SelectTrigger id="offer-interval">
                 <SelectValue />
@@ -488,17 +702,15 @@ function OverviewTab({
             <Input
               id="offer-installments"
               type="number"
-              min="2"
-              max="12"
+              min={2}
               value={installmentCount}
               onChange={(e) => setInstallmentCount(e.target.value)}
-              disabled={offer.status === "active"}
             />
           </div>
         )}
 
         <Button type="submit" disabled={savePending}>
-          {savePending ? "Saving…" : "Save details"}
+          {savePending ? "Saving..." : "Save changes"}
         </Button>
       </form>
     </div>
@@ -559,8 +771,9 @@ function VariantsTab({
   return (
     <div className="max-w-2xl space-y-3">
       <p className="text-sm text-muted-foreground">
-        Share the links below. Each goes to your checkout page (email then Stripe).
-        You can add variants with different prices or installment plans.
+        Share these links on your site or socials. Buyers see a short CoachStack
+        screen, then go straight to Stripe checkout. After payment they return here
+        to access their program.
       </p>
 
       {offer.status === "draft" && (
@@ -571,7 +784,7 @@ function VariantsTab({
         </div>
       )}
 
-      {/* Base offer — shareable link from offer_id */}
+      {/* Base offer  -  shareable link from offer_id */}
       <div className="rounded-xl border border-border bg-card p-3 space-y-2">
         <div className="flex items-center justify-between">
           <div>
@@ -581,7 +794,7 @@ function VariantsTab({
               {offer.billing_type === "subscription" && ` / ${offer.interval}`}
               {offer.billing_type === "installment" &&
                 offer.installment_count &&
-                ` × ${offer.installment_count}`}
+                ` Ã— ${offer.installment_count}`}
             </p>
           </div>
         </div>
@@ -641,7 +854,7 @@ function VariantsTab({
               id="variant-label"
               value={variantLabel}
               onChange={(e) => setVariantLabel(e.target.value)}
-              placeholder='e.g. "3× payment", "Promo -20%"'
+              placeholder='e.g. "3Ã— payment", "Promo -20%"'
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -683,7 +896,7 @@ function VariantsTab({
               Cancel
             </Button>
             <Button type="submit" disabled={addPending}>
-              {addPending ? "Adding…" : "Add variant"}
+              {addPending ? "Adding..." : "Add variant"}
             </Button>
           </div>
         </form>
@@ -731,7 +944,7 @@ function VariantCard({
             {formatAmountFromCents(Number(effectivePrice), offer.currency)}
             {offer.billing_type !== "subscription" &&
               effectiveInstallments &&
-              ` × ${effectiveInstallments}`}
+              ` Ã— ${effectiveInstallments}`}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">

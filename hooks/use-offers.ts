@@ -17,6 +17,8 @@ import {
   fetchOffersPage,
   type OfferFetchScope,
   updateOffer,
+  upsertOfferProducts,
+  countEnrollmentsForOffer,
   type OfferListItem,
   type OfferWithDetails,
 } from "@/lib/services/offers"
@@ -152,6 +154,31 @@ export function useUpdateOffer(organizationId: number | null, offerId: number) {
       queryClient.invalidateQueries({ queryKey: offerQueryKey(offerId) })
       invalidateOffersForOrganization(queryClient, organizationId)
       toast.success("Offer updated")
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+}
+
+export function useOfferEnrollmentCount(offerId: number, enabled: boolean) {
+  const { supabase } = useAuth()
+
+  return useQuery({
+    queryKey: ["offer-enrollments-count", offerId],
+    queryFn: () => countEnrollmentsForOffer(supabase, offerId),
+    enabled,
+  })
+}
+
+export function useUpsertOfferProducts(organizationId: number | null, offerId: number) {
+  const { supabase } = useAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (productIds: number[]) => upsertOfferProducts(supabase, offerId, productIds),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: offerQueryKey(offerId) })
+      invalidateOffersForOrganization(queryClient, organizationId)
+      toast.success("Products updated")
     },
     onError: (err: Error) => toast.error(err.message),
   })

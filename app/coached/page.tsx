@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Users, ArrowRight, BookOpen, Sparkles } from "lucide-react"
+import { Users, ArrowRight, BookOpen } from "lucide-react"
 import { useCoached, type CoachedProduct } from "@/hooks/use-coached"
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
@@ -11,7 +11,12 @@ import { StatusBadge } from "@/components/dashboard/status-badge"
 import { RichListItem } from "@/components/dashboard/rich-list-item"
 import { LoadingRows } from "@/components/dashboard/loading-rows"
 import { EmptyState } from "@/components/dashboard/empty-state"
-import { formatProductDate, productTypeBadgeClassName, productTypeLabel } from "@/lib/coached"
+import {
+  formatProductDate,
+  productTypeBadgeClassName,
+  productTypeLabel,
+  programHref,
+} from "@/lib/coached"
 import { cn } from "@/lib/utils"
 
 function orgInitials(name: string) {
@@ -20,13 +25,6 @@ function orgInitials(name: string) {
     return (words[0][0] + words[1][0]).toUpperCase()
   }
   return name.slice(0, 2).toUpperCase() || "?"
-}
-
-function productHref(p: CoachedProduct): string {
-  const isCoaching = p.product_type === "coaching"
-  return isCoaching
-    ? `/coached/${p.organization_slug}/coaching/${p.product_id}`
-    : `/coached/${p.organization_slug}/courses/${p.product_id}`
 }
 
 function ProductRowContent({ p }: { p: CoachedProduct }) {
@@ -46,7 +44,10 @@ function ProductRowContent({ p }: { p: CoachedProduct }) {
           <p className="line-clamp-1 text-sm font-semibold text-foreground">{p.product_title}</p>
           <Badge
             variant="outline"
-            className={cn("text-[10px] font-normal normal-case", productTypeBadgeClassName(p.product_type))}
+            className={cn(
+              "text-[10px] font-normal normal-case",
+              productTypeBadgeClassName(p.product_type)
+            )}
           >
             {productTypeLabel(p.product_type)}
           </Badge>
@@ -54,12 +55,13 @@ function ProductRowContent({ p }: { p: CoachedProduct }) {
         <p className="mt-0.5 text-xs text-muted-foreground">with {p.organization_name}</p>
         {p.completion_total != null && p.completion_total > 0 && (
           <p className="mt-1 text-xs font-medium text-primary">
-            {p.completion_completed ?? 0}/{p.completion_total} {isCoaching ? "sessions" : "completed"}
+            {p.completion_completed ?? 0}/{p.completion_total}{" "}
+            {isCoaching ? "sessions" : "completed"}
           </p>
         )}
         {isCoaching && (
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {p.coach_full_name ? `Coach: ${p.coach_full_name}` : "Coach not yet assigned"}
+            {p.coach_full_name ? `Your coach: ${p.coach_full_name}` : "Coach not yet assigned"}
           </p>
         )}
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
@@ -80,10 +82,8 @@ export default function CoachingHomePage() {
   const { coachedOrgs, coachedProducts, isLoading } = useCoached()
 
   const displayName = user?.user_metadata?.full_name ?? user?.email ?? "there"
-  const myCoaches = coachedOrgs
-  const myProducts = coachedProducts
-  const continueProduct = myProducts[0] ?? null
-  const morePrograms = myProducts.length > 1 ? myProducts.slice(1, 6) : []
+  const continueProduct = coachedProducts[0] ?? null
+  const morePrograms = coachedProducts.length > 1 ? coachedProducts.slice(1, 6) : []
 
   if (isLoading) {
     return (
@@ -101,7 +101,7 @@ export default function CoachingHomePage() {
           Welcome back, {displayName}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Your space to resume programs, message progress with coaches, and use what you bought.
+          Resume your programs and see the organizations you bought from.
         </p>
       </div>
 
@@ -119,7 +119,7 @@ export default function CoachingHomePage() {
           <ul className="space-y-3">
             <RichListItem className="p-0">
               <Link
-                href={productHref(continueProduct)}
+                href={programHref(continueProduct)}
                 className="flex w-full min-w-0 items-center gap-4 p-4"
               >
                 <ProductRowContent p={continueProduct} />
@@ -131,14 +131,17 @@ export default function CoachingHomePage() {
 
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-3">
-          <h2 className="text-sm font-semibold text-foreground">My coaches</h2>
-          <Link href="/coached/coaches?tab=my" className="text-xs font-medium text-primary hover:underline">
+          <h2 className="text-sm font-semibold text-foreground">Your organizations</h2>
+          <Link
+            href="/coached/coaches"
+            className="text-xs font-medium text-primary hover:underline"
+          >
             View all
           </Link>
         </div>
-        {myCoaches.length > 0 ? (
+        {coachedOrgs.length > 0 ? (
           <ul className="space-y-3">
-            {myCoaches.map((org) => (
+            {coachedOrgs.map((org) => (
               <RichListItem key={org.organization_id} className="p-0">
                 <Link
                   href={`/coached/coaches/${org.organization_id}`}
@@ -166,14 +169,11 @@ export default function CoachingHomePage() {
         ) : (
           <EmptyState
             icon={Users}
-            title="No coach yet"
-            description="Purchase an offer from a coach’s public page to unlock programs here."
+            title="No organizations yet"
+            description="Buy an offer from a coach’s store page. Ask them for the link if you don’t have it."
             action={
-              <Button size="sm" className="gap-2" asChild>
-                <Link href="/">
-                  <Sparkles className="h-4 w-4" />
-                  Browse offers
-                </Link>
+              <Button size="sm" variant="secondary" asChild>
+                <Link href="/">Back to CoachStack</Link>
               </Button>
             }
           />
@@ -184,15 +184,18 @@ export default function CoachingHomePage() {
         <section className="space-y-3">
           <div className="flex items-baseline justify-between gap-3">
             <h2 className="text-sm font-semibold text-foreground">Your programs</h2>
-            <Link href="/coached/courses" className="text-xs font-medium text-primary hover:underline">
+            <Link
+              href="/coached/courses"
+              className="text-xs font-medium text-primary hover:underline"
+            >
               Open library
             </Link>
           </div>
           <ul className="space-y-3">
             {morePrograms.map((p) => (
-              <RichListItem key={`${p.enrollment_id}-${p.product_id}`} className="p-0">
+              <RichListItem key={p.enrollment_product_id} className="p-0">
                 <Link
-                  href={productHref(p)}
+                  href={programHref(p)}
                   className="flex w-full min-w-0 items-center gap-4 p-4"
                 >
                   <ProductRowContent p={p} />
@@ -203,19 +206,22 @@ export default function CoachingHomePage() {
         </section>
       )}
 
-      {!continueProduct && myProducts.length > 0 && (
+      {!continueProduct && coachedProducts.length > 0 && (
         <section className="space-y-3">
           <div className="flex items-baseline justify-between gap-3">
             <h2 className="text-sm font-semibold text-foreground">Your programs</h2>
-            <Link href="/coached/courses" className="text-xs font-medium text-primary hover:underline">
+            <Link
+              href="/coached/courses"
+              className="text-xs font-medium text-primary hover:underline"
+            >
               All programs
             </Link>
           </div>
           <ul className="space-y-3">
-            {myProducts.slice(0, 5).map((p) => (
-              <RichListItem key={`${p.enrollment_id}-${p.product_id}`} className="p-0">
+            {coachedProducts.slice(0, 5).map((p) => (
+              <RichListItem key={p.enrollment_product_id} className="p-0">
                 <Link
-                  href={productHref(p)}
+                  href={programHref(p)}
                   className="flex w-full min-w-0 items-center gap-4 p-4"
                 >
                   <ProductRowContent p={p} />
@@ -225,23 +231,6 @@ export default function CoachingHomePage() {
           </ul>
         </section>
       )}
-
-      <section className="space-y-3">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 className="text-sm font-semibold text-foreground">Discover coaches</h2>
-          <Link href="/coached/coaches?tab=discover" className="text-xs font-medium text-primary hover:underline">
-            View all
-          </Link>
-        </div>
-        <div className="rounded-2xl bg-muted/40 p-5">
-          <p className="text-sm text-muted-foreground">
-            Find coaches from their public pages and buy an offer to add programs to this app.
-          </p>
-          <Button variant="secondary" size="sm" className="mt-4" asChild>
-            <Link href="/coached/coaches?tab=discover">Explore</Link>
-          </Button>
-        </div>
-      </section>
     </div>
   )
 }

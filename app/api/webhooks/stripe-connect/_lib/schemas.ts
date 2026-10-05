@@ -12,6 +12,7 @@ export const checkoutSessionCompletedSchema = z.object({
     .object({
       email: z.string().nullable().optional(),
       name: z.string().nullable().optional(),
+      individual_name: z.string().nullable().optional(),
     })
     .nullable()
     .optional(),

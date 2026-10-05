@@ -269,23 +269,34 @@ export type CoachedCoachingDetail = {
   coach_full_name: string | null
 }
 
-/** Fetch coaching pack detail for the coached: sessions (past/upcoming) and coach info. */
-/** Fetch coaching pack detail for the coached: one view query (pack meta) + one sessions query. */
+/** Fetch coaching pack detail for the coached by enrollment_product_id. */
 export async function fetchCoachedCoachingDetail(
   supabase: SupabaseClient,
   userId: string,
-  productId: number
+  enrollmentProductId: number
 ): Promise<CoachedCoachingDetail | null> {
   const { data: packRow, error: packError } = await supabase
     .from("v_coached_products")
     .select("enrollment_product_id, organization_slug, coach_full_name, product_title")
     .eq("user_id", userId)
-    .eq("product_id", productId)
+    .eq("enrollment_product_id", enrollmentProductId)
     .eq("product_type", "coaching")
     .maybeSingle()
 
   if (packError || !packRow) return null
-  const pack = packRow as { enrollment_product_id: number; organization_slug: string; coach_full_name: string | null; product_title: string }
+
+  const pack = {
+    enrollment_product_id:
+      typeof packRow.enrollment_product_id === "number"
+        ? packRow.enrollment_product_id
+        : enrollmentProductId,
+    organization_slug:
+      typeof packRow.organization_slug === "string" ? packRow.organization_slug : "",
+    coach_full_name:
+      typeof packRow.coach_full_name === "string" ? packRow.coach_full_name : null,
+    product_title:
+      typeof packRow.product_title === "string" ? packRow.product_title : "Coaching",
+  }
 
   const { data: sessionsData, error: sessionsError } = await supabase
     .from("coaching_sessions")
@@ -301,43 +312,55 @@ export async function fetchCoachedCoachingDetail(
   return {
     enrollment_product_id: pack.enrollment_product_id,
     organization_slug: pack.organization_slug,
-    product_title: pack.product_title ?? "Coaching",
+    product_title: pack.product_title,
     sessions_past: allSessions.filter((s) => s.scheduled_at < now),
     sessions_upcoming: allSessions.filter((s) => s.scheduled_at >= now),
-    coach_full_name: pack.coach_full_name ?? null,
+    coach_full_name: pack.coach_full_name,
   }
 }
 
-/** Verify access and get enrollment_id + enrollment_product_id for a product; returns null if no access. */
-export async function getCoachedEnrollmentForProduct(
+/** Verify access by enrollment_product_id; returns null if no access. */
+export async function getCoachedEnrollmentAccess(
   supabase: SupabaseClient,
   userId: string,
-  productId: number
-): Promise<{ enrollment_id: number; enrollment_product_id: number; organization_slug: string } | null> {
+  enrollmentProductId: number
+): Promise<{
+  enrollment_id: number
+  enrollment_product_id: number
+  organization_slug: string
+  product_id: number
+} | null> {
   const { data, error } = await supabase
     .from("v_coached_products")
-    .select("enrollment_id, enrollment_product_id, organization_slug")
+    .select("enrollment_id, enrollment_product_id, organization_slug, product_id")
     .eq("user_id", userId)
-    .eq("product_id", productId)
-    .limit(1)
+    .eq("enrollment_product_id", enrollmentProductId)
     .maybeSingle()
 
   if (error || !data) return null
-  const row = data as { enrollment_id: number; enrollment_product_id: number; organization_slug: string }
+  if (
+    typeof data.enrollment_id !== "number" ||
+    typeof data.enrollment_product_id !== "number" ||
+    typeof data.organization_slug !== "string" ||
+    typeof data.product_id !== "number"
+  ) {
+    return null
+  }
   return {
-    enrollment_id: row.enrollment_id,
-    enrollment_product_id: row.enrollment_product_id,
-    organization_slug: row.organization_slug,
+    enrollment_id: data.enrollment_id,
+    enrollment_product_id: data.enrollment_product_id,
+    organization_slug: data.organization_slug,
+    product_id: data.product_id,
   }
 }
 
-/** Fetch full course details for the coached player (modules, items, content with Bunny URLs). */
+/** Fetch full course details for the coached player by enrollment_product_id. */
 export async function fetchCoachedCourseDetails(
   supabase: SupabaseClient,
   userId: string,
-  productId: number
+  enrollmentProductId: number
 ): Promise<CoachedCourseDetails | null> {
-  const access = await getCoachedEnrollmentForProduct(supabase, userId, productId)
+  const access = await getCoachedEnrollmentAccess(supabase, userId, enrollmentProductId)
   if (!access) return null
 
   const { data: product, error: productError } = await supabase
@@ -373,7 +396,7 @@ export async function fetchCoachedCourseDetails(
       )
     `
     )
-    .eq("id", productId)
+    .eq("id", access.product_id)
     .single()
 
   if (productError || !product) return null
@@ -413,7 +436,7 @@ export async function fetchCoachedCourseDetails(
     }))
 
   return {
-    product_id: productId,
+    product_id: access.product_id,
     product_title: productRow.title,
     organization_name: orgName,
     organization_slug: orgSlug,
@@ -423,17 +446,17 @@ export async function fetchCoachedCourseDetails(
   }
 }
 
-/** Fetch set of completed product_module_item ids for an enrollment. */
+/** Fetch set of completed product_module_item ids for an enrollment product. */
 export async function fetchLessonProgress(
   supabase: SupabaseClient,
   userId: string,
-  enrollmentId: number
+  enrollmentProductId: number
 ): Promise<Set<number>> {
   const { data, error } = await supabase
     .from("course_lesson_progress")
     .select("product_module_item_id")
     .eq("user_id", userId)
-    .eq("enrollment_id", enrollmentId)
+    .eq("enrollment_product_id", enrollmentProductId)
     .not("completed_at", "is", null)
 
   if (error) return new Set()

@@ -2,6 +2,11 @@ import type { SupabaseAdmin } from "../types"
 import { resolveUserIdByEmail } from "../helpers"
 import { checkoutSessionCompletedSchema } from "../schemas"
 
+/**
+ * Each paid checkout creates a new enrollment (new contract).
+ * Prior active/paused enrollments for the same offer + buyer are expired after insert.
+ * Idempotent on Stripe checkout session id (webhook retries).
+ */
 export async function handleCheckoutSessionCompleted(
   supabase: SupabaseAdmin,
   rawObject: unknown
@@ -26,9 +31,25 @@ export async function handleCheckoutSessionCompleted(
     return
   }
 
+  const { data: alreadyProcessed } = await supabase
+    .from("enrollments")
+    .select("id")
+    .eq("stripe_checkout_session_id", session.id)
+    .maybeSingle()
+
+  if (alreadyProcessed) {
+    console.info(
+      `checkout.session.completed [${session.id}]: enrollment ${alreadyProcessed.id} already exists — skipping`
+    )
+    return
+  }
+
   const buyerEmail =
     session.customer_details?.email?.trim().toLowerCase() ?? null
-  const buyerName = session.customer_details?.name?.trim() || null
+  const buyerName =
+    session.customer_details?.name?.trim() ||
+    session.customer_details?.individual_name?.trim() ||
+    null
   if (!buyerEmail) {
     console.warn(
       `checkout.session.completed [${session.id}]: no customer email — cannot create enrollment`
@@ -45,130 +66,116 @@ export async function handleCheckoutSessionCompleted(
 
   let expiresAt: string | null = null
 
-  const { data: offerProducts, error: opError } = await supabase
-    .from("offer_products")
-    .select("product_id, products(type)")
-    .eq("offer_id", offerId)
+  const { data: offerRow, error: offerError } = await supabase
+    .from("offers")
+    .select("id, access_duration_months")
+    .eq("id", offerId)
+    .single()
 
-  if (opError) {
+  if (offerError) {
     console.error(
-      `checkout.session.completed [${session.id}]: failed to fetch offer_products:`,
-      opError.message
+      `checkout.session.completed [${session.id}]: failed to fetch offer:`,
+      offerError.message
+    )
+  } else if (offerRow?.access_duration_months != null && offerRow.access_duration_months > 0) {
+    const expiryDate = new Date()
+    expiryDate.setMonth(expiryDate.getMonth() + offerRow.access_duration_months)
+    expiresAt = expiryDate.toISOString()
+    console.log(
+      `checkout.session.completed [${session.id}]: access_duration_months=${offerRow.access_duration_months} → expires_at=${expiresAt}`
     )
   }
 
-  if (offerProducts) {
-    type OpRow = {
-      product_id: number
-      products: { type: string } | { type: string }[] | null
-    }
-    const rows = offerProducts as unknown as OpRow[]
-    const getType = (p: OpRow["products"]): string | undefined =>
-      Array.isArray(p) ? p[0]?.type : p?.type
-    const coachingProductId = rows.find((op) => getType(op.products) === "coaching")?.product_id
-
-    if (coachingProductId) {
-      const { data: coaching, error: coachingError } = await supabase
-        .from("product_coaching")
-        .select("period_months")
-        .eq("product_id", coachingProductId)
-        .single()
-
-      if (coachingError) {
-        console.error(
-          `checkout.session.completed [${session.id}]: failed to fetch product_coaching for product ${coachingProductId}:`,
-          coachingError.message
-        )
-      } else if (coaching?.period_months) {
-        const expiryDate = new Date()
-        expiryDate.setMonth(expiryDate.getMonth() + coaching.period_months)
-        expiresAt = expiryDate.toISOString()
-        console.log(
-          `checkout.session.completed [${session.id}]: coaching period_months=${coaching.period_months} → expires_at=${expiresAt}`
-        )
-      } else {
-        console.warn(
-          `checkout.session.completed [${session.id}]: coaching product ${coachingProductId} has no period_months set`
-        )
-      }
-    }
-  }
-
-  let enrollError: { message: string } | null = null
-  let enrollmentId: number | null = null
-
-  if (userId) {
-    const { data: existing } = await supabase
-      .from("enrollments")
-      .select("id")
-      .eq("offer_id", offerId)
-      .eq("user_id", userId)
-      .maybeSingle()
-
-    if (existing) {
-      const { error } = await supabase
-        .from("enrollments")
-        .update({
-          buyer_name: buyerName,
-          buyer_email: buyerEmail,
-          status: "active",
-          stripe_customer_id: session.customer ?? null,
-          stripe_subscription_id: session.subscription ?? null,
-          expires_at: expiresAt,
-          offer_variant_id: variantId,
-        })
-        .eq("id", existing.id)
-      enrollError = error
-      enrollmentId = existing.id
-    } else {
-      const { data: inserted, error } = await supabase
-        .from("enrollments")
-        .insert({
-          organization_id: organizationId,
-          offer_id: offerId,
-          offer_variant_id: variantId,
-          user_id: userId,
-          buyer_name: buyerName,
-          buyer_email: buyerEmail,
-          status: "active",
-          stripe_customer_id: session.customer ?? null,
-          stripe_subscription_id: session.subscription ?? null,
-          expires_at: expiresAt,
-        })
-        .select("id")
-        .single()
-      enrollError = error
-      enrollmentId = inserted?.id ?? null
-    }
-  } else {
-    const { data: inserted, error } = await supabase
-      .from("enrollments")
-      .insert({
-        organization_id: organizationId,
-        offer_id: offerId,
-        offer_variant_id: variantId,
-        user_id: null,
-        buyer_name: buyerName,
-        buyer_email: buyerEmail,
-        status: "active",
-        stripe_customer_id: session.customer ?? null,
-        stripe_subscription_id: session.subscription ?? null,
-        expires_at: expiresAt,
-      })
-      .select("id")
-      .single()
-    enrollError = error
-    enrollmentId = inserted?.id ?? null
-  }
+  const { data: inserted, error: enrollError } = await supabase
+    .from("enrollments")
+    .insert({
+      organization_id: organizationId,
+      offer_id: offerId,
+      offer_variant_id: variantId,
+      user_id: userId,
+      buyer_name: buyerName,
+      buyer_email: buyerEmail,
+      status: "active",
+      stripe_customer_id: session.customer ?? null,
+      stripe_subscription_id: session.subscription ?? null,
+      stripe_checkout_session_id: session.id,
+      expires_at: expiresAt,
+    })
+    .select("id")
+    .single()
 
   if (enrollError) {
+    if (enrollError.code === "23505") {
+      console.info(
+        `checkout.session.completed [${session.id}]: concurrent insert won — treating as success`
+      )
+      return
+    }
     console.error(
       `Failed to create enrollment for offer ${offerId} / email "${buyerEmail}":`,
       enrollError.message
     )
-  } else {
-    console.log(
-      `Enrollment created: offer ${offerId}, user ${userId ?? "pending"}, name "${buyerName ?? "—"}", email "${buyerEmail}", expires ${expiresAt ?? "never"}`
-    )
+    return
   }
+
+  const enrollmentId = inserted?.id
+  if (enrollmentId == null) {
+    console.error(
+      `checkout.session.completed [${session.id}]: insert returned no enrollment id`
+    )
+    return
+  }
+
+  const supersededAt = new Date().toISOString()
+  const { error: supersedeError } = await supersedePriorEnrollments(supabase, {
+    offerId,
+    userId,
+    buyerEmail,
+    keepEnrollmentId: enrollmentId,
+    supersededAt,
+  })
+
+  if (supersedeError) {
+    console.error(
+      `checkout.session.completed [${session.id}]: created enrollment ${enrollmentId} but failed to expire prior ones:`,
+      supersedeError.message
+    )
+    return
+  }
+
+  console.log(
+    `Enrollment created: id ${enrollmentId}, offer ${offerId}, user ${userId ?? "pending"}, email "${buyerEmail}", expires ${expiresAt ?? "never"}`
+  )
+}
+
+async function supersedePriorEnrollments(
+  supabase: SupabaseAdmin,
+  args: {
+    offerId: number
+    userId: string | null
+    buyerEmail: string
+    keepEnrollmentId: number
+    supersededAt: string
+  }
+): Promise<{ error: { message: string } | null }> {
+  const { offerId, userId, buyerEmail, keepEnrollmentId, supersededAt } = args
+
+  let query = supabase
+    .from("enrollments")
+    .update({
+      status: "expired",
+      expires_at: supersededAt,
+    })
+    .eq("offer_id", offerId)
+    .in("status", ["active", "paused"])
+    .neq("id", keepEnrollmentId)
+
+  if (userId) {
+    query = query.or(`user_id.eq.${userId},buyer_email.eq.${buyerEmail}`)
+  } else {
+    query = query.eq("buyer_email", buyerEmail)
+  }
+
+  const { error } = await query
+  return { error }
 }

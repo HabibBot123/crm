@@ -9,7 +9,7 @@ import {
   type CoachedProduct,
 } from "@/lib/services/coached"
 
-/** App-wide coached context: orgs (my coaches) and products list for home/shell. */
+/** App-wide coached context: organizations and purchased programs. */
 export function useCoached() {
   const { supabase, user } = useAuth()
   const userId = user?.id ?? null

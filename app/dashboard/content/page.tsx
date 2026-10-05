@@ -17,6 +17,8 @@ import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { useAuth } from "@/hooks/use-auth"
 import { useCurrentOrganization } from "@/components/providers/organization-provider"
+import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
+import { NoAccessState } from "@/components/dashboard/no-access-state"
 import {
   fetchContentByOrganization,
   createContentFolder,
@@ -140,6 +142,7 @@ function FolderRow({ folder, onOpen, isLast }: { folder: ContentFolder; onOpen: 
 }
 
 export default function ContentPage() {
+  const { can, isLoading: capsLoading } = useOrgCapabilities()
   const [view, setView] = useState<"grid" | "list">("grid")
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null)
   const [createFolderOpen, setCreateFolderOpen] = useState(false)
@@ -268,6 +271,15 @@ export default function ContentPage() {
       <div className="p-4 lg:p-8">
         <p className="text-sm text-muted-foreground">Select an organization to view content.</p>
       </div>
+    )
+  }
+
+  if (!capsLoading && !can("catalog.manage")) {
+    return (
+      <NoAccessState
+        title="Content"
+        description="You don’t have permission to manage the content library with your role."
+      />
     )
   }
 

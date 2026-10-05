@@ -65,7 +65,7 @@ export function useCoachAccessGuard(options: UseCoachAccessGuardOptions = {}) {
     noOrgMessage = "Select an organization to continue.",
     stripeTitle = "Stripe Connect required",
     stripeDescription =
-      "To create and sell products and offers, you need to complete Stripe Connect onboarding for this organization.",
+      "Connect Stripe when you're ready to sell. You can build products and draft offers without it.",
     stripeUseRouter = false,
   } = options
 
@@ -101,17 +101,17 @@ export function useCoachAccessGuard(options: UseCoachAccessGuardOptions = {}) {
     const guardContent = hasNoOrgs ? (
       <div className="mx-auto max-w-xl rounded-xl border border-border bg-card p-6">
         <h1 className="text-lg font-semibold text-foreground">
-          No organization associated
+          Coach workspace needs an organization
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          This account is not associated with any organization. Would you like to create one or go back to the coached area?
+          You can create an organization to sell and deliver programs, or open the student area if you bought from a coach.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
+          <Button variant="outline" asChild>
+            <Link href="/coached">Open student area</Link>
+          </Button>
           <Button asChild>
             <Link href="/create-organization">Create an organization</Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href="/coached">Go to coached area</Link>
           </Button>
         </div>
       </div>

@@ -9,8 +9,10 @@ import {
   fetchCoachedCourseDetails,
   fetchLessonProgress,
   markLessonComplete as markLessonCompleteService,
+  type CoachedCourseModule,
+  type CoachedCourseModuleItem,
+  type CoachedProduct,
 } from "@/lib/services/coached"
-import type { CoachedCourseModule, CoachedCourseModuleItem } from "@/lib/services/coached"
 import { Button } from "@/components/ui/button"
 import { CourseSidebar } from "@/components/coached/course-player/course-sidebar"
 import { ContentViewer } from "@/components/coached/course-player/content-viewer"
@@ -29,51 +31,77 @@ export default function CoursePlayerPage({
   params: Promise<{ slug: string; id: string }>
 }) {
   const { slug, id } = use(params)
-  const productId = Number(id)
+  const enrollmentProductId = Number(id)
   const { supabase, user } = useAuth()
   const userId = user?.id ?? null
   const queryClient = useQueryClient()
 
   const courseQuery = useQuery({
-    queryKey: ["coached-course", userId, productId],
+    queryKey: ["coached-course", userId, enrollmentProductId],
     queryFn: () => {
-      if (!userId || !productId) throw new Error("Cannot fetch course without user id and product id")
-      return fetchCoachedCourseDetails(supabase, userId, productId)
+      if (!userId || !enrollmentProductId) {
+        throw new Error("Cannot fetch course without user id and enrollment product id")
+      }
+      return fetchCoachedCourseDetails(supabase, userId, enrollmentProductId)
     },
-    enabled: !!userId && !!productId,
+    enabled: !!userId && !!enrollmentProductId,
   })
-
-  const enrollmentProductId = courseQuery.data?.enrollment_product_id ?? null
 
   const progressQuery = useQuery({
     queryKey: ["coached-course-progress", userId, enrollmentProductId],
     queryFn: () => {
-      if (!userId || enrollmentProductId == null) throw new Error("Cannot fetch progress without user id and enrollment product id")
+      if (!userId || !enrollmentProductId) {
+        throw new Error("Cannot fetch progress without user id and enrollment product id")
+      }
       return fetchLessonProgress(supabase, userId, enrollmentProductId)
     },
-    enabled: !!userId && enrollmentProductId != null,
+    enabled: !!userId && !!enrollmentProductId && !!courseQuery.data,
   })
 
   const markCompleteMutation = useMutation({
     mutationFn: (productModuleItemId: number) => {
-      if (!userId || enrollmentProductId == null) throw new Error("Cannot mark complete without user id and enrollment product id")
+      if (!userId || !enrollmentProductId) {
+        throw new Error("Cannot mark complete without user id and enrollment product id")
+      }
       return markLessonCompleteService(supabase, userId, enrollmentProductId, productModuleItemId)
     },
     onSuccess: (_, productModuleItemId) => {
+      const prevProgress = queryClient.getQueryData<Set<number>>([
+        "coached-course-progress",
+        userId,
+        enrollmentProductId,
+      ])
+      const wasAlreadyComplete = prevProgress?.has(productModuleItemId) ?? false
+
       queryClient.setQueryData<Set<number>>(
         ["coached-course-progress", userId, enrollmentProductId],
         (prev) => (prev ? new Set([...prev, productModuleItemId]) : new Set([productModuleItemId]))
       )
+
+      if (!wasAlreadyComplete) {
+        queryClient.setQueryData<CoachedProduct[]>(["coached", userId], (prev) => {
+          if (!prev) return prev
+          return prev.map((p) => {
+            if (p.enrollment_product_id !== enrollmentProductId) return p
+            return {
+              ...p,
+              completion_completed: (p.completion_completed ?? 0) + 1,
+            }
+          })
+        })
+      }
+
+      void queryClient.invalidateQueries({ queryKey: ["coached", userId] })
     },
   })
 
   const course = courseQuery.data ?? null
   const progress = progressQuery.data ?? new Set<number>()
-  const isLoading = courseQuery.isLoading || progressQuery.isLoading
+  const isLoading = courseQuery.isLoading || (!!courseQuery.data && progressQuery.isLoading)
   const slugMatches = slug != null && course != null && course.organization_slug === slug
 
   const markComplete = (productModuleItemId: number) => {
-    if (enrollmentProductId == null) return
+    if (!enrollmentProductId) return
     markCompleteMutation.mutate(productModuleItemId)
   }
   const markCompletePending = markCompleteMutation.isPending

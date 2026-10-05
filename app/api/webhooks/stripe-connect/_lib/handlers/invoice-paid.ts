@@ -67,6 +67,7 @@ export async function handleInvoicePaid(
       price,
       currency,
       stripe_invoice_id: invoice.id,
+      source: "stripe",
     })
 
     if (saleError) {

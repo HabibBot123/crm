@@ -14,6 +14,7 @@ import {
   formatProductDate,
   productTypeBadgeClassName,
   productTypeLabel,
+  programHref,
 } from "@/lib/coached"
 import { cn } from "@/lib/utils"
 
@@ -23,14 +24,7 @@ function orgInitials(name: string) {
   return name.slice(0, 2).toUpperCase() || "?"
 }
 
-function programHref(p: CoachedProduct): string {
-  if (p.product_type === "coaching") {
-    return `/coached/${p.organization_slug}/coaching/${p.product_id}`
-  }
-  return `/coached/${p.organization_slug}/courses/${p.product_id}`
-}
-
-function CoachProgramRow({ product }: { product: CoachedProduct }) {
+function OrgProgramRow({ product }: { product: CoachedProduct }) {
   const isCoaching = product.product_type === "coaching"
   return (
     <RichListItem className="p-0">
@@ -66,7 +60,7 @@ function CoachProgramRow({ product }: { product: CoachedProduct }) {
           {isCoaching && (
             <p className="mt-0.5 text-xs text-muted-foreground">
               {product.coach_full_name
-                ? `Coach: ${product.coach_full_name}`
+                ? `Your coach: ${product.coach_full_name}`
                 : "Coach not yet assigned"}
             </p>
           )}
@@ -90,7 +84,7 @@ export default function CoachDetailPage({ params }: { params: Promise<{ id: stri
   const { coachedOrgs, coachedProducts, isLoading } = useCoached()
 
   const org = coachedOrgs.find((o) => o.organization_id === orgId)
-  const coachProducts = org
+  const orgProducts = org
     ? coachedProducts.filter((p) => p.organization_id === orgId)
     : []
 
@@ -110,10 +104,10 @@ export default function CoachDetailPage({ params }: { params: Promise<{ id: stri
   if (!org) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center">
-        <p className="text-muted-foreground">Coach not found</p>
+        <p className="text-muted-foreground">Organization not found</p>
         <Link href="/coached/coaches">
           <Button variant="outline" className="mt-4">
-            Back to coaches
+            Back to organizations
           </Button>
         </Link>
       </div>
@@ -130,7 +124,7 @@ export default function CoachDetailPage({ params }: { params: Promise<{ id: stri
           </Button>
         </Link>
         <h1 className="truncate font-display text-2xl font-bold tracking-tight text-foreground">
-          Coach
+          Organization
         </h1>
       </div>
 
@@ -163,20 +157,20 @@ export default function CoachDetailPage({ params }: { params: Promise<{ id: stri
           <BookOpen className="h-4 w-4 text-muted-foreground" />
           Programs you have access to
         </h3>
-        {coachProducts.length > 0 ? (
+        {orgProducts.length > 0 ? (
           <ul className="space-y-3">
-            {coachProducts.map((p) => (
-                <CoachProgramRow key={`${p.enrollment_id}-${p.product_id}`} product={p} />
+            {orgProducts.map((p) => (
+              <OrgProgramRow key={p.enrollment_product_id} product={p} />
             ))}
           </ul>
         ) : (
           <EmptyState
             icon={BookOpen}
             title="No programs yet"
-            description="When you purchase an offer from this coach, your programs will appear here."
+            description="When you purchase an offer from this organization, your programs will appear here."
             action={
               <Button variant="secondary" size="sm" asChild>
-                <Link href="/coached/coaches">Back to coaches</Link>
+                <Link href="/coached/coaches">Back to organizations</Link>
               </Button>
             }
           />

@@ -1,14 +1,8 @@
-import type { TeamMemberRole, TeamMember } from "@/lib/services/team"
-
-const roleSet: Set<string> = new Set(["owner", "admin", "sales", "ambassador", "member"])
-
-function normalizeRole(role: string | null | undefined): TeamMemberRole | null {
-  if (!role) return null
-  return roleSet.has(role) ? (role as TeamMemberRole) : null
-}
+import type { TeamMember } from "@/lib/services/team"
+import { normalizeMemberRole } from "@/lib/permissions/roles"
 
 export function canManageTeam(actorRole: string | null | undefined): boolean {
-  const role = normalizeRole(actorRole)
+  const role = normalizeMemberRole(actorRole)
   return role === "owner" || role === "admin"
 }
 

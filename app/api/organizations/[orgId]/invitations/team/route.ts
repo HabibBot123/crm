@@ -1,12 +1,32 @@
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { badRequest, conflict, forbidden, ok, unauthorized, serverError } from "@/lib/api-helpers/api-response"
+import { assertOrgCapability } from "@/lib/api-helpers/assert-org-capability"
+import { badRequest, conflict, ok, unauthorized, serverError } from "@/lib/api-helpers/api-response"
+import { isTeamMemberRole } from "@/lib/permissions/roles"
 import { inviteTeamMember } from "@/lib/services/team"
 
 type RouteContext = {
   params: Promise<{
     orgId: string
   }>
+}
+
+function parseOptionalRate(value: unknown, fieldName: string): number | null | { error: string } {
+  if (value === null || value === undefined || value === "") return null
+  const n = Number(value)
+  if (!Number.isFinite(n) || n < 0 || n > 100) {
+    return { error: `${fieldName} must be between 0 and 100` }
+  }
+  return n
+}
+
+function parseOptionalFixed(value: unknown, fieldName: string): number | null | { error: string } {
+  if (value === null || value === undefined || value === "") return null
+  const n = Number(value)
+  if (!Number.isFinite(n) || n < 0) {
+    return { error: `${fieldName} must be >= 0` }
+  }
+  return n
 }
 
 export async function POST(request: Request, context: RouteContext) {
@@ -26,7 +46,16 @@ export async function POST(request: Request, context: RouteContext) {
     return unauthorized("Unauthorized")
   }
 
-  let body: { email?: string; role?: string }
+  let body: {
+    email?: string
+    role?: string
+    default_commission_rate_sales?: number | null
+    default_commission_fixed_sales?: number | null
+    default_commission_rate_ambassador?: number | null
+    default_commission_fixed_ambassador?: number | null
+    default_commission_rate_coach?: number | null
+    default_commission_fixed_coach?: number | null
+  }
   try {
     body = await request.json()
   } catch {
@@ -35,6 +64,37 @@ export async function POST(request: Request, context: RouteContext) {
 
   const email = typeof body.email === "string" ? body.email.trim() : ""
   const role = typeof body.role === "string" ? body.role.trim() : ""
+
+  const rateSales = parseOptionalRate(body.default_commission_rate_sales, "default_commission_rate_sales")
+  if (typeof rateSales === "object" && rateSales !== null && "error" in rateSales) {
+    return badRequest(rateSales.error)
+  }
+  const fixedSales = parseOptionalFixed(body.default_commission_fixed_sales, "default_commission_fixed_sales")
+  if (typeof fixedSales === "object" && fixedSales !== null && "error" in fixedSales) {
+    return badRequest(fixedSales.error)
+  }
+  const rateAmbassador = parseOptionalRate(
+    body.default_commission_rate_ambassador,
+    "default_commission_rate_ambassador"
+  )
+  if (typeof rateAmbassador === "object" && rateAmbassador !== null && "error" in rateAmbassador) {
+    return badRequest(rateAmbassador.error)
+  }
+  const fixedAmbassador = parseOptionalFixed(
+    body.default_commission_fixed_ambassador,
+    "default_commission_fixed_ambassador"
+  )
+  if (typeof fixedAmbassador === "object" && fixedAmbassador !== null && "error" in fixedAmbassador) {
+    return badRequest(fixedAmbassador.error)
+  }
+  const rateCoach = parseOptionalRate(body.default_commission_rate_coach, "default_commission_rate_coach")
+  if (typeof rateCoach === "object" && rateCoach !== null && "error" in rateCoach) {
+    return badRequest(rateCoach.error)
+  }
+  const fixedCoach = parseOptionalFixed(body.default_commission_fixed_coach, "default_commission_fixed_coach")
+  if (typeof fixedCoach === "object" && fixedCoach !== null && "error" in fixedCoach) {
+    return badRequest(fixedCoach.error)
+  }
 
   if (!email || !role) {
     return badRequest("Email and role are required")
@@ -68,25 +128,8 @@ export async function POST(request: Request, context: RouteContext) {
     return conflict("This email is already a member of your team.")
   }
 
-  const { data: membership, error: membershipError } = await serverClient
-    .from("organization_members")
-    .select("id, role, status")
-    .eq("organization_id", organizationId)
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .maybeSingle()
-
-  if (membershipError) {
-    return serverError("Unable to verify membership", membershipError.message)
-  }
-
-  if (!membership) {
-    return forbidden("You are not a member of this organization.")
-  }
-
-  if (membership.role !== "owner" && membership.role !== "admin") {
-    return forbidden("Only owner or admin can invite team members.")
-  }
+  const access = await assertOrgCapability(serverClient, organizationId, "team.invite")
+  if (!access.ok) return access.response
 
   const { data: org, error: orgError } = await adminClient
     .from("organizations")
@@ -104,13 +147,20 @@ export async function POST(request: Request, context: RouteContext) {
       {
         organizationId,
         email: normalizedEmail,
-        role: role as any,
+        role: role && isTeamMemberRole(role) && role !== "owner" ? role : "member",
+        defaultCommissionRateSales: rateSales,
+        defaultCommissionFixedSales: fixedSales,
+        defaultCommissionRateAmbassador: rateAmbassador,
+        defaultCommissionFixedAmbassador: fixedAmbassador,
+        defaultCommissionRateCoach: rateCoach,
+        defaultCommissionFixedCoach: fixedCoach,
       },
       {
         id: user.id,
-        fullName: (user.user_metadata?.full_name as string | null) ?? null,
+        fullName:
+          typeof user.user_metadata?.full_name === "string" ? user.user_metadata.full_name : null,
       },
-      (org?.name as string | null) ?? null,
+      typeof org?.name === "string" ? org.name : null,
       origin
     )
   } catch (error) {
@@ -123,4 +173,3 @@ export async function POST(request: Request, context: RouteContext) {
 
   return ok({ success: true })
 }
-

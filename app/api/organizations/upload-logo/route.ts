@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { badRequest, unauthorized, forbidden, jsonResponse } from "@/lib/api-helpers/api-response"
+import { assertOrgCapability } from "@/lib/api-helpers/assert-org-capability"
+import { badRequest, unauthorized, jsonResponse } from "@/lib/api-helpers/api-response"
 import { uploadToBunnyStorage } from "@/lib/bunny"
 
 export async function POST(request: NextRequest) {
@@ -29,17 +30,8 @@ export async function POST(request: NextRequest) {
     return badRequest("Invalid organization id")
   }
 
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id")
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .eq("organization_id", organizationId)
-    .maybeSingle()
-
-  if (!membership) {
-    return forbidden("Forbidden")
-  }
+  const access = await assertOrgCapability(supabase, organizationId, "org.settings")
+  if (!access.ok) return access.response
 
   const ext = file.name.split(".").pop()?.toLowerCase() || "jpg"
   const safeExt = ["jpg", "jpeg", "png", "gif", "webp"].includes(ext)

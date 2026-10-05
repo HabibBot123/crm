@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { ExternalLink, CreditCard, Globe, Shield } from "lucide-react"
+import { ExternalLink, CreditCard, Globe, Shield, KeyRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useCurrentOrganization } from "@/components/providers/organization-provider"
@@ -10,10 +10,12 @@ import { PageHeader } from "@/components/dashboard/page-header"
 import { SectionCard } from "@/components/dashboard/section-card"
 import { NavList } from "@/components/dashboard/nav-list"
 import type { NavListItem } from "@/components/dashboard/nav-list"
+import { OrgPermissionsMatrix } from "@/components/dashboard/settings/org-permissions-matrix"
+import { EmptyState } from "@/components/dashboard/empty-state"
 
-type Section = "domain" | "payments"
+type Section = "domain" | "payments" | "permissions"
 
-const nav: NavListItem<Section>[] = [
+const baseNav: NavListItem<Section>[] = [
   { id: "domain", label: "Domain", icon: Globe },
   { id: "payments", label: "Payments", icon: CreditCard },
 ]
@@ -25,16 +27,25 @@ export default function SettingsPage() {
 
   const stripeConnected = Boolean(currentOrganization?.stripe_account_id)
   const stripeReady = Boolean(currentOrganization?.stripe_onboarding_completed)
+  const isOwner = currentOrganization?.member_role === "owner"
+  const organizationId = currentOrganization?.id ?? null
+
+  const nav: NavListItem<Section>[] = isOwner
+    ? [...baseNav, { id: "permissions", label: "Permissions", icon: KeyRound }]
+    : baseNav
 
   return (
     <div className="space-y-4 p-6 lg:p-8">
       <PageHeader title="Settings" subtitle="Manage your organization settings" />
 
       <div className="flex gap-8">
-        <NavList items={nav} value={section} onChange={setSection} />
+        <NavList
+          items={nav}
+          value={section === "permissions" && !isOwner ? "domain" : section}
+          onChange={setSection}
+        />
 
-        {/* Right content */}
-        <div className="min-w-0 flex-1 max-w-lg">
+        <div className={section === "permissions" ? "min-w-0 flex-1" : "min-w-0 flex-1 max-w-lg"}>
           {section === "domain" && (
             <SectionCard
               title="Current domain"
@@ -81,6 +92,24 @@ export default function SettingsPage() {
                   <span className="flex items-center gap-1"><Shield className="h-3.5 w-3.5" /> Instant payouts</span>
                 </div>
               </div>
+            </SectionCard>
+          )}
+
+          {section === "permissions" && (
+            <SectionCard
+              title="Role permissions"
+              subtitle="Choose what each role can do in this organization"
+            >
+              {!organizationId ? (
+                <EmptyState title="No organization" description="Select an organization first." />
+              ) : !isOwner ? (
+                <EmptyState
+                  title="Owner only"
+                  description="Only the organization owner can view and edit the permissions matrix."
+                />
+              ) : (
+                <OrgPermissionsMatrix organizationId={organizationId} canEdit={isOwner} />
+              )}
             </SectionCard>
           )}
         </div>

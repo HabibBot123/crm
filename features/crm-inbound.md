@@ -186,10 +186,11 @@ crm_fields:
   organization_id  uuid FK → organizations
   key              text NOT NULL               (snake_case, ex: "fitness_goal")
   label            text NOT NULL               (ex: "Objectif fitness")
-  question  text NOT NULL               (question affichée au prospect, ex: "Quel est ton objectif principal ?")
+  client_question text NOT NULL         (question affichée au prospect, ex: "Quel est ton objectif principal ?")
   field_type       enum('text', 'textarea', 'select', 'multi_select', 'number', 'date', 'boolean')
   options          jsonb                        (pour select : [{value, label}, ...])
   is_required      boolean DEFAULT false
+  show_in_crm      boolean DEFAULT true         (si true, visible comme colonne dans le tableau CRM)
   position         integer DEFAULT 0
   created_at       timestamptz DEFAULT now()
 

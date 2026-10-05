@@ -2,19 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import {
-  LayoutDashboard,
-  Package,
-  Tag,
-  Users,
-  FileText,
-  UserPlus,
-  Settings,
-  ChevronLeft,
-  ChevronRight,
-  Palette,
-  MessageCircle,
-} from "lucide-react"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
@@ -22,39 +10,25 @@ import { useState } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { useCurrentOrganization } from "@/components/providers/organization-provider"
 import { getInitials } from "@/components/dashboard/user-avatar"
-
-const navGroups = [
-  {
-    label: "Workspace",
-    items: [
-      { label: "Overview",  href: "/dashboard",          icon: LayoutDashboard },
-      { label: "Clients",   href: "/dashboard/clients",  icon: Users           },
-      { label: "Coaching",  href: "/dashboard/coaching", icon: MessageCircle   },
-    ],
-  },
-  {
-    label: "Monetize",
-    items: [
-      { label: "Offers",    href: "/dashboard/offers",   icon: Tag             },
-      { label: "Products",  href: "/dashboard/products", icon: Package         },
-      { label: "Content",   href: "/dashboard/content",  icon: FileText        },
-    ],
-  },
-  {
-    label: "Manage",
-    items: [
-      { label: "Branding",  href: "/dashboard/branding", icon: Palette         },
-      { label: "Team",      href: "/dashboard/team",     icon: UserPlus        },
-      { label: "Settings",  href: "/dashboard/settings", icon: Settings        },
-    ],
-  },
-]
+import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
+import {
+  DASHBOARD_NAV_GROUPS,
+  filterDashboardNavGroups,
+  isDashboardNavActive,
+} from "@/lib/permissions/dashboard-nav"
 
 export function DashboardSidebar() {
   const pathname = usePathname()
   const { user } = useAuth()
   const { currentOrganization } = useCurrentOrganization()
+  const { can, isLoading: capabilitiesLoading, mode } = useOrgCapabilities()
   const [collapsed, setCollapsed] = useState(false)
+
+  const navGroups = filterDashboardNavGroups(DASHBOARD_NAV_GROUPS, {
+    can,
+    requiresTeamPlan: mode.requiresTeamPlan,
+    capabilitiesLoading,
+  })
 
   const fullName = (user?.user_metadata?.full_name as string | undefined)?.trim() || null
   const email = user?.email ?? null
@@ -80,7 +54,6 @@ export function DashboardSidebar() {
           collapsed ? "lg:w-16" : "lg:w-60"
         )}
       >
-        {/* Logo + collapse */}
         <div className="flex h-14 items-center justify-between gap-2 border-b border-sidebar-border px-3">
           {!collapsed && (
             <Link href="/dashboard" className="flex items-center gap-2 px-1">
@@ -105,7 +78,6 @@ export function DashboardSidebar() {
           </Button>
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-2 py-3">
           <div className="space-y-4">
             {navGroups.map((group) => (
@@ -117,9 +89,7 @@ export function DashboardSidebar() {
                 )}
                 <ul className="space-y-0.5">
                   {group.items.map((item) => {
-                    const isActive =
-                      pathname === item.href ||
-                      (item.href !== "/dashboard" && pathname.startsWith(item.href))
+                    const isActive = isDashboardNavActive(pathname, item.href)
 
                     return (
                       <li key={item.href}>
@@ -145,7 +115,6 @@ export function DashboardSidebar() {
           </div>
         </nav>
 
-        {/* Bottom: user profile + theme toggle */}
         <div className="border-t border-sidebar-border p-2">
           <div className="flex items-center gap-1">
             {user && (

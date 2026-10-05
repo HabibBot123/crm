@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useCoachAccessGuard } from "@/hooks/use-access-guard"
+import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
+import { NoAccessState } from "@/components/dashboard/no-access-state"
 import type { ProductType } from "@/lib/services/products"
 import { toast } from "sonner"
 import { useCreateProduct } from "@/hooks/use-products"
@@ -17,11 +19,9 @@ export default function NewProductPage() {
   const router = useRouter()
   const { canAccess, guardContent, currentOrganization } = useCoachAccessGuard({
     requireOrg: true,
-    requireStripe: true,
     noOrgMessage: "Select an organization to create products.",
-    stripeDescription:
-      "To create products, you need to complete Stripe Connect onboarding for this organization.",
   })
+  const { can, isLoading: capsLoading } = useOrgCapabilities()
   const [step, setStep] = useState<1 | 2>(1)
   const [type, setType] = useState<ProductType | null>(null)
   const [title, setTitle] = useState("")
@@ -55,6 +55,15 @@ export default function NewProductPage() {
       <div className="p-4 lg:p-8">
         {guardContent}
       </div>
+    )
+  }
+
+  if (!capsLoading && !can("catalog.manage")) {
+    return (
+      <NoAccessState
+        title="Products"
+        description="You don’t have permission to manage products with your role."
+      />
     )
   }
 
@@ -112,11 +121,10 @@ export default function NewProductPage() {
               </div>
               <div>
                 <h3 className="font-semibold text-foreground">
-                  Coaching (1:1 sessions)
+                  Coaching (1:1 pack)
                 </h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  A coaching package with a set number of 1:1 sessions over a
-                  period.
+                  A coaching pack you can sell and assign to a coach after purchase.
                 </p>
               </div>
             </button>

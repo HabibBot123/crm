@@ -7,7 +7,6 @@ import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "@/hooks/use-auth"
 import { fetchCoachedCoachingDetail } from "@/lib/services/coached"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { formatSessionDateTime, formatDuration } from "@/lib/coached"
 import type { CoachedCoachingSession } from "@/lib/services/coached"
@@ -31,17 +30,19 @@ export default function CoachedCoachingPage({
   params: Promise<{ slug: string; id: string }>
 }) {
   const { slug, id } = use(params)
-  const productId = Number(id)
+  const enrollmentProductId = Number(id)
   const { supabase, user } = useAuth()
   const userId = user?.id ?? null
 
   const { data: detail = null, isLoading } = useQuery({
-    queryKey: ["coached-coaching", userId, productId],
+    queryKey: ["coached-coaching", userId, enrollmentProductId],
     queryFn: () => {
-      if (!userId || !productId) throw new Error("Cannot fetch coaching detail without user id and product id")
-      return fetchCoachedCoachingDetail(supabase, userId, productId)
+      if (!userId || !enrollmentProductId) {
+        throw new Error("Cannot fetch coaching detail without user id and enrollment product id")
+      }
+      return fetchCoachedCoachingDetail(supabase, userId, enrollmentProductId)
     },
-    enabled: !!userId && !!productId,
+    enabled: !!userId && !!enrollmentProductId,
   })
 
   const slugMatches = slug != null && detail != null && detail.organization_slug === slug
@@ -81,121 +82,115 @@ export default function CoachedCoachingPage({
           </Button>
         </Link>
         <div>
-          <h1 className="text-xl font-bold text-foreground font-display">
+          <h1 className="font-display text-xl font-bold text-foreground">
             {detail.product_title}
           </h1>
-          <p className="text-sm text-muted-foreground">Coaching pack</p>
+          <p className="text-sm text-muted-foreground">Coaching program</p>
         </div>
       </div>
 
-      {/* Coach info */}
-      <Card className="border-border">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <User className="h-4 w-4" />
-            Your coach
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {detail.coach_full_name ? (
-            <p className="text-sm font-medium text-foreground flex items-center gap-2">
-              <User className="h-3.5 w-3 text-muted-foreground" />
-              {detail.coach_full_name}
-            </p>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No coach assigned yet. Your coach will appear here once assigned.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+      <div className="rounded-xl border border-border bg-card p-4">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <User className="h-4 w-4 text-muted-foreground" />
+          Your coach
+        </h2>
+        {detail.coach_full_name ? (
+          <p className="mt-2 text-sm font-medium text-foreground">{detail.coach_full_name}</p>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground">
+            No coach assigned yet. Your coach will appear here once assigned.
+          </p>
+        )}
+      </div>
 
-      {/* Past sessions */}
-      <div>
-        <h2 className="text-lg font-semibold text-foreground flex items-center gap-2 mb-3">
-          <Calendar className="h-5 w-5 text-muted-foreground" />
+      <section className="space-y-3">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
           Past sessions
         </h2>
         {detail.sessions_past.length === 0 ? (
           <p className="text-sm text-muted-foreground">No past sessions yet.</p>
         ) : (
-          <div className="space-y-2">
+          <ul className="space-y-2">
             {detail.sessions_past.map((s) => (
-              <SessionCard key={s.id} session={s} isPast />
+              <li key={s.id}>
+                <SessionRow session={s} />
+              </li>
             ))}
-          </div>
+          </ul>
         )}
-      </div>
+      </section>
 
-      {/* Upcoming sessions */}
-      <div>
-        <h2 className="text-lg font-semibold text-foreground flex items-center gap-2 mb-3">
-          <Calendar className="h-5 w-5 text-muted-foreground" />
+      <section className="space-y-3">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
           Upcoming sessions
         </h2>
         {detail.sessions_upcoming.length === 0 ? (
           <p className="text-sm text-muted-foreground">No upcoming sessions scheduled.</p>
         ) : (
-          <div className="space-y-2">
+          <ul className="space-y-2">
             {detail.sessions_upcoming.map((s) => (
-              <SessionCard key={s.id} session={s} isPast={false} />
+              <li key={s.id}>
+                <SessionRow session={s} />
+              </li>
             ))}
-          </div>
+          </ul>
         )}
-      </div>
+      </section>
     </div>
   )
 }
 
-
-function SessionCard({ session, isPast }: { session: CoachedCoachingSession; isPast: boolean }) {
+function SessionRow({ session }: { session: CoachedCoachingSession }) {
   const completed = session.completed_at != null
   return (
-    <Card className="border-border">
-      <CardContent className="p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-foreground">
-            {formatSessionDateTime(session.scheduled_at)}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            {formatDuration(session.duration_minutes)}
-          </span>
-          {session.delivery_mode && (
-            <Badge
-              variant="outline"
-              className={cn("text-[10px] font-normal capitalize", coachedDeliveryBadgeClass(session.delivery_mode))}
-            >
-              {session.delivery_mode.replace("_", " ")}
-            </Badge>
-          )}
-          {completed && (
-            <Badge
-              variant="outline"
-              className="border-success/20 bg-success/10 text-[10px] font-normal text-success normal-case"
-            >
-              <Check className="mr-0.5 h-3 w-3" />
-              Completed
-            </Badge>
-          )}
-        </div>
-        {session.meeting_url && (
-          <a
-            href={session.meeting_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-primary hover:underline flex items-center gap-1 mt-2"
+    <div className="rounded-xl border border-border bg-card p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium text-foreground">
+          {formatSessionDateTime(session.scheduled_at)}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {formatDuration(session.duration_minutes)}
+        </span>
+        {session.delivery_mode && (
+          <Badge
+            variant="outline"
+            className={cn(
+              "text-[10px] font-normal capitalize",
+              coachedDeliveryBadgeClass(session.delivery_mode)
+            )}
           >
-            <Video className="h-3 w-3" />
-            Video link
-          </a>
+            {session.delivery_mode.replace("_", " ")}
+          </Badge>
         )}
-        {session.location && (
-          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-            <MapPin className="h-3 w-3" />
-            {session.location}
-          </p>
+        {completed && (
+          <Badge
+            variant="outline"
+            className="border-success/20 bg-success/10 text-[10px] font-normal text-success normal-case"
+          >
+            <Check className="mr-0.5 h-3 w-3" />
+            Completed
+          </Badge>
         )}
-      </CardContent>
-    </Card>
+      </div>
+      {session.meeting_url && (
+        <a
+          href={session.meeting_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 flex items-center gap-1 text-xs text-primary hover:underline"
+        >
+          <Video className="h-3 w-3" />
+          Video link
+        </a>
+      )}
+      {session.location && (
+        <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+          <MapPin className="h-3 w-3" />
+          {session.location}
+        </p>
+      )}
+    </div>
   )
 }

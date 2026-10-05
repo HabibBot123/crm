@@ -14,6 +14,12 @@ export type Offer = {
   currency: string
   interval: "month" | "year" | null
   installment_count: number | null
+  /** NULL = lifetime access */
+  access_duration_months: number | null
+  /** Included coaching sessions for this SKU; NULL if none */
+  sessions_count: number | null
+  /** NULL = org-wide; set = offer (and its enrollments) belong to that BU */
+  business_unit_id: number | null
   stripe_price_id: string | null
   stripe_product_id: string | null
   stripe_payment_link: string | null
@@ -184,6 +190,9 @@ export type CreateOfferInput = {
   currency?: string
   interval?: "month" | "year" | null
   installment_count?: number | null
+  access_duration_months?: number | null
+  sessions_count?: number | null
+  business_unit_id?: number | null
   product_ids: number[]
 }
 
@@ -191,7 +200,13 @@ export async function createOffer(
   supabase: SupabaseClient,
   input: CreateOfferInput
 ): Promise<Offer> {
+  if (input.product_ids.length === 0) {
+    throw new Error("Select at least one product")
+  }
+
   const sanitizedKeyFeatures = sanitizeKeyFeatures(input.key_features)
+  const businessUnitId =
+    input.business_unit_id === undefined ? null : input.business_unit_id
 
   const { data, error } = await supabase
     .from("offers")
@@ -205,6 +220,9 @@ export async function createOffer(
       currency: input.currency ?? "eur",
       interval: input.interval ?? null,
       installment_count: input.installment_count ?? null,
+      access_duration_months: input.access_duration_months ?? null,
+      sessions_count: input.sessions_count ?? null,
+      business_unit_id: businessUnitId,
       status: "draft",
     })
     .select()
@@ -213,12 +231,10 @@ export async function createOffer(
   if (error) throw error
   const offer = data as Offer
 
-  if (input.product_ids.length > 0) {
-    const { error: linkError } = await supabase
-      .from("offer_products")
-      .insert(input.product_ids.map((pid) => ({ offer_id: offer.id, product_id: pid })))
-    if (linkError) throw linkError
-  }
+  const { error: linkError } = await supabase
+    .from("offer_products")
+    .insert(input.product_ids.map((pid) => ({ offer_id: offer.id, product_id: pid })))
+  if (linkError) throw linkError
 
   return offer
 }
@@ -231,6 +247,9 @@ export type UpdateOfferInput = {
   currency?: string
   interval?: "month" | "year" | null
   installment_count?: number | null
+  access_duration_months?: number | null
+  sessions_count?: number | null
+  business_unit_id?: number | null
   stripe_price_id?: string | null
   status?: OfferStatus
 }
@@ -294,6 +313,11 @@ export async function updateOffer(
   if (input.currency !== undefined) payload.currency = input.currency
   if (input.interval !== undefined) payload.interval = input.interval
   if (input.installment_count !== undefined) payload.installment_count = input.installment_count
+  if (input.access_duration_months !== undefined) {
+    payload.access_duration_months = input.access_duration_months
+  }
+  if (input.sessions_count !== undefined) payload.sessions_count = input.sessions_count
+  if (input.business_unit_id !== undefined) payload.business_unit_id = input.business_unit_id
   if (input.stripe_price_id !== undefined) payload.stripe_price_id = input.stripe_price_id
   if (input.status !== undefined) payload.status = input.status
 
@@ -330,23 +354,46 @@ export async function deleteOffer(
 // Offer products
 // ----------------------------------------------------------------
 
+export async function countEnrollmentsForOffer(
+  supabase: SupabaseClient,
+  offerId: number
+): Promise<number> {
+  const { count, error } = await supabase
+    .from("enrollments")
+    .select("id", { count: "exact", head: true })
+    .eq("offer_id", offerId)
+
+  if (error) throw error
+  return count ?? 0
+}
+
+/** Replace offer products. Allowed only when the offer has never been sold. */
 export async function upsertOfferProducts(
   supabase: SupabaseClient,
   offerId: number,
   productIds: number[]
 ): Promise<void> {
+  if (productIds.length === 0) {
+    throw new Error("Select at least one product")
+  }
+
+  const enrollmentCount = await countEnrollmentsForOffer(supabase, offerId)
+  if (enrollmentCount > 0) {
+    throw new Error(
+      "This offer already has purchases. Create a new offer and archive this one to change products."
+    )
+  }
+
   const { error: deleteError } = await supabase
     .from("offer_products")
     .delete()
     .eq("offer_id", offerId)
   if (deleteError) throw deleteError
 
-  if (productIds.length > 0) {
-    const { error: insertError } = await supabase
-      .from("offer_products")
-      .insert(productIds.map((pid) => ({ offer_id: offerId, product_id: pid })))
-    if (insertError) throw insertError
-  }
+  const { error: insertError } = await supabase
+    .from("offer_products")
+    .insert(productIds.map((pid) => ({ offer_id: offerId, product_id: pid })))
+  if (insertError) throw insertError
 }
 
 // ----------------------------------------------------------------
