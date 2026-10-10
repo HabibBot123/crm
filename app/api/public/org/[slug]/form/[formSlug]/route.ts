@@ -89,13 +89,18 @@ export async function POST(
 
     const { data: form, error: formError } = await supabase
       .from("crm_forms")
-      .select("id")
+      .select("id, initial_status")
       .eq("organization_id", organization.id)
       .eq("slug", normalizedFormSlug)
       .eq("status", "active")
       .maybeSingle()
     if (formError) throw formError
     if (!form) return notFound("Form not found")
+
+    const initialStatus =
+      typeof form.initial_status === "string" && form.initial_status.trim().length > 0
+        ? form.initial_status
+        : "new"
 
     const emailNormalized = payload.email.trim().toLowerCase()
     const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString()
@@ -200,6 +205,7 @@ export async function POST(
         email: emailNormalized,
         phone: payload.phone ?? null,
         origin: "form",
+        status: initialStatus,
         ambassador_link_id: ambassadorLinkId,
         business_unit_id: businessUnitId,
         is_duplicate: isDuplicate,

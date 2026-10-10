@@ -1,4 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
+import {
+  manualEnrollmentBuyerLookupSchema,
+  type ManualEnrollmentBuyerLookup,
+} from "@/schemas/enrollments.schema"
 
 export type CreateManualEnrollmentParams = {
   supabase: SupabaseClient
@@ -9,6 +13,8 @@ export type CreateManualEnrollmentParams = {
   priceCents?: number | null
   /** null = lifetime; undefined = use offer.access_duration_months */
   accessDurationMonths?: number | null
+  /** Business sale date `YYYY-MM-DD` or omit for now. */
+  soldAt?: string | null
 }
 
 export type CreateManualEnrollmentResult = {
@@ -34,13 +40,104 @@ async function resolveUserIdByEmail(
   return data
 }
 
-async function supersedePriorEnrollments(
+/**
+ * Org-scoped lookup for the manual enrollment dialog (CRM-style).
+ * Matches `enrollments.buyer_email` in this org only. No auth.users.
+ */
+export async function lookupBuyerForManualEnrollment(
+  supabase: SupabaseClient,
+  organizationId: number,
+  emailRaw: string
+): Promise<ManualEnrollmentBuyerLookup> {
+  const buyerEmail = emailRaw.trim().toLowerCase()
+  if (!buyerEmail.includes("@")) {
+    return manualEnrollmentBuyerLookupSchema.parse({
+      userId: null,
+      fullName: null,
+      suggestedName: null,
+      clientFound: false,
+      hasAccount: false,
+      livingEnrollments: [],
+    })
+  }
+
+  const { data: historyRows, error: historyError } = await supabase
+    .from("enrollments")
+    .select(
+      "id, user_id, buyer_name, status, started_at, expires_at, offers(title), profiles(full_name)"
+    )
+    .eq("organization_id", organizationId)
+    .eq("buyer_email", buyerEmail)
+    .order("started_at", { ascending: false })
+
+  if (historyError) throw new Error(historyError.message)
+
+  type HistoryRow = {
+    id: number
+    user_id: string | null
+    buyer_name: string | null
+    status: string
+    started_at: string
+    expires_at: string | null
+    offers: { title: string } | { title: string }[] | null
+    profiles: { full_name: string | null } | { full_name: string | null }[] | null
+  }
+
+  const rows = (historyRows ?? []) as HistoryRow[]
+
+  let userId: string | null = null
+  let fullName: string | null = null
+  let priorBuyerName: string | null = null
+
+  for (const row of rows) {
+    if (userId == null && row.user_id) {
+      userId = row.user_id
+    }
+    if (fullName == null) {
+      const prof = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles
+      const n = prof?.full_name?.trim()
+      if (n) fullName = n
+    }
+    if (priorBuyerName == null) {
+      const n = row.buyer_name?.trim()
+      if (n) priorBuyerName = n
+    }
+  }
+
+  const livingEnrollments = rows
+    .filter((row) => row.status === "active" || row.status === "paused")
+    .map((row) => {
+      const offer = Array.isArray(row.offers) ? row.offers[0] : row.offers
+      return {
+        id: row.id,
+        offerTitle: offer?.title ?? "Offer",
+        status: row.status,
+        startedAt: row.started_at,
+        expiresAt: row.expires_at,
+      }
+    })
+
+  return manualEnrollmentBuyerLookupSchema.parse({
+    userId,
+    fullName,
+    suggestedName: fullName ?? priorBuyerName,
+    clientFound: rows.length > 0,
+    hasAccount: userId != null,
+    livingEnrollments,
+  })
+}
+
+/**
+ * Expire living enrollments for the same offer + buyer before a repurchase insert.
+ * keepEnrollmentId: optional row to leave alone (legacy post-insert path).
+ */
+export async function supersedePriorEnrollments(
   supabase: SupabaseClient,
   args: {
     offerId: number
     userId: string | null
     buyerEmail: string
-    keepEnrollmentId: number
+    keepEnrollmentId?: number | null
   }
 ): Promise<void> {
   const supersededAt = new Date().toISOString()
@@ -52,7 +149,10 @@ async function supersedePriorEnrollments(
     })
     .eq("offer_id", args.offerId)
     .in("status", ["active", "paused"])
-    .neq("id", args.keepEnrollmentId)
+
+  if (args.keepEnrollmentId != null) {
+    query = query.neq("id", args.keepEnrollmentId)
+  }
 
   if (args.userId) {
     query = query.or(`user_id.eq.${args.userId},buyer_email.eq.${args.buyerEmail}`)
@@ -104,7 +204,7 @@ export async function createManualEnrollment(
   const products = offer.offer_products
   const productCount = Array.isArray(products) ? products.length : 0
   if (productCount === 0) {
-    throw new Error("Offer has no products — add products before enrolling")
+    throw new Error("Offer has no products. Add products before enrolling.")
   }
 
   const priceCents =
@@ -130,14 +230,25 @@ export async function createManualEnrollment(
     throw new Error("Access duration must be a positive number of months, or lifetime")
   }
 
+  const soldAtIso = params.soldAt
+    ? `${params.soldAt}T12:00:00.000Z`
+    : new Date().toISOString()
+
   let expiresAt: string | null = null
   if (durationMonths != null && durationMonths > 0) {
-    const expiryDate = new Date()
-    expiryDate.setMonth(expiryDate.getMonth() + durationMonths)
+    const expiryDate = new Date(soldAtIso)
+    expiryDate.setUTCMonth(expiryDate.getUTCMonth() + durationMonths)
     expiresAt = expiryDate.toISOString()
   }
 
   const userId = await resolveUserIdByEmail(supabase, buyerEmail)
+
+  // Expire living contracts first so (offer_id, user_id) unique allows the new row.
+  await supersedePriorEnrollments(supabase, {
+    offerId,
+    userId,
+    buyerEmail,
+  })
 
   const { data: inserted, error: enrollError } = await supabase
     .from("enrollments")
@@ -165,13 +276,6 @@ export async function createManualEnrollment(
     throw new Error("Invalid enrollment id returned")
   }
 
-  await supersedePriorEnrollments(supabase, {
-    offerId,
-    userId,
-    buyerEmail,
-    keepEnrollmentId: enrollmentId,
-  })
-
   const { data: sale, error: saleError } = await supabase
     .from("organization_sales")
     .insert({
@@ -185,6 +289,10 @@ export async function createManualEnrollment(
       source: "manual",
       stripe_checkout_session_id: null,
       stripe_invoice_id: null,
+      base_amount_cents: priceCents,
+      installment_index: 1,
+      installment_count: 1,
+      sold_at: soldAtIso,
     })
     .select("id")
     .single()

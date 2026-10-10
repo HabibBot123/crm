@@ -4,67 +4,72 @@ import { useState, useCallback, useEffect } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import {
   MessageCircle,
-  Calendar,
-  Check,
   Plus,
-  Video,
-  MapPin,
-  UserX,
   Search,
+  X,
 } from "lucide-react"
 import { useCurrentOrganization } from "@/components/providers/organization-provider"
 import { useAuth } from "@/hooks/use-auth"
 import {
   useCoachingPacks,
-  useCoachingSessions,
-  useTeamMembersForAssign,
+  usePackSessions,
   useAssignCoachMutation,
+  useRemoveCoachMutation,
   useCompleteSessionMutation,
 } from "@/hooks/use-coaching"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import {
   getCoachingAssignmentForEnrollmentProduct,
   createCoachingSession,
   type CoachingEnrollmentProduct,
-  type CoachingSessionRow,
+  type CoachingPackAssignmentFilter,
+  type CoachingPackEnrollmentStatus,
 } from "@/lib/services/coaching"
 import { CreateSessionDialog } from "@/components/dashboard/coaching/create-session-dialog"
+import { PackSessionsSheet } from "@/components/dashboard/coaching/pack-sessions-sheet"
+import { AssignCoachDialog } from "@/components/dashboard/coaching/assign-coach-dialog"
+import {
+  CoachingFiltersPopover,
+  assignmentFilterLabel,
+  emptyCoachingFilters,
+  enrollmentStatusLabel,
+  type CoachingFilterValues,
+} from "@/components/dashboard/coaching/coaching-filters-popover"
 import { PaginationControls } from "@/components/dashboard/pagination-controls"
 import { PaginationSummary } from "@/components/dashboard/pagination-summary"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import { PageHeader } from "@/components/dashboard/page-header"
-import { RichListItem } from "@/components/dashboard/rich-list-item"
+import { SectionCard } from "@/components/dashboard/section-card"
+import { TableScroll } from "@/components/dashboard/table-scroll"
 import { LoadingRows } from "@/components/dashboard/loading-rows"
 import { EmptyState } from "@/components/dashboard/empty-state"
-import { Input } from "@/components/ui/input"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
+import { NoAccessState } from "@/components/dashboard/no-access-state"
+import { StatusBadge } from "@/components/dashboard/status-badge"
 import { toast } from "sonner"
 import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
 
-const PACKS_PAGE_SIZE = 10
-const SESSIONS_PAGE_SIZE = 10
+const PAGE_SIZE = 10
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
+  return new Date(dateStr).toLocaleDateString("en-US", {
     month: "short",
+    day: "numeric",
     year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   })
 }
 
-function formatDuration(minutes: number): string {
-  if (minutes < 60) return `${minutes} min`
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  return m ? `${h}h${m}` : `${h}h`
+function isLivingEnrollment(status: string): boolean {
+  return status === "active" || status === "paused"
 }
 
 export default function CoachingPage() {
@@ -76,45 +81,100 @@ export default function CoachingPage() {
   const canCreateSession = can("coaching.sessions.create")
   const canCompleteSession = can("coaching.sessions.complete")
   const queryClient = useQueryClient()
-  const [sessionDialogPack, setSessionDialogPack] = useState<CoachingEnrollmentProduct | null>(null)
-  const [packsPage, setPacksPage] = useState(1)
-  const [sessionsPage, setSessionsPage] = useState(1)
+
+  const [sessionDialogPack, setSessionDialogPack] =
+    useState<CoachingEnrollmentProduct | null>(null)
+  const [assignDialogPack, setAssignDialogPack] =
+    useState<CoachingEnrollmentProduct | null>(null)
+  const [assignDialogMode, setAssignDialogMode] = useState<"assign" | "change">(
+    "assign"
+  )
+  const [removeDialogPack, setRemoveDialogPack] =
+    useState<CoachingEnrollmentProduct | null>(null)
+  const [sessionsPack, setSessionsPack] =
+    useState<CoachingEnrollmentProduct | null>(null)
+  const [page, setPage] = useState(1)
+  const [searchInput, setSearchInput] = useState("")
+  const [search, setSearch] = useState("")
+  const [filters, setFilters] = useState<CoachingFilterValues>(emptyCoachingFilters)
+
   const orgId = currentOrganization?.id ?? null
 
-  const { data: packs = [], total: packsTotal = 0, isLoading: packsLoading } = useCoachingPacks({
+  const {
+    data: packs = [],
+    total: packsTotal = 0,
+    isLoading: packsLoading,
+  } = useCoachingPacks({
     organizationId: orgId,
     supabase,
-    page: packsPage,
-    pageSize: PACKS_PAGE_SIZE,
+    page,
+    pageSize: PAGE_SIZE,
+    search,
+    assignmentFilters: filters.assignmentFilters,
+    enrollmentStatuses: filters.enrollmentStatuses,
   })
 
-  const { data: sessions = [], total: sessionsTotal = 0, isLoading: sessionsLoading } = useCoachingSessions({
-    organizationId: orgId,
-    supabase,
-    page: sessionsPage,
-    pageSize: SESSIONS_PAGE_SIZE,
-  })
+  const { data: packSessions = [], isLoading: packSessionsLoading } =
+    usePackSessions({
+      organizationId: orgId,
+      supabase,
+      enrollmentProductId: sessionsPack?.enrollment_product_id ?? null,
+      enabled: sessionsPack != null,
+    })
 
   const assignMutation = useAssignCoachMutation(orgId, supabase)
+  const removeMutation = useRemoveCoachMutation(orgId, supabase)
   const completeMutation = useCompleteSessionMutation(orgId, supabase)
 
-  const packsTotalPages = Math.max(1, Math.ceil(packsTotal / PACKS_PAGE_SIZE))
-  const sessionsTotalPages = Math.max(1, Math.ceil(sessionsTotal / SESSIONS_PAGE_SIZE))
+  const totalPages = Math.max(1, Math.ceil(packsTotal / PAGE_SIZE))
+  const hasActiveFilters =
+    filters.assignmentFilters.length > 0 || filters.enrollmentStatuses.length > 0
+  const hasFilters = search.length > 0 || hasActiveFilters
+  const isLoading = orgLoading || packsLoading
 
   useEffect(() => {
-    setPacksPage(1)
-    setSessionsPage(1)
+    setPage(1)
   }, [orgId])
 
   useEffect(() => {
-    setPacksPage((p) => Math.min(p, packsTotalPages))
-  }, [packsTotalPages])
+    setPage((p) => Math.min(p, totalPages))
+  }, [totalPages])
 
-  useEffect(() => {
-    setSessionsPage((p) => Math.min(p, sessionsTotalPages))
-  }, [sessionsTotalPages])
+  function applySearch() {
+    setSearch(searchInput.trim())
+    setPage(1)
+  }
 
-  const isLoading = orgLoading || packsLoading || sessionsLoading
+  function applyFilters(next: CoachingFilterValues) {
+    setFilters(next)
+    setPage(1)
+  }
+
+  function removeAssignmentFilter(value: CoachingPackAssignmentFilter) {
+    applyFilters({
+      ...filters,
+      assignmentFilters: filters.assignmentFilters.filter((v) => v !== value),
+    })
+  }
+
+  function removeEnrollmentStatus(value: CoachingPackEnrollmentStatus) {
+    applyFilters({
+      ...filters,
+      enrollmentStatuses: filters.enrollmentStatuses.filter((v) => v !== value),
+    })
+  }
+
+  const getAssignmentId = useCallback(
+    async (enrollmentProductId: number) => {
+      if (!supabase) return null
+      const a = await getCoachingAssignmentForEnrollmentProduct(
+        supabase,
+        enrollmentProductId
+      )
+      return a?.id ?? null
+    },
+    [supabase]
+  )
 
   if (!currentOrganization && !orgLoading) {
     return (
@@ -126,336 +186,345 @@ export default function CoachingPage() {
 
   if (!orgLoading && !canViewCoaching) {
     return (
-      <div className="space-y-4 p-6 lg:p-8">
-        <PageHeader title="Coaching" subtitle="Track purchased coaching packs and sessions." />
-        <EmptyState
-          icon={MessageCircle}
-          title="No access"
-          description="You don’t have permission to view coaching packs for this organization."
-        />
-      </div>
+      <NoAccessState
+        title="Coaching"
+        description="You don’t have permission to view coaching packs for this organization."
+      />
     )
   }
 
   return (
-    <div className="space-y-4 p-6 lg:p-8">
-      <PageHeader
-        title="Coaching"
-        subtitle={
-          canAssignCoach
-            ? "Assign coaches to purchased packs. Sessions are optional tracking for later payouts."
-            : "Track purchased coaching packs and sessions."
-        }
-      />
+    <div className="min-w-0 space-y-4 p-6 lg:p-8">
+      <PageHeader title="Coaching" subtitle="Assign coaches and track sessions." />
 
-      <Tabs defaultValue="packs" className="space-y-4">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="packs" className="gap-2">
-            <MessageCircle className="h-4 w-4" />
-            Packs
-          </TabsTrigger>
-          <TabsTrigger value="sessions" className="gap-2">
-            <Calendar className="h-4 w-4" />
-            Sessions
-          </TabsTrigger>
-        </TabsList>
+      <div className="space-y-2">
+        <div className="relative w-full">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            className="w-full pl-9 pr-11"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") applySearch()
+            }}
+            placeholder="Search client, product, offer, or coach"
+          />
+          <CoachingFiltersPopover values={filters} onApply={applyFilters} />
+        </div>
 
-        <TabsContent value="packs" className="space-y-3">
-          {isLoading ? (
-            <LoadingRows count={3} />
-          ) : packs.length === 0 ? (
-            <EmptyState
-              icon={MessageCircle}
-              title="No coaching packs"
-              description={
-                canAssignCoach
-                  ? "Packs appear here when clients buy a coaching product. Assign a coach to each pack."
-                  : "Packs appear here when clients buy a coaching product."
-              }
-            />
-          ) : (
-            <ul className="space-y-3">
-              {packs.map((pack) => (
-                <PackRow
-                  key={pack.enrollment_product_id}
-                  pack={pack}
-                  organizationId={orgId}
-                  canAssignCoach={canAssignCoach}
-                  onAssign={(memberId) =>
-                    assignMutation.mutate({
-                      enrollmentProductId: pack.enrollment_product_id,
-                      organizationMemberId: memberId,
-                    })
-                  }
-                  onNewSession={
+        {hasActiveFilters ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {filters.assignmentFilters.map((value) => (
+              <Button
+                key={`assignment-${value}`}
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs"
+                onClick={() => removeAssignmentFilter(value)}
+              >
+                {assignmentFilterLabel(value)}
+                <X className="h-3 w-3" />
+              </Button>
+            ))}
+            {filters.enrollmentStatuses.map((value) => (
+              <Button
+                key={`status-${value}`}
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs"
+                onClick={() => removeEnrollmentStatus(value)}
+              >
+                {enrollmentStatusLabel(value)}
+                <X className="h-3 w-3" />
+              </Button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      {isLoading ? (
+        <SectionCard>
+          <LoadingRows count={6} />
+        </SectionCard>
+      ) : packs.length === 0 ? (
+        <EmptyState
+          icon={MessageCircle}
+          title={hasFilters ? "No matching packs" : "No coaching packs"}
+          description={
+            hasFilters
+              ? "Try another search or clear filters."
+              : "Packs appear when clients buy coaching."
+          }
+        />
+      ) : (
+        <SectionCard
+          noPadding
+          footer={
+            <div className="flex items-center justify-between gap-2">
+              <PaginationSummary
+                page={page}
+                pageSize={PAGE_SIZE}
+                total={packsTotal}
+              />
+              <PaginationControls
+                page={page}
+                pageSize={PAGE_SIZE}
+                total={packsTotal}
+                onPageChange={setPage}
+              />
+            </div>
+          }
+        >
+          <TableScroll>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/60">
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Client
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Product
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Progress
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Coach
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Status
+                  </th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {packs.map((pack) => {
+                  const living = isLivingEnrollment(pack.enrollment_status)
+                  const waitingSignup =
+                    living &&
+                    pack.coach_full_name != null &&
+                    pack.user_id == null
+                  const canLogSession =
+                    living &&
                     canCreateSession &&
                     pack.coach_full_name != null &&
                     pack.user_id != null
-                      ? () => setSessionDialogPack(pack)
-                      : undefined
-                  }
-                  assignPending={assignMutation.isPending}
-                />
-              ))}
-            </ul>
-          )}
-          {packsTotal > 0 && (
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <PaginationSummary page={packsPage} pageSize={PACKS_PAGE_SIZE} total={packsTotal} />
-              <PaginationControls page={packsPage} pageSize={PACKS_PAGE_SIZE} total={packsTotal} onPageChange={setPacksPage} />
-            </div>
-          )}
-        </TabsContent>
+                  const canAssign =
+                    living && canAssignCoach && pack.coach_full_name == null
+                  const actionPending =
+                    assignMutation.isPending || removeMutation.isPending
 
-        <TabsContent value="sessions" className="space-y-3">
-          {sessionsLoading ? (
-            <LoadingRows count={3} />
-          ) : sessions.length === 0 ? (
-            <EmptyState
-              icon={Calendar}
-              title="No sessions logged"
-              description="Optional: after assigning a coach, log sessions here. This is tracking only — not a booking calendar."
-            />
-          ) : (
-            <ul className="space-y-3">
-              {sessions.map((session) => (
-                <SessionRow
-                  key={session.id}
-                  session={session}
-                  canComplete={canCompleteSession}
-                  onComplete={(completed) =>
-                    completeMutation.mutate({ sessionId: session.id, completed })
+                  return (
+                    <tr
+                      key={pack.enrollment_product_id}
+                      className="cursor-pointer hover:bg-accent/60"
+                      onClick={() => setSessionsPack(pack)}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-foreground">
+                          {pack.user_full_name}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Started {formatDate(pack.enrollment_started_at)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="text-foreground">{pack.product_title}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {pack.offer_title}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 tabular-nums text-muted-foreground">
+                        {pack.completion_total != null
+                          ? `${pack.completion_completed ?? 0} / ${pack.completion_total}`
+                          : "-"}
+                      </td>
+                      <td className="px-4 py-3 text-foreground">
+                        {pack.coach_full_name ?? (
+                          <span className="text-muted-foreground">Unassigned</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={pack.enrollment_status} />
+                      </td>
+                      <td
+                        className="px-4 py-3 text-right"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="inline-flex items-center justify-end gap-1.5">
+                          {canAssign ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={actionPending}
+                              onClick={() => {
+                                setAssignDialogMode("assign")
+                                setAssignDialogPack(pack)
+                              }}
+                            >
+                              Assign coach
+                            </Button>
+                          ) : null}
+                          {canLogSession ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={actionPending}
+                              onClick={() => setSessionDialogPack(pack)}
+                            >
+                              <Plus className="mr-1 h-3.5 w-3.5" />
+                              Log session
+                            </Button>
+                          ) : null}
+                          {waitingSignup ? (
+                            <span className="text-xs text-muted-foreground">
+                              Waiting for signup
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </TableScroll>
+        </SectionCard>
+      )}
+
+      <PackSessionsSheet
+        pack={sessionsPack}
+        open={sessionsPack != null}
+        onOpenChange={(open) => {
+          if (!open) setSessionsPack(null)
+        }}
+        sessions={packSessions}
+        sessionsLoading={packSessionsLoading}
+        canComplete={canCompleteSession}
+        canCreateSession={canCreateSession}
+        canEditCoach={
+          sessionsPack != null &&
+          canAssignCoach &&
+          isLivingEnrollment(sessionsPack.enrollment_status) &&
+          sessionsPack.coach_full_name != null &&
+          sessionsPack.coach_editable
+        }
+        actionPending={assignMutation.isPending || removeMutation.isPending}
+        completePending={completeMutation.isPending}
+        onComplete={(sessionId, completed) =>
+          completeMutation.mutate({ sessionId, completed })
+        }
+        onLogSession={() => {
+          if (sessionsPack == null) return
+          setSessionDialogPack(sessionsPack)
+        }}
+        onChangeCoach={() => {
+          if (sessionsPack == null) return
+          setAssignDialogMode("change")
+          setAssignDialogPack(sessionsPack)
+        }}
+        onRemoveCoach={() => {
+          if (sessionsPack == null) return
+          setRemoveDialogPack(sessionsPack)
+        }}
+      />
+
+      <AssignCoachDialog
+        open={assignDialogPack != null}
+        onOpenChange={(open) => !open && setAssignDialogPack(null)}
+        organizationId={orgId}
+        pack={assignDialogPack}
+        mode={assignDialogMode}
+        isPending={assignMutation.isPending}
+        onConfirm={({ organizationMemberId, rate, fixed }) => {
+          if (assignDialogPack == null) return
+          assignMutation.mutate(
+            {
+              enrollmentProductId: assignDialogPack.enrollment_product_id,
+              organizationMemberId,
+              rate,
+              fixed,
+              isChange: assignDialogMode === "change",
+            },
+            {
+              onSuccess: () => setAssignDialogPack(null),
+            }
+          )
+        }}
+      />
+
+      <AlertDialog
+        open={removeDialogPack != null}
+        onOpenChange={(open) => !open && setRemoveDialogPack(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove coach?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {removeDialogPack
+                ? `Remove ${removeDialogPack.coach_full_name ?? "the coach"} from ${removeDialogPack.product_title}. Pending delivery commissions for this pack will be deleted.`
+                : "Pending delivery commissions for this pack will be deleted."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removeMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={removeMutation.isPending || removeDialogPack == null}
+              onClick={(event) => {
+                event.preventDefault()
+                if (removeDialogPack == null) return
+                removeMutation.mutate(
+                  {
+                    enrollmentProductId: removeDialogPack.enrollment_product_id,
+                  },
+                  {
+                    onSuccess: () => {
+                      setRemoveDialogPack(null)
+                      setSessionsPack((prev) =>
+                        prev == null
+                          ? null
+                          : {
+                              ...prev,
+                              coach_full_name: null,
+                              coach_editable: true,
+                            }
+                      )
+                    },
                   }
-                  completePending={completeMutation.isPending}
-                />
-              ))}
-            </ul>
-          )}
-          {sessionsTotal > 0 && (
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <PaginationSummary page={sessionsPage} pageSize={SESSIONS_PAGE_SIZE} total={sessionsTotal} />
-              <PaginationControls page={sessionsPage} pageSize={SESSIONS_PAGE_SIZE} total={sessionsTotal} onPageChange={setSessionsPage} />
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+                )
+              }}
+            >
+              {removeMutation.isPending ? "Removing…" : "Remove coach"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <CreateSessionDialog
         open={sessionDialogPack != null}
         onOpenChange={(open) => !open && setSessionDialogPack(null)}
         organizationId={currentOrganization?.id ?? 0}
         preselectedPack={sessionDialogPack}
-        getAssignmentId={useCallback(
-          async (enrollmentProductId: number) => {
-            if (!supabase) return null
-            const a = await getCoachingAssignmentForEnrollmentProduct(supabase, enrollmentProductId)
-            return a?.id ?? null
-          },
-          [supabase]
-        )}
+        getAssignmentId={getAssignmentId}
         onCreate={async (payload) => {
           if (!supabase) return
           await createCoachingSession(supabase, payload)
-          queryClient.invalidateQueries({ queryKey: ["coaching-sessions", orgId] })
+          queryClient.invalidateQueries({
+            queryKey: ["coaching-sessions", orgId],
+          })
+          queryClient.invalidateQueries({
+            queryKey: ["coaching-packs", orgId],
+          })
           setSessionDialogPack(null)
           toast.success("Session created")
         }}
       />
     </div>
-  )
-}
-
-function PackRow({
-  pack,
-  organizationId,
-  canAssignCoach,
-  onAssign,
-  onNewSession,
-  assignPending,
-}: {
-  pack: CoachingEnrollmentProduct
-  organizationId: number | null
-  canAssignCoach: boolean
-  onAssign: (organizationMemberId: number) => void
-  onNewSession?: () => void
-  assignPending: boolean
-}) {
-  const [assignOpen, setAssignOpen] = useState(false)
-  const [memberSearchInput, setMemberSearchInput] = useState("")
-  const [memberSearch, setMemberSearch] = useState("")
-
-  const handleAssignOpenChange = (open: boolean) => {
-    setAssignOpen(open)
-    if (!open) {
-      setMemberSearchInput("")
-      setMemberSearch("")
-    }
-  }
-
-  const { data: members, isLoading: membersLoading } = useTeamMembersForAssign({
-    organizationId,
-    search: assignOpen ? memberSearch : "",
-  })
-
-  return (
-    <RichListItem>
-      <div className="min-w-0 flex-1">
-        <p className="font-medium text-foreground">{pack.product_title}</p>
-        <p className="text-xs text-muted-foreground">
-          {pack.user_full_name} · {pack.offer_title} · Started {formatDate(pack.enrollment_started_at)}
-        </p>
-        {pack.completion_total != null && (
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {pack.completion_completed ?? 0} / {pack.completion_total} sessions ✓
-          </p>
-        )}
-      </div>
-      <div className="flex items-center gap-2">
-        {canAssignCoach && !pack.coach_full_name && (
-          <Popover open={assignOpen} onOpenChange={handleAssignOpenChange}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" disabled={assignPending} className="w-[200px] justify-between">
-                Assign coach…
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[280px] p-0" align="end">
-              <div className="border-b border-border p-2">
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      placeholder="Search by name or email…"
-                      value={memberSearchInput}
-                      onChange={(e) => setMemberSearchInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") setMemberSearch(memberSearchInput.trim())
-                      }}
-                      className="h-9 pl-8"
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => setMemberSearch(memberSearchInput.trim())}
-                    disabled={membersLoading}
-                    className="h-9"
-                  >
-                    Search
-                  </Button>
-                </div>
-              </div>
-              <div className="max-h-[240px] overflow-y-auto p-1">
-                {membersLoading ? (
-                  <p className="p-3 text-xs text-muted-foreground">Loading…</p>
-                ) : members.length === 0 ? (
-                  <p className="p-3 text-xs text-muted-foreground">No team members found.</p>
-                ) : (
-                  members.map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted focus:bg-muted focus:outline-none"
-                      onClick={() => {
-                        onAssign(m.id)
-                        setAssignOpen(false)
-                        setMemberSearchInput("")
-                        setMemberSearch("")
-                      }}
-                    >
-                      {m.display_name ?? m.user_id.slice(0, 8)}{" "}
-                      <span className="text-muted-foreground">({m.role})</span>
-                    </button>
-                  ))
-                )}
-              </div>
-            </PopoverContent>
-          </Popover>
-        )}
-        {pack.coach_full_name && (
-          <div className="flex flex-col items-end gap-1">
-            <span className="text-xs text-muted-foreground">Coach: {pack.coach_full_name}</span>
-            {onNewSession ? (
-              <Button size="sm" onClick={onNewSession}>
-                <Plus className="mr-1 h-4 w-4" />
-                Log session
-              </Button>
-            ) : (
-              <div
-                className="flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
-                title="Client must create an account before you can schedule a session."
-              >
-                <UserX className="h-3.5 w-3.5 shrink-0" />
-                <span>Waiting for client to sign up</span>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </RichListItem>
-  )
-}
-
-function SessionRow({
-  session,
-  canComplete,
-  onComplete,
-  completePending,
-}: {
-  session: CoachingSessionRow
-  canComplete: boolean
-  onComplete: (completed: boolean) => void
-  completePending: boolean
-}) {
-  const isCompleted = session.completed_at != null
-  return (
-    <RichListItem>
-      <div className="min-w-0 flex-1">
-        <p className="font-medium text-foreground">
-          {session.product_title ?? "—"} · {session.user_full_name ?? "—"}
-        </p>
-        <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span>
-            {formatDate(session.scheduled_at)}, {formatDuration(session.duration_minutes)}
-            {session.coach_display && ` with ${session.coach_display}`}
-          </span>
-          {session.delivery_mode && (
-            <Badge variant="secondary" className="text-[10px] capitalize">
-              {session.delivery_mode}
-            </Badge>
-          )}
-        </p>
-        {session.meeting_url && (
-          <a
-            href={session.meeting_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-1 flex items-center gap-1 text-xs text-primary hover:underline"
-          >
-            <Video className="h-3 w-3" /> Video link
-          </a>
-        )}
-        {session.location && (
-          <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-            <MapPin className="h-3 w-3" /> {session.location}
-          </p>
-        )}
-      </div>
-      <div className="flex items-center gap-2">
-        {isCompleted ? (
-          <Badge className="bg-success/10 text-success border-success/20">Completed</Badge>
-        ) : canComplete ? (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onComplete(true)}
-            disabled={completePending}
-          >
-            <Check className="mr-1 h-4 w-4" />
-            Mark completed
-          </Button>
-        ) : null}
-      </div>
-    </RichListItem>
   )
 }

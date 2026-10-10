@@ -235,9 +235,20 @@ export async function POST(req: NextRequest) {
       offer_id: String(offer.id),
       organization_id: String(offer.organization_id),
       billing_type: offer.billing_type,
+      base_amount_cents: String(Math.round(effectivePrice)),
       ...(paymentLinkId != null ? { variant_id: String(paymentLinkId) } : {}),
       ...(effectiveInstallmentCount != null && effectiveInstallmentCount > 0
         ? { installment_count: String(effectiveInstallmentCount) }
+        : {}),
+    }
+
+    const subscriptionMetadata: Record<string, string> = {
+      ...sessionMetadata,
+      ...(isInstallmentFlow && effectiveInstallmentCount != null && effectiveInstallmentCount > 1
+        ? {
+            cancel_after_cycles: String(effectiveInstallmentCount),
+            is_installment: "true",
+          }
         : {}),
     }
 
@@ -256,14 +267,10 @@ export async function POST(req: NextRequest) {
       ...(!isSubscription
         ? { invoice_creation: { enabled: true } }
         : {}),
-      ...(isSubscription && isInstallmentFlow && effectiveInstallmentCount != null && effectiveInstallmentCount > 1
+      ...(isSubscription
         ? {
             subscription_data: {
-              metadata: {
-                ...sessionMetadata,
-                cancel_after_cycles: String(effectiveInstallmentCount),
-                is_installment: "true",
-              },
+              metadata: subscriptionMetadata,
             },
           }
         : {}),

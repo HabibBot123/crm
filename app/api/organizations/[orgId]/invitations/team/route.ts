@@ -147,7 +147,7 @@ export async function POST(request: Request, context: RouteContext) {
       {
         organizationId,
         email: normalizedEmail,
-        role: role && isTeamMemberRole(role) && role !== "owner" ? role : "member",
+        role: role && isTeamMemberRole(role) && role !== "owner" ? role : "staff",
         defaultCommissionRateSales: rateSales,
         defaultCommissionFixedSales: fixedSales,
         defaultCommissionRateAmbassador: rateAmbassador,

@@ -8,7 +8,7 @@ export const MATRIX_ROLES: MatrixRole[] = [
   "sales",
   "ambassador",
   "coach",
-  "member",
+  "staff",
 ]
 
 export const MATRIX_ROLE_LABELS: Record<MatrixRole, string> = {
@@ -16,7 +16,7 @@ export const MATRIX_ROLE_LABELS: Record<MatrixRole, string> = {
   sales: "Sales",
   ambassador: "Ambassador",
   coach: "Coach",
-  member: "Member",
+  staff: "Staff",
   bu_owner: "BU owner",
 }
 
@@ -63,6 +63,7 @@ export const CAPABILITY_GROUPS: CapabilityGroup[] = [
       { capability: "crm.assign_sales", label: "Assign closer / setter" },
       { capability: "crm.manage_attributions", label: "Manage attributions" },
       { capability: "crm.activate_commissions", label: "Activate / cancel commissions" },
+      { capability: "crm.view_lead_commissions", label: "View lead commissions & attributions" },
     ],
   },
   {

@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { useAuth } from "@/hooks/use-auth"
@@ -10,6 +11,8 @@ import {
   type ClientSummary,
   type ClientWithEnrollments,
 } from "@/lib/services/clients"
+import { lookupBuyerForManualEnrollment } from "@/lib/services/enrollments"
+import type { ManualEnrollmentBuyerLookup } from "@/schemas/enrollments.schema"
 
 export type CreateManualEnrollmentVariables = {
   organizationId: number
@@ -19,6 +22,49 @@ export type CreateManualEnrollmentVariables = {
   priceCents: number
   /** null = lifetime */
   accessDurationMonths: number | null
+  /** Business sale date YYYY-MM-DD */
+  soldAt: string
+}
+
+export function useManualEnrollmentBuyerLookup(
+  organizationId: number | null,
+  email: string,
+  enabled: boolean
+) {
+  const { supabase } = useAuth()
+  const [debouncedEmail, setDebouncedEmail] = useState(email)
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setDebouncedEmail(email.trim().toLowerCase())
+    }, 400)
+    return () => window.clearTimeout(handle)
+  }, [email])
+
+  const canLookup =
+    enabled &&
+    !!supabase &&
+    organizationId != null &&
+    debouncedEmail.includes("@") &&
+    debouncedEmail.includes(".")
+
+  const query = useQuery({
+    queryKey: ["manual-enrollment-buyer", organizationId, debouncedEmail],
+    queryFn: async (): Promise<ManualEnrollmentBuyerLookup> => {
+      if (!supabase || organizationId == null) {
+        throw new Error("organizationId and supabase are required")
+      }
+      return lookupBuyerForManualEnrollment(supabase, organizationId, debouncedEmail)
+    },
+    enabled: canLookup,
+  })
+
+  return {
+    data: query.data ?? null,
+    isFetching: query.isFetching,
+    isError: query.isError,
+    debouncedEmail,
+  }
 }
 
 export function useCreateManualEnrollment(organizationId: number | null) {
@@ -37,6 +83,7 @@ export function useCreateManualEnrollment(organizationId: number | null) {
             buyerName: variables.buyerName || null,
             priceCents: variables.priceCents,
             accessDurationMonths: variables.accessDurationMonths,
+            soldAt: variables.soldAt,
           }),
         }
       )
@@ -69,14 +116,40 @@ export type UseClientsParams = {
   page: number
   pageSize: number
   search: string
+  statuses?: Array<"active" | "expired">
+  totalSpentMinCents?: number
+  totalSpentMaxCents?: number
+  firstJoinedFrom?: string
+  firstJoinedTo?: string
 }
 
 export function useClients(params: UseClientsParams) {
   const { supabase } = useAuth()
-  const { organizationId, page, pageSize, search } = params
+  const {
+    organizationId,
+    page,
+    pageSize,
+    search,
+    statuses,
+    totalSpentMinCents,
+    totalSpentMaxCents,
+    firstJoinedFrom,
+    firstJoinedTo,
+  } = params
 
   const query = useQuery({
-    queryKey: ["clients", organizationId, page, pageSize, search],
+    queryKey: [
+      "clients",
+      organizationId,
+      page,
+      pageSize,
+      search,
+      statuses ?? [],
+      totalSpentMinCents ?? null,
+      totalSpentMaxCents ?? null,
+      firstJoinedFrom ?? null,
+      firstJoinedTo ?? null,
+    ],
     queryFn: () => {
       if (!organizationId) {
         throw new Error("organizationId is required to fetch clients")
@@ -87,6 +160,11 @@ export function useClients(params: UseClientsParams) {
         page,
         pageSize,
         search: search.trim() || undefined,
+        statuses,
+        totalSpentMinCents,
+        totalSpentMaxCents,
+        firstJoinedFrom,
+        firstJoinedTo,
       })
     },
     enabled: !!organizationId,

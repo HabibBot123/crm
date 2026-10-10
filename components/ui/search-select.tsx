@@ -19,10 +19,8 @@ export type SearchSelectOption = {
   label: string
 }
 
-type SearchSelectProps = {
+type SearchSelectSharedProps = {
   options: SearchSelectOption[]
-  value: string
-  onValueChange: (value: string) => void
   placeholder?: string
   searchPlaceholder?: string
   emptyText?: string
@@ -32,21 +30,53 @@ type SearchSelectProps = {
   noneOption?: SearchSelectOption | null
 }
 
+type SearchSelectSingleProps = SearchSelectSharedProps & {
+  multiple?: false
+  value: string
+  onValueChange: (value: string) => void
+}
+
+type SearchSelectMultiProps = SearchSelectSharedProps & {
+  multiple: true
+  value: string[]
+  onValueChange: (value: string[]) => void
+}
+
+export type SearchSelectProps = SearchSelectSingleProps | SearchSelectMultiProps
+
+function toggleValue(list: string[], value: string): string[] {
+  return list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
+}
+
 /** Combobox select with search — generic for members, products, BUs, etc. */
-export function SearchSelect({
-  options,
-  value,
-  onValueChange,
-  placeholder = "Select…",
-  searchPlaceholder = "Search…",
-  emptyText = "No results.",
-  disabled = false,
-  className,
-  noneOption = null,
-}: SearchSelectProps) {
+export function SearchSelect(props: SearchSelectProps) {
+  const {
+    options,
+    placeholder = "Select…",
+    searchPlaceholder = "Search…",
+    emptyText = "No results.",
+    disabled = false,
+    className,
+    noneOption = null,
+  } = props
+
+  const multiple = props.multiple === true
   const [open, setOpen] = useState(false)
   const allOptions = noneOption ? [noneOption, ...options] : options
-  const selected = allOptions.find((option) => option.value === value)
+
+  const selectedValues = multiple ? props.value : props.value ? [props.value] : []
+  const selectedLabels = selectedValues
+    .map((value) => allOptions.find((option) => option.value === value)?.label)
+    .filter((label): label is string => Boolean(label))
+
+  const triggerLabel =
+    selectedLabels.length === 0
+      ? placeholder
+      : multiple
+        ? selectedLabels.length <= 2
+          ? selectedLabels.join(", ")
+          : `${selectedLabels.length} selected`
+        : selectedLabels[0]
 
   return (
     <Popover open={open} onOpenChange={setOpen} modal>
@@ -59,16 +89,16 @@ export function SearchSelect({
           disabled={disabled}
           className={cn(
             "h-9 w-full justify-between font-normal",
-            !selected && "text-muted-foreground",
+            selectedLabels.length === 0 && "text-muted-foreground",
             className
           )}
         >
-          <span className="truncate">{selected?.label ?? placeholder}</span>
+          <span className="truncate">{triggerLabel}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-[var(--radix-popover-trigger-width)] p-0"
+        className="z-[60] w-[var(--radix-popover-trigger-width)] p-0"
         align="start"
       >
         <Command>
@@ -76,24 +106,33 @@ export function SearchSelect({
           <CommandList>
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup>
-              {allOptions.map((option) => (
-                <CommandItem
-                  key={option.value}
-                  value={`${option.label} ${option.value}`}
-                  onSelect={() => {
-                    onValueChange(option.value)
-                    setOpen(false)
-                  }}
-                >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4 shrink-0",
-                      value === option.value ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                  <span className="truncate">{option.label}</span>
-                </CommandItem>
-              ))}
+              {allOptions.map((option) => {
+                const checked = selectedValues.includes(option.value)
+                return (
+                  <CommandItem
+                    key={option.value}
+                    value={`${option.label} ${option.value}`}
+                    onSelect={() => {
+                      if (multiple) {
+                        props.onValueChange(toggleValue(props.value, option.value))
+                        return
+                      }
+                      props.onValueChange(option.value)
+                      setOpen(false)
+                    }}
+                  >
+                    {multiple ? (
+                      <Check
+                        className={cn(
+                          "mr-2 h-4 w-4 shrink-0",
+                          checked ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                    ) : null}
+                    <span className="truncate">{option.label}</span>
+                  </CommandItem>
+                )
+              })}
             </CommandGroup>
           </CommandList>
         </Command>

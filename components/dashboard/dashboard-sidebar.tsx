@@ -16,6 +16,7 @@ import {
   filterDashboardNavGroups,
   isDashboardNavActive,
 } from "@/lib/permissions/dashboard-nav"
+import { teamMemberRoleLabel } from "@/lib/permissions/roles"
 
 export function DashboardSidebar() {
   const pathname = usePathname()
@@ -35,7 +36,7 @@ export function DashboardSidebar() {
   const userInitial = getInitials(fullName, email)
 
   const roleLine = currentOrganization
-    ? `${currentOrganization.member_role ? currentOrganization.member_role.charAt(0).toUpperCase() + currentOrganization.member_role.slice(1) : "Member"} of ${currentOrganization.name}`
+    ? `${teamMemberRoleLabel(currentOrganization.member_role)} of ${currentOrganization.name}`
     : null
 
   return (

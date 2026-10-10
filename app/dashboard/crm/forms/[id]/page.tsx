@@ -22,6 +22,7 @@ import {
   useRemoveFormField,
   useUpdateForm,
 } from "@/hooks/use-crm-forms"
+import { useOrganizationLeadStatuses } from "@/hooks/use-organization-lead-statuses"
 import { toast } from "sonner"
 
 function formatFieldType(value: string) {
@@ -43,6 +44,7 @@ export default function CrmFormEditorPage() {
 
   const { form, isLoading, error } = useCrmFormDetail(Number.isFinite(formId) ? formId : null)
   const { fields } = useCrmFields(currentOrganization?.id ?? null)
+  const { statuses: leadStatuses } = useOrganizationLeadStatuses(currentOrganization?.id ?? null)
   const updateForm = useUpdateForm(currentOrganization?.id ?? null)
   const addFormField = useAddFormField(Number.isFinite(formId) ? formId : null)
   const removeFormField = useRemoveFormField(Number.isFinite(formId) ? formId : null)
@@ -51,6 +53,7 @@ export default function CrmFormEditorPage() {
   const [description, setDescription] = useState("")
   const [redirectUrl, setRedirectUrl] = useState("")
   const [successMessage, setSuccessMessage] = useState("")
+  const [initialStatus, setInitialStatus] = useState("")
   const [selectedFieldDefId, setSelectedFieldDefId] = useState<string>("")
   const [isRequired, setIsRequired] = useState(false)
   const [isHidden, setIsHidden] = useState(false)
@@ -111,6 +114,7 @@ export default function CrmFormEditorPage() {
   const displayedDescription = description || (form.description ?? "")
   const displayedRedirectUrl = redirectUrl || (form.redirect_url ?? "")
   const displayedSuccessMessage = successMessage || (form.success_message ?? "")
+  const displayedInitialStatus = initialStatus || form.initial_status
   const navItems: NavListItem<"metadata" | "fields" | "settings">[] = [
     { id: "metadata", label: "Metadata", icon: Info },
     { id: "fields", label: "Fields", icon: ListChecks },
@@ -162,25 +166,48 @@ export default function CrmFormEditorPage() {
                     placeholder="Optional description shown on the public form."
                   />
                 </div>
-                {form.form_type === "default" ? (
-                  <div className="space-y-1.5">
-                    <Label>Redirect URL</Label>
-                    <Input
-                      value={displayedRedirectUrl}
-                      onChange={(event) => setRedirectUrl(event.target.value)}
-                      placeholder="https://example.com/thanks"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      After submit, show a thank-you screen then redirect here (~3.5s). Not used for
-                      webinar or free giveaway forms.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                    Redirect URL is only available on default forms. Webinar and free giveaway keep
-                    the prospect on the thank-you screen so they can access the content.
-                  </div>
-                )}
+                <div className="space-y-1.5">
+                  <Label>Arrival status</Label>
+                  <Select
+                    value={displayedInitialStatus}
+                    onValueChange={(value) => {
+                      if (leadStatuses.some((status) => status.key === value)) {
+                        setInitialStatus(value)
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {leadStatuses.map((status) => (
+                        <SelectItem key={status.key} value={status.key}>
+                          <span className="inline-flex items-center gap-2">
+                            <span
+                              className="h-2.5 w-2.5 rounded-full"
+                              style={{ backgroundColor: status.color }}
+                            />
+                            {status.label}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Status applied to new leads when this form is submitted.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Redirect URL</Label>
+                  <Input
+                    value={displayedRedirectUrl}
+                    onChange={(event) => setRedirectUrl(event.target.value)}
+                    placeholder="https://example.com/thanks"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Optional. After submit, show the thank-you screen then redirect here (~3.5s).
+                  </p>
+                </div>
                 <div className="space-y-1.5">
                   <Label>Success message</Label>
                   <Textarea
@@ -189,15 +216,8 @@ export default function CrmFormEditorPage() {
                     placeholder="Thank you for submitting your information."
                   />
                   <p className="text-xs text-muted-foreground">
-                    Shown on the thank-you screen after submit
-                    {form.form_type === "default" ? " (before redirect, if set)." : "."}
+                    Shown on the thank-you screen after submit (before redirect, if set).
                   </p>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Form type</Label>
-                  <div className="rounded-md border border-border bg-muted/50 px-3 py-2 text-sm">
-                    {formatFieldType(form.form_type)}
-                  </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 pt-2">
@@ -210,16 +230,15 @@ export default function CrmFormEditorPage() {
                           formId: form.id,
                           title: displayedTitle.trim(),
                           description: displayedDescription.trim() || null,
-                          redirect_url:
-                            form.form_type === "default"
-                              ? displayedRedirectUrl.trim() || null
-                              : null,
+                          initial_status: displayedInitialStatus,
+                          redirect_url: displayedRedirectUrl.trim() || null,
                           success_message: displayedSuccessMessage.trim() || null,
                         })
                         setTitle("")
                         setDescription("")
                         setRedirectUrl("")
                         setSuccessMessage("")
+                        setInitialStatus("")
                         toast.success("Metadata saved successfully")
                       } catch (mutationError) {
                         toast.error("Could not save metadata", {

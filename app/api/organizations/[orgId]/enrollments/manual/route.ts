@@ -59,6 +59,7 @@ export async function POST(request: Request, context: RouteContext) {
         parsed.data.accessDurationMonths === undefined
           ? undefined
           : parsed.data.accessDurationMonths,
+      soldAt: parsed.data.soldAt,
     })
     return ok({ enrollment: result })
   } catch (err) {

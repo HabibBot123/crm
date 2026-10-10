@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import type { CrmFormType } from "@/schemas/crm.schema"
+import type { LeadStatus, OrganizationLeadStatus } from "@/schemas/crm.schema"
 
 function slugify(value: string) {
   return value
@@ -24,30 +24,29 @@ function slugify(value: string) {
     .replace(/^-|-$/g, "")
 }
 
-function isCrmFormType(value: string): value is CrmFormType {
-  return value === "default" || value === "webinar" || value === "freegiveaway"
-}
-
 export function CreateFormDialog({
   open,
   onOpenChange,
+  leadStatuses,
   onSubmit,
   isPending,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
+  leadStatuses: OrganizationLeadStatus[]
   onSubmit: (input: {
     title: string
     slug: string
     description: string | null
-    form_type: CrmFormType
+    initial_status: LeadStatus
   }) => Promise<void>
   isPending?: boolean
 }) {
+  const defaultStatus = leadStatuses.find((status) => status.key === "new")?.key ?? "new"
   const [title, setTitle] = useState("")
   const [slug, setSlug] = useState("")
   const [description, setDescription] = useState("")
-  const [formType, setFormType] = useState<CrmFormType>("default")
+  const [initialStatus, setInitialStatus] = useState<LeadStatus>(defaultStatus)
   const [slugTouched, setSlugTouched] = useState(false)
 
   useEffect(() => {
@@ -56,18 +55,24 @@ export function CreateFormDialog({
     }
   }, [title, slugTouched])
 
+  useEffect(() => {
+    if (open) {
+      setInitialStatus(leadStatuses.find((status) => status.key === "new")?.key ?? "new")
+    }
+  }, [open, leadStatuses])
+
   async function handleSubmit() {
     await onSubmit({
       title: title.trim(),
       slug: slug.trim().toLowerCase(),
       description: description.trim() || null,
-      form_type: formType,
+      initial_status: initialStatus,
     })
 
     setTitle("")
     setSlug("")
     setDescription("")
-    setFormType("default")
+    setInitialStatus(defaultStatus)
     setSlugTouched(false)
     onOpenChange(false)
   }
@@ -99,21 +104,36 @@ export function CreateFormDialog({
             value={description}
             onChange={(event) => setDescription(event.target.value)}
           />
-          <Select
-            value={formType}
-            onValueChange={(value) => {
-              if (isCrmFormType(value)) setFormType(value)
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Form type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="default">Default</SelectItem>
-              <SelectItem value="webinar">Webinar</SelectItem>
-              <SelectItem value="freegiveaway">Free giveaway</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Arrival status
+            </p>
+            <Select
+              value={initialStatus}
+              onValueChange={(value) => {
+                if (leadStatuses.some((status) => status.key === value)) {
+                  setInitialStatus(value)
+                }
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Status when lead is created" />
+              </SelectTrigger>
+              <SelectContent>
+                {leadStatuses.map((status) => (
+                  <SelectItem key={status.key} value={status.key}>
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: status.color }}
+                      />
+                      {status.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <DialogFooter>

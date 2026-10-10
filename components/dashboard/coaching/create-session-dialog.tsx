@@ -133,18 +133,20 @@ export function CreateSessionDialog({
             <p className="text-xs text-muted-foreground">Loading…</p>
           )}
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Date and time</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="session-scheduled-at">Date and time</Label>
               <Input
+                id="session-scheduled-at"
                 type="datetime-local"
                 value={scheduledAt}
                 onChange={(e) => setScheduledAt(e.target.value)}
                 required
               />
             </div>
-            <div>
-              <Label>Duration (minutes)</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="session-duration">Duration (minutes)</Label>
               <Input
+                id="session-duration"
                 type="number"
                 min={15}
                 step={15}
@@ -153,10 +155,10 @@ export function CreateSessionDialog({
               />
             </div>
           </div>
-          <div>
-            <Label>Mode</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="session-mode">Mode</Label>
             <Select value={deliveryMode} onValueChange={setDeliveryMode}>
-              <SelectTrigger>
+              <SelectTrigger id="session-mode">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -166,18 +168,20 @@ export function CreateSessionDialog({
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <Label>Video link (optional)</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="session-meeting-url">Video link (optional)</Label>
             <Input
+              id="session-meeting-url"
               type="url"
               placeholder="https://meet.google.com/…"
               value={meetingUrl}
               onChange={(e) => setMeetingUrl(e.target.value)}
             />
           </div>
-          <div>
-            <Label>Location (optional)</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="session-location">Location (optional)</Label>
             <Input
+              id="session-location"
               placeholder="Address or venue"
               value={location}
               onChange={(e) => setLocation(e.target.value)}

@@ -1,5 +1,11 @@
-import type { SupabaseAdmin, EnrollmentRow } from "../types"
-import { getBillingTypeForEnrollment, resolveOrgAndEnrollmentForInvoice } from "../helpers"
+import type { SupabaseAdmin } from "../types"
+import {
+  getBillingTypeForEnrollment,
+  recordStripeSale,
+  resolveEnrollmentByCustomer,
+  resolveEnrollmentBySubscriptionId,
+  resolveOrgByStripeAccount,
+} from "../helpers"
 import { invoicePaidSchema } from "../schemas"
 
 export async function handleInvoicePaid(
@@ -25,86 +31,112 @@ export async function handleInvoicePaid(
   const price = amountPaid
   const currency = (invoice.currency ?? "eur").toLowerCase()
 
-  // Resolve org + enrollment once (by subscription or by customer+account)
-  let resolved: Awaited<ReturnType<typeof resolveOrgAndEnrollmentForInvoice>> = null
+  let orgId: number | null = null
+  let enrollment = null
 
-  if (
-    subscriptionId &&
-    (invoice.billing_reason === "subscription_cycle" ||
-      invoice.billing_reason === "subscription_create")
-  ) {
-    const { data: org } = await supabase
-      .from("organizations")
-      .select("id")
-      .eq("stripe_account_id", stripeAccountId ?? "")
-      .is("deleted_at", null)
-      .maybeSingle()
-    if (org) {
-      const { data: enr } = await supabase
-        .from("enrollments")
-        .select("id, organization_id, offer_id, offer_variant_id, user_id, buyer_email")
-        .eq("stripe_subscription_id", subscriptionId)
-        .maybeSingle()
-      if (enr) resolved = { org, enrollment: enr as EnrollmentRow }
-    }
-  } else if (!subscriptionId && invoice.customer && stripeAccountId) {
-    resolved = await resolveOrgAndEnrollmentForInvoice(
+  if (stripeAccountId) {
+    const org = await resolveOrgByStripeAccount(supabase, stripeAccountId)
+    if (org) orgId = org.id
+  }
+
+  // 1) Subscription → enrollment
+  if (subscriptionId) {
+    enrollment = await resolveEnrollmentBySubscriptionId(supabase, subscriptionId)
+    if (enrollment) orgId = enrollment.organization_id
+  }
+
+  // 2) Metadata org + customer (one-time invoice_creation / race-safe fallback)
+  if (!enrollment && invoice.customer && orgId != null) {
+    enrollment = await resolveEnrollmentByCustomer(
       supabase,
-      stripeAccountId,
+      orgId,
       invoice.customer
     )
   }
 
-  if (resolved) {
-    const billingType = await getBillingTypeForEnrollment(supabase, resolved.enrollment)
+  // 3) Metadata organization_id on invoice / subscription_details
+  if (!enrollment) {
+    const metaOrg =
+      invoice.metadata?.organization_id ??
+      invoice.parent?.subscription_details?.metadata?.organization_id
+    const metaOrgId = metaOrg ? Number(metaOrg) : null
+    if (
+      metaOrgId != null &&
+      Number.isFinite(metaOrgId) &&
+      invoice.customer
+    ) {
+      orgId = metaOrgId
+      enrollment = await resolveEnrollmentByCustomer(
+        supabase,
+        metaOrgId,
+        invoice.customer
+      )
+    }
+  }
 
-    const { error: saleError } = await supabase.from("organization_sales").insert({
-      organization_id: resolved.enrollment.organization_id,
-      enrollment_id: resolved.enrollment.id,
-      user_id: resolved.enrollment.user_id,
-      buyer_email: resolved.enrollment.buyer_email,
-      billing_type: billingType,
-      price,
+  if (enrollment && orgId != null) {
+    const billingType = await getBillingTypeForEnrollment(supabase, enrollment)
+
+    const meta = {
+      ...(invoice.metadata ?? {}),
+      ...(invoice.parent?.subscription_details?.metadata ?? {}),
+    }
+
+    const recorded = await recordStripeSale(supabase, {
+      organizationId: orgId,
+      enrollment,
+      priceCents: price,
       currency,
-      stripe_invoice_id: invoice.id,
-      source: "stripe",
+      billingType,
+      stripeCheckoutSessionId: null,
+      stripeInvoiceId: invoice.id,
+      metadata: Object.keys(meta).length > 0 ? meta : null,
     })
 
-    if (saleError) {
-      console.error(`Failed to insert sale for invoice ${invoice.id}:`, saleError.message)
-    } else {
-      console.log(`Sale recorded: invoice ${invoice.id}, amount ${price} ${currency}`)
+    console.log(
+      `invoice.paid [${invoice.id}]: organization_sales ${recorded.status} id=${recorded.saleId} (amount ${price} ${currency})`
+    )
+
+    if (recorded.status === "inserted" && recorded.saleId != null) {
+      const { maybeCreateOnPaymentCommissionsForSale } = await import(
+        "@/lib/services/commissions"
+      )
+      try {
+        await maybeCreateOnPaymentCommissionsForSale(supabase, recorded.saleId)
+      } catch (err) {
+        console.error(
+          `invoice.paid [${invoice.id}]: on_payment commissions failed:`,
+          err
+        )
+      }
     }
+  } else {
+    console.warn(
+      `invoice.paid [${invoice.id}]: could not resolve enrollment — sale not written (checkout sale may still exist)`
+    )
   }
 
   // Persist every paid invoice to coached_invoices (by org + customer)
   if (stripeAccountId && invoice.customer && amountPaid > 0) {
-    let orgId: number | null = null
     let userId: string | null = null
     let buyerEmail: string | null = null
     let offerId: number | null = null
+    let resolvedOrgId = orgId
 
-    if (resolved) {
-      orgId = resolved.org.id
-      userId = resolved.enrollment.user_id
-      buyerEmail = resolved.enrollment.buyer_email
-      offerId = resolved.enrollment.offer_id
-    } else {
-      const { data: org } = await supabase
-        .from("organizations")
-        .select("id")
-        .eq("stripe_account_id", stripeAccountId)
-        .is("deleted_at", null)
-        .maybeSingle()
+    if (enrollment) {
+      resolvedOrgId = enrollment.organization_id
+      userId = enrollment.user_id
+      buyerEmail = enrollment.buyer_email
+      offerId = enrollment.offer_id
+    } else if (resolvedOrgId == null) {
+      const org = await resolveOrgByStripeAccount(supabase, stripeAccountId)
       if (org) {
-        orgId = org.id
-        const { data: enr } = await supabase
-          .from("enrollments")
-          .select("user_id, buyer_email, offer_id")
-          .eq("organization_id", org.id)
-          .eq("stripe_customer_id", invoice.customer)
-          .limit(1)
-          .maybeSingle()
+        resolvedOrgId = org.id
+        const enr = await resolveEnrollmentByCustomer(
+          supabase,
+          org.id,
+          invoice.customer
+        )
         if (enr) {
           userId = enr.user_id
           buyerEmail = enr.buyer_email
@@ -113,11 +145,11 @@ export async function handleInvoicePaid(
       }
     }
 
-    if (orgId != null) {
+    if (resolvedOrgId != null) {
       const { error: invError } = await supabase.from("coached_invoices").upsert(
         {
           stripe_invoice_id: invoice.id,
-          organization_id: orgId,
+          organization_id: resolvedOrgId,
           user_id: userId,
           buyer_email: buyerEmail,
           offer_id: offerId,
@@ -126,7 +158,9 @@ export async function handleInvoicePaid(
           invoice_pdf_url: invoice.invoice_pdf ?? null,
           status: "paid",
           stripe_created_at:
-            invoice.created != null ? new Date(invoice.created * 1000).toISOString() : null,
+            invoice.created != null
+              ? new Date(invoice.created * 1000).toISOString()
+              : null,
         },
         { onConflict: "stripe_invoice_id" }
       )

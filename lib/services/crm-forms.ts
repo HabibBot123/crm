@@ -2,74 +2,26 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { z } from "zod"
 import {
   createFormSchema,
-  crmFieldOptionSchema,
-  crmFieldTypeSchema,
+  crmFieldDefRowSchema,
+  crmFormFieldRowSchema,
   crmFormFieldSchema,
-  crmFormFieldVisibilitySchema,
+  crmFormRowSchema,
   crmFormSchema,
-  crmFormStatusSchema,
   crmFormSummarySchema,
-  crmFormTypeSchema,
+  publicCrmFormPayloadSchema,
   type CreateFormInput,
+  type CrmFieldDefRow,
   type CrmForm,
   type CrmFormField,
+  type CrmFormFieldRow,
   type CrmFormFieldVisibility,
   type CrmFormStatus,
   type CrmFormSummary,
+  type LeadStatus,
+  type PublicCrmFormPayload,
 } from "@/schemas/crm.schema"
 
-const crmFormRowSchema = z.object({
-  id: z.number(),
-  organization_id: z.number(),
-  title: z.string(),
-  description: z.string().nullable(),
-  form_type: crmFormTypeSchema,
-  slug: z.string(),
-  status: crmFormStatusSchema,
-  redirect_url: z.string().nullable(),
-  success_message: z.string().nullable(),
-  booking_enabled: z.boolean(),
-  created_at: z.string(),
-  updated_at: z.string(),
-})
-
-const crmFormFieldRowSchema = z.object({
-  id: z.number(),
-  form_id: z.number(),
-  field_def_id: z.number(),
-  position: z.number(),
-  is_required: z.boolean(),
-  visibility: crmFormFieldVisibilitySchema.default("visible"),
-})
-
-const crmFieldDefRowSchema = z.object({
-  id: z.number(),
-  key: z.string(),
-  label: z.string(),
-  client_question: z.string(),
-  field_type: crmFieldTypeSchema,
-  options: z.array(crmFieldOptionSchema).nullable().optional(),
-})
-
-export type PublicCrmForm = {
-  organization: {
-    id: number
-    name: string
-    slug: string
-    branding: Record<string, unknown> | null
-  }
-  form: CrmForm
-}
-
-const publicCrmFormPayloadSchema = z.object({
-  organization: z.object({
-    id: z.number(),
-    name: z.string(),
-    slug: z.string(),
-    branding: z.record(z.string(), z.unknown()).nullable(),
-  }),
-  form: crmFormSchema,
-})
+export type PublicCrmForm = PublicCrmFormPayload
 
 export async function fetchPublicFormBySlug(
   baseUrl: string,
@@ -106,8 +58,8 @@ export async function fetchPublicFormBySlug(
 }
 
 function toCrmFormField(
-  row: z.infer<typeof crmFormFieldRowSchema>,
-  fieldDef: z.infer<typeof crmFieldDefRowSchema>
+  row: CrmFormFieldRow,
+  fieldDef: CrmFieldDefRow
 ): CrmFormField {
   return crmFormFieldSchema.parse({
     id: row.id,
@@ -165,7 +117,7 @@ export async function fetchFormWithFields(
   const formFieldRows = z.array(crmFormFieldRowSchema).parse(formFieldData ?? [])
   const fieldDefIds = formFieldRows.map((row) => row.field_def_id)
 
-  const fieldDefsById = new Map<number, z.infer<typeof crmFieldDefRowSchema>>()
+  const fieldDefsById = new Map<number, CrmFieldDefRow>()
   if (fieldDefIds.length > 0) {
     const { data: fieldDefData, error: fieldDefError } = await supabase
       .from("crm_fields")
@@ -215,6 +167,7 @@ export async function updateForm(
     title?: string
     description?: string | null
     status?: CrmFormStatus
+    initial_status?: LeadStatus
     redirect_url?: string | null
     success_message?: string | null
   }
@@ -223,19 +176,9 @@ export async function updateForm(
   if (patch.title !== undefined) updatePatch.title = patch.title
   if (patch.description !== undefined) updatePatch.description = patch.description
   if (patch.status !== undefined) updatePatch.status = patch.status
+  if (patch.initial_status !== undefined) updatePatch.initial_status = patch.initial_status
   if (patch.success_message !== undefined) updatePatch.success_message = patch.success_message
-
-  if (patch.redirect_url !== undefined) {
-    const { data: formRow, error: formError } = await supabase
-      .from("crm_forms")
-      .select("form_type")
-      .eq("id", formId)
-      .single()
-    if (formError) throw formError
-
-    const formType = crmFormTypeSchema.parse(formRow.form_type)
-    updatePatch.redirect_url = formType === "default" ? patch.redirect_url : null
-  }
+  if (patch.redirect_url !== undefined) updatePatch.redirect_url = patch.redirect_url
 
   const { error } = await supabase.from("crm_forms").update(updatePatch).eq("id", formId)
   if (error) throw error

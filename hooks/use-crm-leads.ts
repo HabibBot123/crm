@@ -3,15 +3,17 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useAuth } from "@/hooks/use-auth"
 import {
+  assignLeadBusinessUnit,
+  assignLeadOwner,
   createLead,
   fetchSalesMembers,
   fetchAttributionMembers,
   fetchLeadsPage,
-  updateLeadAssignment,
   updateLeadStatus,
   type CrmLeadsFilters,
 } from "@/lib/services/crm"
 import type { CreateLeadInput, LeadStatus } from "@/schemas/crm.schema"
+import { toast } from "sonner"
 
 export function useCrmLeads(params: {
   organizationId: number | null
@@ -79,16 +81,50 @@ export function useUpdateLeadStatus(organizationId: number | null) {
   })
 }
 
-export function useUpdateLeadAssignment(organizationId: number | null) {
-  const { supabase } = useAuth()
+export function useAssignLeadOwner(organizationId: number | null) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (input: { leadId: number; assignedSalesId: number | null }) =>
-      updateLeadAssignment(supabase, input),
+    mutationFn: async (input: { leadId: number; ownerId: number | null }) => {
+      if (!organizationId) throw new Error("organizationId is required")
+      return assignLeadOwner({
+        organizationId,
+        leadId: input.leadId,
+        ownerId: input.ownerId,
+      })
+    },
     onSuccess: async (_, vars) => {
       await queryClient.invalidateQueries({ queryKey: ["crm-leads", organizationId] })
       await queryClient.invalidateQueries({ queryKey: ["crm-lead", vars.leadId] })
+      toast.success(vars.ownerId == null ? "Owner cleared" : "Owner assigned")
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Could not assign owner")
+    },
+  })
+}
+
+export function useAssignLeadBusinessUnit(organizationId: number | null) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: { leadId: number; businessUnitId: number | null }) => {
+      if (!organizationId) throw new Error("organizationId is required")
+      return assignLeadBusinessUnit({
+        organizationId,
+        leadId: input.leadId,
+        businessUnitId: input.businessUnitId,
+      })
+    },
+    onSuccess: async (_, vars) => {
+      await queryClient.invalidateQueries({ queryKey: ["crm-leads", organizationId] })
+      await queryClient.invalidateQueries({ queryKey: ["crm-lead", vars.leadId] })
+      toast.success(
+        vars.businessUnitId == null ? "Business unit cleared" : "Business unit assigned"
+      )
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Could not assign business unit")
     },
   })
 }

@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { ChevronDown } from "lucide-react"
+import { ChevronDown, CircleAlert, Pencil, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -18,13 +18,35 @@ import { LeadTimeline } from "@/components/dashboard/crm/lead-timeline"
 import { UpdateStatusDialog } from "@/components/dashboard/crm/update-status-dialog"
 import type { AttributionMemberOption, SalesMemberOption } from "@/lib/services/crm"
 import { memberDefaultsForAttributionType } from "@/lib/services/crm"
-import { useCreateLeadAttribution, useCrmLeadDetail } from "@/hooks/use-crm-lead-detail"
+import {
+  useCreateLeadAttribution,
+  useCrmLeadDetail,
+  useDeleteLeadAttribution,
+  useUpdateLeadAttribution,
+  useUpdateLeadFields,
+} from "@/hooks/use-crm-lead-detail"
 import { useCrmFields } from "@/hooks/use-crm-fields"
-import { useUpdateLeadFields } from "@/hooks/use-crm-lead-detail"
-import { useUpdateLeadAssignment, useUpdateLeadStatus } from "@/hooks/use-crm-leads"
+import {
+  useAssignLeadBusinessUnit,
+  useAssignLeadOwner,
+  useUpdateLeadStatus,
+} from "@/hooks/use-crm-leads"
+import { useBusinessUnits } from "@/hooks/use-business-units"
+import { useOrganizationLeadStatuses } from "@/hooks/use-organization-lead-statuses"
 import { LeadCommissionsPanel } from "@/components/dashboard/crm/lead-commissions-panel"
 import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
+import { cn } from "@/lib/utils"
 import type { LeadStatus } from "@/schemas/crm.schema"
+
+type EditableAttributionType = "closer" | "setter" | "ambassador"
+
+/** Align with team role colors (`app/dashboard/team/page.tsx`). */
+const attributionTypeColors: Record<string, string> = {
+  closer: "bg-success/10 text-success",
+  setter: "bg-success/10 text-success",
+  ambassador: "bg-chart-2/10 text-chart-2",
+  business_unit: "bg-primary/10 text-primary",
+}
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -35,12 +57,35 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 function AttributionTypeBadge({ type }: { type: string }) {
-  const label = type.charAt(0).toUpperCase() + type.slice(1)
+  const label =
+    type === "business_unit" ? "Head" : type.charAt(0).toUpperCase() + type.slice(1)
   return (
-    <span className="shrink-0 rounded-md border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+    <span
+      className={cn(
+        "shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium",
+        attributionTypeColors[type] ?? "bg-muted text-foreground"
+      )}
+    >
       {label}
     </span>
   )
+}
+
+function isEditableAttributionType(value: string): value is EditableAttributionType {
+  return value === "closer" || value === "setter" || value === "ambassador"
+}
+
+function attributionKey(memberId: number, type: string): string {
+  return `${memberId}:${type}`
+}
+
+function formatAttributionPay(
+  rate: number | null,
+  fixed: number | null
+): string {
+  if (rate != null) return `${rate}%`
+  if (fixed != null) return String(fixed)
+  return "—"
 }
 
 export function LeadSidePanel({
@@ -61,25 +106,36 @@ export function LeadSidePanel({
   onOpenChange: (open: boolean) => void
 }) {
   const { lead, statusHistory, isLoading } = useCrmLeadDetail({ leadId })
-  const { mode: orgMode, can } = useOrgCapabilities()
-  const canAssignSales = orgMode.showLeadSalesAssignment && can("crm.assign_sales")
+  const { mode: orgMode, can, scope, ownedBusinessUnitIds } = useOrgCapabilities()
+  const canAssignOwner = orgMode.showLeadOwnerAssignment && can("crm.assign_sales")
+  const canEditBusinessUnit = orgMode.showBusinessUnits && can("crm.leads.edit")
+  const showOwnersSection = canAssignOwner || canEditBusinessUnit
+  const canViewLeadCommissions =
+    orgMode.showAcquisitionRoles && can("crm.view_lead_commissions")
   const canManageAttributions =
-    orgMode.showAcquisitionRoles && can("crm.manage_attributions")
+    canViewLeadCommissions && can("crm.manage_attributions")
   const canUpdateLeadStatus = can("crm.leads.update_status") || can("crm.leads.edit")
   const { fields } = useCrmFields(organizationId)
+  const { units: businessUnits } = useBusinessUnits(organizationId)
+  const { statuses: leadStatuses } = useOrganizationLeadStatuses(organizationId)
   const updateStatus = useUpdateLeadStatus(organizationId)
-  const updateAssignment = useUpdateLeadAssignment(organizationId)
+  const assignOwner = useAssignLeadOwner(organizationId)
+  const assignBusinessUnit = useAssignLeadBusinessUnit(organizationId)
   const updateLeadFields = useUpdateLeadFields(leadId)
   const createAttribution = useCreateLeadAttribution(leadId)
+  const updateAttribution = useUpdateLeadAttribution(leadId)
+  const deleteAttribution = useDeleteLeadAttribution(leadId)
+
   const [statusDialogOpen, setStatusDialogOpen] = useState(false)
   const [customFieldEditorOpen, setCustomFieldEditorOpen] = useState(false)
   const [selectedFieldId, setSelectedFieldId] = useState<string>("")
   const [customFieldValue, setCustomFieldValue] = useState("")
   const [attributionEditorOpen, setAttributionEditorOpen] = useState(false)
   const [attributionMemberId, setAttributionMemberId] = useState<string>("")
-  const [attributionType, setAttributionType] = useState<"closer" | "setter" | "ambassador">("closer")
+  const [attributionType, setAttributionType] = useState<EditableAttributionType>("closer")
   const [commissionRateInput, setCommissionRateInput] = useState("")
   const [commissionFixedInput, setCommissionFixedInput] = useState("")
+  const [editingKey, setEditingKey] = useState<string | null>(null)
 
   const selectedField = useMemo(() => {
     if (!selectedFieldId) return null
@@ -91,13 +147,30 @@ export function LeadSidePanel({
     if (!lead) return ""
     const parts: string[] = [lead.email]
     if (lead.phone) parts.push(lead.phone)
-    if (lead.business_unit_name) parts.push(lead.business_unit_name)
     return parts.join(" · ")
   }, [lead])
 
+  const ownersLocked = lead?.commissions_activated_at != null
+
+  const businessUnitOptions = useMemo(() => {
+    const active = businessUnits.filter((unit) => unit.status === "active")
+    const scoped =
+      scope === "bu"
+        ? active.filter((unit) => ownedBusinessUnitIds.includes(unit.id))
+        : active
+    if (
+      lead?.business_unit_id != null &&
+      !scoped.some((unit) => unit.id === lead.business_unit_id)
+    ) {
+      const current = businessUnits.find((unit) => unit.id === lead.business_unit_id)
+      if (current) return [...scoped, current]
+    }
+    return scoped
+  }, [businessUnits, lead?.business_unit_id, ownedBusinessUnitIds, scope])
+
   function applyCommissionDefaults(
     memberIdRaw: string,
-    type: "closer" | "setter" | "ambassador"
+    type: EditableAttributionType
   ) {
     const memberId = Number(memberIdRaw)
     if (!Number.isFinite(memberId)) {
@@ -116,11 +189,63 @@ export function LeadSidePanel({
     setCommissionFixedInput(defaults.fixed == null ? "" : String(defaults.fixed))
   }
 
-  async function onAssign(value: string) {
-    if (!lead) return
-    await updateAssignment.mutateAsync({
+  function startEditAttribution(item: {
+    member_id: number
+    attribution_type: string
+    commission_rate: number | null
+    commission_fixed: number | null
+  }) {
+    if (!isEditableAttributionType(item.attribution_type)) return
+    setEditingKey(attributionKey(item.member_id, item.attribution_type))
+    setAttributionEditorOpen(false)
+    setAttributionMemberId(String(item.member_id))
+    setAttributionType(item.attribution_type)
+    setCommissionRateInput(
+      item.commission_rate == null ? "" : String(item.commission_rate)
+    )
+    setCommissionFixedInput(
+      item.commission_fixed == null ? "" : String(item.commission_fixed)
+    )
+  }
+
+  function resetAttributionForm() {
+    setEditingKey(null)
+    setAttributionMemberId("")
+    setAttributionType("closer")
+    setCommissionRateInput("")
+    setCommissionFixedInput("")
+    setAttributionEditorOpen(false)
+  }
+
+  function parseCommissionInputs(): {
+    commissionRate: number | null
+    commissionFixed: number | null
+  } {
+    const rateRaw = commissionRateInput.trim()
+    const fixedRaw = commissionFixedInput.trim()
+    const parsedRate = rateRaw ? Number(rateRaw) : null
+    const parsedFixed = fixedRaw ? Number(fixedRaw) : null
+    return {
+      commissionRate:
+        parsedRate !== null && Number.isFinite(parsedRate) ? parsedRate : null,
+      commissionFixed:
+        parsedFixed !== null && Number.isFinite(parsedFixed) ? parsedFixed : null,
+    }
+  }
+
+  async function onAssignOwner(value: string) {
+    if (!lead || ownersLocked) return
+    await assignOwner.mutateAsync({
       leadId: lead.id,
-      assignedSalesId: value === "none" ? null : Number(value),
+      ownerId: value === "none" ? null : Number(value),
+    })
+  }
+
+  async function onAssignBusinessUnit(value: string) {
+    if (!lead || ownersLocked) return
+    await assignBusinessUnit.mutateAsync({
+      leadId: lead.id,
+      businessUnitId: value === "none" ? null : Number(value),
     })
   }
 
@@ -147,31 +272,125 @@ export function LeadSidePanel({
     setCustomFieldValue("")
   }
 
-  async function onAddAttribution() {
+  async function onSaveAttribution() {
     const memberId = Number(attributionMemberId)
     if (!Number.isFinite(memberId)) return
-    const rateRaw = commissionRateInput.trim()
-    const fixedRaw = commissionFixedInput.trim()
-    const parsedRate = rateRaw ? Number(rateRaw) : null
-    const parsedFixed = fixedRaw ? Number(fixedRaw) : null
-
-    await createAttribution.mutateAsync({
+    const { commissionRate, commissionFixed } = parseCommissionInputs()
+    const attribution = {
       memberId,
       attributionType,
-      commissionRate:
-        parsedRate !== null && Number.isFinite(parsedRate) ? parsedRate : null,
-      commissionFixed:
-        parsedFixed !== null && Number.isFinite(parsedFixed) ? parsedFixed : null,
-    })
+      commissionRate,
+      commissionFixed,
+    }
 
-    setAttributionMemberId("")
-    setAttributionType("closer")
-    setCommissionRateInput("")
-    setCommissionFixedInput("")
-    setAttributionEditorOpen(false)
+    if (editingKey) {
+      const [prevMemberRaw, prevTypeRaw] = editingKey.split(":")
+      const previousMemberId = Number(prevMemberRaw)
+      if (!Number.isFinite(previousMemberId) || !isEditableAttributionType(prevTypeRaw)) {
+        return
+      }
+      await updateAttribution.mutateAsync({
+        previousMemberId,
+        previousAttributionType: prevTypeRaw,
+        attribution,
+      })
+    } else {
+      await createAttribution.mutateAsync(attribution)
+    }
+    resetAttributionForm()
+  }
+
+  async function onRemoveAttribution(
+    memberId: number,
+    attributionTypeValue: EditableAttributionType
+  ) {
+    await deleteAttribution.mutateAsync({
+      memberId,
+      attributionType: attributionTypeValue,
+    })
+    if (editingKey === attributionKey(memberId, attributionTypeValue)) {
+      resetAttributionForm()
+    }
   }
 
   const attributionsLocked = lead?.commissions_activated_at != null
+  const canEditAttributions = !attributionsLocked && canManageAttributions
+  const attributionBusy =
+    createAttribution.isPending ||
+    updateAttribution.isPending ||
+    deleteAttribution.isPending
+
+  const attributionForm = (
+    <div className="space-y-2">
+      <SearchSelect
+        value={attributionMemberId}
+        onValueChange={(value) => {
+          setAttributionMemberId(value)
+          applyCommissionDefaults(value, attributionType)
+        }}
+        placeholder="Select member"
+        searchPlaceholder="Search member…"
+        emptyText="No member found."
+        options={attributionMembers.map((member) => ({
+          value: String(member.memberId),
+          label: member.fullName ?? `Member #${member.memberId}`,
+        }))}
+      />
+      <Select
+        value={attributionType}
+        onValueChange={(value) => {
+          if (isEditableAttributionType(value)) {
+            setAttributionType(value)
+            applyCommissionDefaults(attributionMemberId, value)
+          }
+        }}
+      >
+        <SelectTrigger className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="closer">Closer</SelectItem>
+          <SelectItem value="setter">Setter</SelectItem>
+          <SelectItem value="ambassador">Ambassador</SelectItem>
+        </SelectContent>
+      </Select>
+      <div className="grid grid-cols-2 gap-2">
+        <Input
+          value={commissionRateInput}
+          onChange={(event) => setCommissionRateInput(event.target.value)}
+          placeholder="Rate (%)"
+        />
+        <Input
+          value={commissionFixedInput}
+          onChange={(event) => setCommissionFixedInput(event.target.value)}
+          placeholder="Fixed"
+        />
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Prefills from member default for this role.
+      </p>
+      <div className="flex justify-end gap-2">
+        {editingKey ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={resetAttributionForm}
+            disabled={attributionBusy}
+          >
+            Cancel
+          </Button>
+        ) : null}
+        <Button
+          size="sm"
+          onClick={() => void onSaveAttribution()}
+          disabled={!attributionMemberId || attributionBusy}
+        >
+          {editingKey ? "Save changes" : "Save"}
+        </Button>
+      </div>
+    </div>
+  )
 
   return (
     <>
@@ -188,214 +407,53 @@ export function LeadSidePanel({
               </div>
             ) : (
               <>
-                {/* Contact header — pr reserves space for Sheet close (absolute top-right) */}
-                <div className="space-y-2 border-b border-border pb-4 pr-10">
-                  <h3 className="text-lg font-semibold leading-tight text-foreground">
-                    {lead.full_name}
-                  </h3>
-                  {lead.is_duplicate ? (
-                    <span className="inline-flex rounded-md border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
-                      Already known
-                    </span>
-                  ) : null}
-                  <p className="text-sm text-muted-foreground">{contactMeta}</p>
-                </div>
-
-                {/* Pipeline */}
-                <section className="space-y-3">
-                  <SectionLabel>Pipeline</SectionLabel>
-                  <div className="space-y-3 rounded-lg border border-border bg-muted/50 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="text-sm text-muted-foreground">Status</span>
-                        <LeadStatusBadge status={lead.status} />
-                      </div>
-                      {canUpdateLeadStatus ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setStatusDialogOpen(true)}
-                        >
-                          Update
-                        </Button>
+                <div className="space-y-3 border-b border-border pb-4 pr-10">
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-semibold leading-tight text-foreground">
+                      {lead.full_name}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">{contactMeta}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                      {lead.is_duplicate ? (
+                        <span className="inline-flex rounded-md border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
+                          Already known
+                        </span>
                       ) : null}
-                    </div>
-                    {canAssignSales ? (
-                      <div className="space-y-1.5">
-                        <span className="text-sm text-muted-foreground">Assigned sales</span>
-                        <SearchSelect
-                          value={lead.assigned_sales_id ? String(lead.assigned_sales_id) : "none"}
-                          onValueChange={onAssign}
-                          disabled={updateAssignment.isPending}
-                          placeholder="Assign sales"
-                          searchPlaceholder="Search sales…"
-                          emptyText="No sales member found."
-                          noneOption={{ value: "none", label: "Unassigned" }}
-                          options={salesMembers.map((member) => ({
-                            value: String(member.memberId),
-                            label: member.fullName ?? `Member #${member.memberId}`,
-                          }))}
-                        />
-                      </div>
+                    <LeadStatusBadge status={lead.status} catalog={leadStatuses} />
+                    {canUpdateLeadStatus ? (
+                      <Button size="sm" onClick={() => setStatusDialogOpen(true)}>
+                        Update status
+                      </Button>
                     ) : null}
                   </div>
-                </section>
+                </div>
 
-                {/* Team & pay — team mode only */}
-                {orgMode.showAcquisitionRoles ? (
-                  <section className="space-y-3">
-                    <div className="space-y-0.5">
-                      <SectionLabel>Team & pay</SectionLabel>
-                      <p className="text-xs text-muted-foreground">
-                        Who is credited on this lead
-                      </p>
-                    </div>
-                    <div className="space-y-3 rounded-lg border border-border bg-muted/50 p-3">
-                      {lead.attributions && lead.attributions.length > 0 ? (
-                        <ul className="space-y-2">
-                          {lead.attributions.map((item, idx) => (
-                            <li
-                              key={`${item.member_id}-${idx}`}
-                              className="flex items-center gap-2 text-sm"
-                            >
-                              <AttributionTypeBadge type={item.attribution_type} />
-                              <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-                                {item.member_name ?? `Member #${item.member_id}`}
-                              </span>
-                              <span className="shrink-0 text-xs text-muted-foreground">
-                                {item.commission_rate != null
-                                  ? `${item.commission_rate}%`
-                                  : item.commission_fixed != null
-                                    ? String(item.commission_fixed)
-                                    : "—"}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">No attributions yet.</p>
-                      )}
-
-                      {!attributionsLocked && canManageAttributions ? (
-                        <Collapsible
-                          open={attributionEditorOpen}
-                          onOpenChange={setAttributionEditorOpen}
-                        >
-                          <CollapsibleTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="w-full justify-between"
-                            >
-                              <span>Add attribution</span>
-                              <ChevronDown
-                                className={`h-4 w-4 transition-transform ${
-                                  attributionEditorOpen ? "rotate-180" : ""
-                                }`}
-                              />
-                            </Button>
-                          </CollapsibleTrigger>
-                          <CollapsibleContent className="mt-2 space-y-2 border-t border-border pt-3">
-                            <SearchSelect
-                              value={attributionMemberId}
-                              onValueChange={(value) => {
-                                setAttributionMemberId(value)
-                                applyCommissionDefaults(value, attributionType)
-                              }}
-                              placeholder="Select member"
-                              searchPlaceholder="Search member…"
-                              emptyText="No member found."
-                              options={attributionMembers.map((member) => ({
-                                value: String(member.memberId),
-                                label: member.fullName ?? `Member #${member.memberId}`,
-                              }))}
-                            />
-                            <Select
-                              value={attributionType}
-                              onValueChange={(value) => {
-                                if (
-                                  value === "closer" ||
-                                  value === "setter" ||
-                                  value === "ambassador"
-                                ) {
-                                  setAttributionType(value)
-                                  applyCommissionDefaults(attributionMemberId, value)
-                                }
-                              }}
-                            >
-                              <SelectTrigger className="w-full">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="closer">Closer</SelectItem>
-                                <SelectItem value="setter">Setter</SelectItem>
-                                <SelectItem value="ambassador">Ambassador</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <div className="grid grid-cols-2 gap-2">
-                              <Input
-                                value={commissionRateInput}
-                                onChange={(event) => setCommissionRateInput(event.target.value)}
-                                placeholder="Rate (%)"
-                              />
-                              <Input
-                                value={commissionFixedInput}
-                                onChange={(event) => setCommissionFixedInput(event.target.value)}
-                                placeholder="Fixed"
-                              />
-                            </div>
-                            <p className="text-[11px] text-muted-foreground">
-                              Prefills from member default for this role.
-                            </p>
-                            <div className="flex justify-end">
-                              <Button
-                                size="sm"
-                                onClick={onAddAttribution}
-                                disabled={!attributionMemberId || createAttribution.isPending}
-                              >
-                                Save
-                              </Button>
-                            </div>
-                          </CollapsibleContent>
-                        </Collapsible>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">
-                          Attributions locked (commissions active).
-                        </p>
-                      )}
-
-                      <div className="border-t border-border pt-3">
-                        <LeadCommissionsPanel
-                          lead={lead}
-                          organizationId={organizationId ?? lead.organization_id}
-                          activatedByMemberId={changedByMemberId}
-                          embedded
-                        />
-                      </div>
-                    </div>
-                  </section>
-                ) : null}
-
-                {/* Details */}
                 <section className="space-y-3">
-                  <SectionLabel>Details</SectionLabel>
-                  <div className="space-y-2">
+                  <SectionLabel>Answers</SectionLabel>
+                  <div className="space-y-3 rounded-lg border border-border bg-muted/50 p-3">
+                    {lead.form_title ? (
+                      <p className="text-xs text-muted-foreground">
+                        Form:{" "}
+                        <span className="font-medium text-foreground">{lead.form_title}</span>
+                      </p>
+                    ) : null}
                     {lead.crm_fields_all && Object.keys(lead.crm_fields_all).length > 0 ? (
-                      <ul className="divide-y divide-border rounded-lg border border-border bg-muted/50">
+                      <dl className="space-y-2">
                         {Object.entries(lead.crm_fields_all).map(([key, item]) => (
-                          <li
+                          <div
                             key={key}
-                            className="flex items-baseline justify-between gap-3 px-3 py-2 text-sm"
+                            className="flex items-baseline justify-between gap-3 text-sm"
                           >
-                            <span className="text-muted-foreground">{item.label}</span>
-                            <span className="text-right font-medium text-foreground">
-                              {item.value}
-                            </span>
-                          </li>
+                            <dt className="text-muted-foreground">{item.label}</dt>
+                            <dd className="text-right font-medium text-foreground">
+                              {item.value || "—"}
+                            </dd>
+                          </div>
                         ))}
-                      </ul>
+                      </dl>
                     ) : (
-                      <p className="text-xs text-muted-foreground">No custom fields.</p>
+                      <p className="text-xs text-muted-foreground">No answers yet.</p>
                     )}
                     <Collapsible
                       open={customFieldEditorOpen}
@@ -410,7 +468,7 @@ export function LeadSidePanel({
                           {customFieldEditorOpen ? "Cancel" : "+ Add field"}
                         </Button>
                       </CollapsibleTrigger>
-                      <CollapsibleContent className="mt-2 space-y-2 rounded-lg border border-border p-3">
+                      <CollapsibleContent className="mt-2 space-y-2 border-t border-border pt-3">
                         <Select value={selectedFieldId} onValueChange={setSelectedFieldId}>
                           <SelectTrigger className="w-full">
                             <SelectValue placeholder="Select field" />
@@ -425,7 +483,10 @@ export function LeadSidePanel({
                         </Select>
                         {selectedField?.field_type === "select" &&
                         Array.isArray(selectedField.options) ? (
-                          <Select value={customFieldValue} onValueChange={setCustomFieldValue}>
+                          <Select
+                            value={customFieldValue}
+                            onValueChange={setCustomFieldValue}
+                          >
                             <SelectTrigger className="w-full">
                               <SelectValue placeholder="Select value" />
                             </SelectTrigger>
@@ -462,10 +523,197 @@ export function LeadSidePanel({
                   </div>
                 </section>
 
-                {/* Activity */}
+                {showOwnersSection ? (
+                  <section className="space-y-3">
+                    <SectionLabel>Owners</SectionLabel>
+                    <div className="space-y-3 rounded-lg border border-border bg-muted/50 p-3">
+                      {canEditBusinessUnit ? (
+                        <div className="space-y-1.5">
+                          <p className="text-xs font-medium text-foreground">Business unit</p>
+                          <SearchSelect
+                            value={
+                              lead.business_unit_id != null
+                                ? String(lead.business_unit_id)
+                                : "none"
+                            }
+                            onValueChange={onAssignBusinessUnit}
+                            disabled={ownersLocked || assignBusinessUnit.isPending}
+                            placeholder="Assign business unit"
+                            searchPlaceholder="Search business units…"
+                            emptyText="No business unit found."
+                            noneOption={{ value: "none", label: "Unassigned" }}
+                            options={businessUnitOptions.map((unit) => ({
+                              value: String(unit.id),
+                              label: unit.name,
+                            }))}
+                          />
+                        </div>
+                      ) : null}
+                      {canAssignOwner ? (
+                        <div className="space-y-1.5">
+                          <p className="text-xs font-medium text-foreground">Owner</p>
+                          <SearchSelect
+                            value={lead.owner_id ? String(lead.owner_id) : "none"}
+                            onValueChange={onAssignOwner}
+                            disabled={ownersLocked || assignOwner.isPending}
+                            placeholder="Assign owner"
+                            searchPlaceholder="Search team…"
+                            emptyText="No team member found."
+                            noneOption={{ value: "none", label: "Unassigned" }}
+                            options={salesMembers.map((member) => ({
+                              value: String(member.memberId),
+                              label: member.fullName ?? `Member #${member.memberId}`,
+                            }))}
+                          />
+                          <p className="text-[11px] text-muted-foreground">
+                            Assigning an owner emails them the lead details.
+                          </p>
+                        </div>
+                      ) : null}
+                      {ownersLocked ? (
+                        <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                          <CircleAlert className="h-3.5 w-3.5 shrink-0 text-destructive" />
+                          Locked after commissions are activated.
+                        </p>
+                      ) : null}
+                    </div>
+                  </section>
+                ) : null}
+
+                {canViewLeadCommissions ? (
+                  <section className="space-y-3">
+                    <div className="space-y-0.5">
+                      <SectionLabel>Commissions</SectionLabel>
+                      <p className="text-xs text-muted-foreground">
+                        Who is paid on this lead, then link the sale and activate.
+                      </p>
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border border-border bg-muted/50 p-3">
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-foreground">Roles</p>
+                        {lead.attributions && lead.attributions.length > 0 ? (
+                          <ul className="space-y-2">
+                            {lead.attributions.map((item, idx) => {
+                              const key = attributionKey(
+                                item.member_id,
+                                item.attribution_type
+                              )
+                              const editable =
+                                canEditAttributions &&
+                                isEditableAttributionType(item.attribution_type)
+                              const isEditing = editingKey === key
+
+                              return (
+                                <li key={`${key}-${idx}`} className="space-y-2">
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <AttributionTypeBadge type={item.attribution_type} />
+                                    <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                                      {item.member_name ?? `Member #${item.member_id}`}
+                                    </span>
+                                    <span className="shrink-0 text-xs text-muted-foreground">
+                                      {formatAttributionPay(
+                                        item.commission_rate,
+                                        item.commission_fixed
+                                      )}
+                                    </span>
+                                    {editable ? (
+                                      <div className="flex shrink-0 items-center gap-0.5">
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7 text-muted-foreground"
+                                          disabled={attributionBusy}
+                                          onClick={() => startEditAttribution(item)}
+                                          aria-label="Edit attribution"
+                                        >
+                                          <Pencil className="h-3.5 w-3.5" />
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                          disabled={attributionBusy}
+                                          onClick={() => {
+                                            if (
+                                              isEditableAttributionType(item.attribution_type)
+                                            ) {
+                                              void onRemoveAttribution(
+                                                item.member_id,
+                                                item.attribution_type
+                                              )
+                                            }
+                                          }}
+                                          aria-label="Remove attribution"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                  {isEditing ? (
+                                    <div className="rounded-md border border-border bg-background p-3">
+                                      {attributionForm}
+                                    </div>
+                                  ) : null}
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">No roles yet.</p>
+                        )}
+
+                        {canEditAttributions && !editingKey ? (
+                          <Collapsible
+                            open={attributionEditorOpen}
+                            onOpenChange={setAttributionEditorOpen}
+                          >
+                            <CollapsibleTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full justify-between"
+                              >
+                                <span>Add role</span>
+                                <ChevronDown
+                                  className={`h-4 w-4 transition-transform ${
+                                    attributionEditorOpen ? "rotate-180" : ""
+                                  }`}
+                                />
+                              </Button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="mt-2 space-y-2 border-t border-border pt-3">
+                              {attributionForm}
+                            </CollapsibleContent>
+                          </Collapsible>
+                        ) : null}
+
+                        {attributionsLocked ? (
+                          <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                            <CircleAlert className="h-3.5 w-3.5 shrink-0 text-destructive" />
+                            Locked after commissions are activated.
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <div className="border-t border-border pt-3">
+                        <LeadCommissionsPanel
+                          lead={lead}
+                          organizationId={organizationId ?? lead.organization_id}
+                          activatedByMemberId={changedByMemberId}
+                          embedded
+                        />
+                      </div>
+                    </div>
+                  </section>
+                ) : null}
+
                 <section className="space-y-3">
                   <SectionLabel>Activity</SectionLabel>
-                  <LeadTimeline rows={statusHistory} />
+                  <LeadTimeline rows={statusHistory} catalog={leadStatuses} />
                 </section>
               </>
             )}
@@ -477,6 +725,7 @@ export function LeadSidePanel({
           open={statusDialogOpen}
           onOpenChange={setStatusDialogOpen}
           currentStatus={lead.status}
+          statuses={leadStatuses}
           onSubmit={onStatusSubmit}
           isPending={updateStatus.isPending}
         />

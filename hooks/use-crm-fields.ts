@@ -65,6 +65,7 @@ export function useUpdateCrmField(organizationId: number | null) {
       options?: { value: string; label: string }[] | null
       isRequired?: boolean
       showInCrm?: boolean
+      filterable?: boolean
       position?: number
     }) => updateCrmField(supabase, input),
     onSuccess: async () => {

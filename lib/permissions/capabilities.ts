@@ -15,6 +15,7 @@ export const ORG_CAPABILITIES = [
   "crm.assign_sales",
   "crm.manage_attributions",
   "crm.activate_commissions",
+  "crm.view_lead_commissions",
   "forms.view",
   "forms.manage",
   "forms.links.view_own",

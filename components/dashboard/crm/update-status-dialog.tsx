@@ -1,56 +1,40 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import type { LeadStatus } from "@/schemas/crm.schema"
-
-const options: LeadStatus[] = [
-  "new",
-  "booked",
-  "deadline",
-  "converted",
-  "failed",
-  "contact_later",
-]
-
-const statusLabels: Record<LeadStatus, string> = {
-  new: "New",
-  booked: "Booked",
-  deadline: "Deadline",
-  converted: "Converted",
-  failed: "Failed",
-  contact_later: "Contact later",
-}
-
-function isLeadStatus(value: string): value is LeadStatus {
-  return (
-    value === "new" ||
-    value === "booked" ||
-    value === "deadline" ||
-    value === "converted" ||
-    value === "failed" ||
-    value === "contact_later"
-  )
-}
+import type { LeadStatus, OrganizationLeadStatus } from "@/schemas/crm.schema"
 
 export function UpdateStatusDialog({
   open,
   onOpenChange,
   currentStatus,
+  statuses,
   onSubmit,
   isPending,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   currentStatus: LeadStatus
+  statuses: OrganizationLeadStatus[]
   onSubmit: (input: { toStatus: LeadStatus; note: string }) => Promise<void>
   isPending?: boolean
 }) {
   const [toStatus, setToStatus] = useState<LeadStatus>(currentStatus)
   const [note, setNote] = useState("")
+
+  useEffect(() => {
+    if (open) setToStatus(currentStatus)
+  }, [open, currentStatus])
 
   async function handleSubmit() {
     await onSubmit({ toStatus, note })
@@ -67,27 +51,39 @@ export function UpdateStatusDialog({
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Status
+            </p>
             <Select
               value={toStatus}
               onValueChange={(value) => {
-                if (isLeadStatus(value)) setToStatus(value)
+                if (statuses.some((status) => status.key === value)) {
+                  setToStatus(value)
+                }
               }}
             >
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {options.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {statusLabels[option]}
+                {statuses.map((status) => (
+                  <SelectItem key={status.key} value={status.key}>
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: status.color }}
+                      />
+                      {status.label}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Note</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Note
+            </p>
             <Textarea
               value={note}
               onChange={(event) => setNote(event.target.value)}

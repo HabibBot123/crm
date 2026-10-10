@@ -12,6 +12,8 @@ import {
   ClipboardList,
   FormInput,
   Wallet,
+  Receipt,
+  BarChart3,
 } from "lucide-react"
 import type { OrgCapability } from "@/lib/permissions/capabilities"
 
@@ -55,6 +57,18 @@ export const DASHBOARD_NAV_GROUPS: DashboardNavGroup[] = [
         href: "/dashboard/clients",
         icon: Users,
         isVisible: (ctx) => gated(ctx, (can) => can("clients.view")),
+      },
+      {
+        label: "Sales",
+        href: "/dashboard/sales",
+        icon: Receipt,
+        isVisible: (ctx) => gated(ctx, (can) => can("sales.view")),
+      },
+      {
+        label: "Analytics",
+        href: "/dashboard/analytics",
+        icon: BarChart3,
+        isVisible: (ctx) => gated(ctx, (can) => can("sales.view")),
       },
       {
         label: "CRM",

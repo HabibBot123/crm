@@ -22,6 +22,7 @@ import { NavList } from "@/components/dashboard/nav-list"
 import type { NavListItem } from "@/components/dashboard/nav-list"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import { teamMemberRoleLabel } from "@/lib/permissions/roles"
 
 type Section = "profile" | "security" | "organizations"
 
@@ -179,9 +180,7 @@ export default function AccountPage() {
                 <ul className="space-y-1">
                   {organizations.map((org) => {
                     const isCurrent = org.id === currentOrganization?.id
-                    const role = org.member_role
-                      ? org.member_role.charAt(0).toUpperCase() + org.member_role.slice(1)
-                      : "Member"
+                    const role = teamMemberRoleLabel(org.member_role)
                     return (
                       <li
                         key={org.id}

@@ -10,7 +10,7 @@ import {
   removeFieldFromForm,
   updateForm,
 } from "@/lib/services/crm-forms"
-import type { CreateFormInput, CrmFormStatus } from "@/schemas/crm.schema"
+import type { CreateFormInput, CrmFormStatus, LeadStatus } from "@/schemas/crm.schema"
 
 export function useCrmForms(organizationId: number | null) {
   const { supabase } = useAuth()
@@ -77,6 +77,7 @@ export function useUpdateForm(organizationId: number | null) {
       title?: string
       description?: string | null
       status?: CrmFormStatus
+      initial_status?: LeadStatus
       redirect_url?: string | null
       success_message?: string | null
     }) => updateForm(supabase, input.formId, input),

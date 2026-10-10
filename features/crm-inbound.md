@@ -10,7 +10,7 @@ Module CRM orienté inbound pour les organisations CoachStack. Les coachs créen
 
 - **Lead** : prospect ayant soumis un formulaire ou ajouté manuellement
 - **Pipeline** : flux linéaire de qualification `new → booked → deadline → converted | failed | contact_later`
-- **Assigned sales** : membre responsable du lead (ownership unique, pas co-ownership)
+- **Owner** (`leads.owner_id`) : membre responsable du lead (ownership unique, pas co-ownership ; pas de commission)
 - **Attribution** : tous les contributeurs (setter, closer, ambassador) qui méritent une commission — concept séparé de l'ownership
 - **Form** : formulaire public brandé de l'org capturant les leads
 - **Ambassador link** : URL trackée générée par un ambassadeur pour un canal spécifique
@@ -35,7 +35,7 @@ leads:
   status              enum('new', 'booked', 'deadline', 'converted', 'failed', 'contact_later')
   status_at           timestamptz NOT NULL DEFAULT now()
   created_by_member_id uuid FK → organization_members (nullable — null si soumission publique automatique, sinon membre qui a ajouté le lead manuellement)
-  assigned_sales_id   uuid FK → organization_members (nullable)
+  owner_id            bigint FK → organization_members (nullable)
   ambassador_link_id  uuid FK → crm_ambassador_links (nullable)
   nylas_booking_id    text (nullable — ID du booking Nylas, phase 2)
   target_offer_id     uuid FK → offers (nullable)
@@ -90,7 +90,7 @@ UNIQUE (lead_id, field_def_id)
 
 ### `lead_attributions`
 
-Qui contribue à un lead et mérite une commission. Concept distinct de `assigned_sales_id` (ownership).
+Qui contribue à un lead et mérite une commission. Concept distinct de `owner_id` (ownership ops).
 
 ```sql
 lead_attributions:
@@ -267,7 +267,7 @@ Page publique brandée de capture de leads.
 - Tables : ajout `nylas_booking_id` sur `leads` (déjà prévu)
 - Connexion calendrier par membre (Nylas Grant OAuth)
 - Pool round-robin par organisation
-- Webhook Nylas → statut `booked` + `assigned_sales_id` auto
+- Webhook Nylas → statut `booked` + `owner_id` auto
 - Redirect post-form vers page booking Nylas
 - Email de rappel J-1 (natif Nylas)
 
@@ -294,6 +294,6 @@ Page publique brandée de capture de leads.
 
 ## Notes d'architecture
 
-- `assigned_sales_id` sur `leads` = ownership unique (qui porte le lead). Pas de table de relation. Reassignation possible à tout moment, tracée dans `lead_status` via note.
+- `owner_id` sur `leads` = ownership unique (qui porte le lead). Pas de commission. Reassignation possible à tout moment ; mail à l’assign.
 - `lead_attributions` = qui mérite une commission. Concept distinct. Un même membre peut être `setter` + `ambassador` → deux lignes.
 - `status_at` remplace toutes les colonnes temporelles spécifiques (`booked_at`, `deadline_at`, etc.) 

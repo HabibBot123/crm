@@ -27,7 +27,6 @@ const apiErrorSchema = z.object({ error: z.string().optional() })
 const REDIRECT_DELAY_MS = 3500
 
 function resolvePostSubmitRedirect(form: CrmForm): string | null {
-  if (form.form_type !== "default") return null
   const url = form.redirect_url?.trim()
   return url && url.length > 0 ? url : null
 }

@@ -11,39 +11,39 @@ export function AddLeadDialog({
   open,
   onOpenChange,
   salesMembers,
-  showSalesAssignment = true,
+  showOwnerAssignment = true,
   onSubmit,
   isPending,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   salesMembers: SalesMemberOption[]
-  showSalesAssignment?: boolean
+  showOwnerAssignment?: boolean
   onSubmit: (input: {
     fullName: string
     email: string
     phone: string
-    assignedSalesId: number | null
+    ownerId: number | null
   }) => Promise<void>
   isPending?: boolean
 }) {
   const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
-  const [assignedSales, setAssignedSales] = useState<string>("none")
+  const [owner, setOwner] = useState<string>("none")
 
   async function handleSubmit() {
     await onSubmit({
       fullName: fullName.trim(),
       email: email.trim(),
       phone: phone.trim(),
-      assignedSalesId:
-        showSalesAssignment && assignedSales !== "none" ? Number(assignedSales) : null,
+      ownerId:
+        showOwnerAssignment && owner !== "none" ? Number(owner) : null,
     })
     setFullName("")
     setEmail("")
     setPhone("")
-    setAssignedSales("none")
+    setOwner("none")
     onOpenChange(false)
   }
 
@@ -58,13 +58,13 @@ export function AddLeadDialog({
           <Input placeholder="Full name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
           <Input placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           <Input placeholder="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-          {showSalesAssignment ? (
+          {showOwnerAssignment ? (
             <SearchSelect
-              value={assignedSales}
-              onValueChange={setAssignedSales}
-              placeholder="Assign sales (optional)"
-              searchPlaceholder="Search sales…"
-              emptyText="No sales member found."
+              value={owner}
+              onValueChange={setOwner}
+              placeholder="Assign owner (optional)"
+              searchPlaceholder="Search team…"
+              emptyText="No team member found."
               noneOption={{ value: "none", label: "Unassigned" }}
               options={salesMembers.map((member) => ({
                 value: String(member.memberId),

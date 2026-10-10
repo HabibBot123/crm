@@ -141,4 +141,12 @@ When adding brand-driven UI, ensure:
 - controlled transparency (e.g. `${primaryColor}14`, `${primaryColor}1a`, etc.)
 
 ---
+
+## 10. Copy (UI text)
+
+- Never use the long dash `—` in UI strings (labels, buttons, toasts, empty states, dialog copy). Use `:`, `.`, or a short new sentence.
+- Keep copy minimal: short labels, one idea per line, no redundant helper paragraphs.
+- Prefer no subtitle/helper unless it prevents a real mistake.
+
+---
   

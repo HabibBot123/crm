@@ -16,7 +16,7 @@ import {
 } from "@/hooks/use-business-units"
 import { useTeamMembers } from "@/hooks/use-team"
 
-export function CrmBusinessUnitsPanel({ organizationId }: { organizationId: number }) {
+export function BusinessUnitsPanel({ organizationId }: { organizationId: number }) {
   const { units, isLoading } = useBusinessUnits(organizationId, { includeArchived: true })
   const createUnit = useCreateBusinessUnit(organizationId)
   const updateUnitStatus = useUpdateBusinessUnitStatus(organizationId)
@@ -34,32 +34,15 @@ export function CrmBusinessUnitsPanel({ organizationId }: { organizationId: numb
 
   return (
     <div className="space-y-4">
-      <SectionCard title="What are business units?">
-        <div className="space-y-2 text-sm text-muted-foreground">
-          <p>
-            Business units let you tag inbound leads by branch of your business — for example Market
-            Finance vs Corporate Finance — without asking the prospect on the form.
-          </p>
-          <p>
-            Attach a unit to a <span className="text-foreground">share link</span>; every lead from
-            that link inherits it. The BU owner receives the default commission % on activated deals.
-          </p>
-          <p>
-            If you only run one offer line, you can skip this and leave the list empty — nothing else
-            changes.
-          </p>
-        </div>
-      </SectionCard>
-
       <SectionCard
         title="Add business unit"
-        subtitle="Optional. Create one per branch you want to track on share links and leads."
+        subtitle="Branches of your org (e.g. Students vs Seniors). Use on share links and offers to scope leads, reporting, and commissions."
       >
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1.5">
             <Label>Name</Label>
             <Input
-              placeholder="Name (e.g. Market Finance)"
+              placeholder="e.g. Market Finance"
               value={unitName}
               onChange={(e) => setUnitName(e.target.value)}
             />
@@ -121,13 +104,11 @@ export function CrmBusinessUnitsPanel({ organizationId }: { organizationId: numb
         </div>
       </SectionCard>
 
-      <SectionCard title="Business units">
+      <SectionCard title="Your units">
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : units.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            None yet — optional until you need to separate offer lines on share links.
-          </p>
+          <p className="text-sm text-muted-foreground">No business units yet.</p>
         ) : (
           <ul className="space-y-2">
             {units.map((unit) => {

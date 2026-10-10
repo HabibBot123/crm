@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import {
   Search,
   Mail,
@@ -10,6 +11,7 @@ import {
   Calendar,
   Package,
   Plus,
+  X,
 } from "lucide-react"
 import { useCurrentOrganization } from "@/components/providers/organization-provider"
 import {
@@ -28,16 +30,24 @@ import { Input } from "@/components/ui/input"
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
 import { cn, formatAmountFromCents } from "@/lib/utils"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { SectionCard } from "@/components/dashboard/section-card"
+import { TableScroll } from "@/components/dashboard/table-scroll"
 import { LoadingRows } from "@/components/dashboard/loading-rows"
 import { EmptyState } from "@/components/dashboard/empty-state"
 import { AddManualEnrollmentDialog } from "@/components/dashboard/clients/add-manual-enrollment-dialog"
+import {
+  ClientsFiltersPopover,
+  clientsAmountToCents,
+  emptyClientsFilters,
+  statusFilterLabel,
+  type ClientStatusFilter,
+  type ClientsFilterValues,
+} from "@/components/dashboard/clients/clients-filters-popover"
 import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
 
 const statusConfig: Record<
@@ -94,26 +104,104 @@ function formatDate(dateStr: string): string {
 const perPage = 10
 
 export default function ClientsPage() {
+  const searchParams = useSearchParams()
   const { currentOrganization, isLoading: orgLoading } = useCurrentOrganization()
   const { can } = useOrgCapabilities()
   const canViewClients = can("clients.view")
   const canEnrollManual = can("clients.enroll_manual")
-  const [searchInput, setSearchInput] = useState("")
-  const [search, setSearch] = useState("")
+  const initialSearch = searchParams.get("search")?.trim() ?? ""
+  const [searchInput, setSearchInput] = useState(initialSearch)
+  const [search, setSearch] = useState(initialSearch)
+  const [filters, setFilters] = useState<ClientsFilterValues>(emptyClientsFilters)
   const [selectedClientKey, setSelectedClientKey] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [addOpen, setAddOpen] = useState(false)
+
+  useEffect(() => {
+    const fromUrl = searchParams.get("search")?.trim() ?? ""
+    setSearchInput(fromUrl)
+    setSearch(fromUrl)
+    setPage(1)
+  }, [searchParams])
 
   const applySearch = () => {
     setSearch(searchInput.trim())
     setPage(1)
   }
 
+  function applyFilters(next: ClientsFilterValues) {
+    setFilters(next)
+    setPage(1)
+  }
+
+  function removeStatus(status: ClientStatusFilter) {
+    applyFilters({
+      ...filters,
+      statuses: filters.statuses.filter((item) => item !== status),
+    })
+  }
+
+  function clearTotalSpentFilter() {
+    applyFilters({
+      ...filters,
+      totalSpentMin: null,
+      totalSpentMax: null,
+    })
+  }
+
+  function clearFirstJoinedFilter() {
+    applyFilters({
+      ...filters,
+      firstJoinedFrom: null,
+      firstJoinedTo: null,
+    })
+  }
+
+  function formatJoinedChip(value: string): string {
+    return new Date(`${value}T12:00:00`).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })
+  }
+
+  function totalSpentChipLabel(): string {
+    const min = filters.totalSpentMin
+    const max = filters.totalSpentMax
+    if (min != null && max != null) return `${min}–${max}€`
+    if (min != null) return `≥ ${min}€`
+    if (max != null) return `≤ ${max}€`
+    return "Total spent"
+  }
+
+  function firstJoinedChipLabel(): string {
+    const from = filters.firstJoinedFrom
+    const to = filters.firstJoinedTo
+    if (from != null && to != null) {
+      return `${formatJoinedChip(from)} – ${formatJoinedChip(to)}`
+    }
+    if (from != null) return `From ${formatJoinedChip(from)}`
+    if (to != null) return `Until ${formatJoinedChip(to)}`
+    return "First joined"
+  }
+
+  const hasTotalSpentFilter =
+    filters.totalSpentMin != null || filters.totalSpentMax != null
+  const hasFirstJoinedFilter =
+    filters.firstJoinedFrom != null || filters.firstJoinedTo != null
+  const hasActiveFilters =
+    filters.statuses.length > 0 || hasTotalSpentFilter || hasFirstJoinedFilter
+
   const { data, isLoading: dataLoading, error } = useClients({
     organizationId: currentOrganization?.id ?? null,
     page,
     pageSize: perPage,
     search,
+    statuses: filters.statuses.length > 0 ? filters.statuses : undefined,
+    totalSpentMinCents: clientsAmountToCents(filters.totalSpentMin),
+    totalSpentMaxCents: clientsAmountToCents(filters.totalSpentMax),
+    firstJoinedFrom: filters.firstJoinedFrom ?? undefined,
+    firstJoinedTo: filters.firstJoinedTo ?? undefined,
   })
 
   const { data: clientDetail, isLoading: detailLoading } = useClientDetail({
@@ -134,7 +222,7 @@ export default function ClientsPage() {
 
   if (!currentOrganization && !orgLoading) {
     return (
-      <div className="space-y-4 p-6 lg:p-8">
+      <div className="min-w-0 space-y-4 p-6 lg:p-8">
         <p className="text-sm text-muted-foreground">
           Select an organization to view clients.
         </p>
@@ -144,7 +232,7 @@ export default function ClientsPage() {
 
   if (!orgLoading && !canViewClients) {
     return (
-      <div className="space-y-4 p-6 lg:p-8">
+      <div className="min-w-0 space-y-4 p-6 lg:p-8">
         <PageHeader title="Clients" subtitle="Clients and enrollments linked to your offers" />
         <EmptyState
           icon={Users}
@@ -156,7 +244,7 @@ export default function ClientsPage() {
   }
 
   return (
-    <div className="space-y-4 p-6 lg:p-8">
+    <div className="min-w-0 space-y-4 p-6 lg:p-8">
       <PageHeader
         title="Clients"
         subtitle="Clients and enrollments linked to your offers"
@@ -176,6 +264,7 @@ export default function ClientsPage() {
       <AddManualEnrollmentDialog
         open={addOpen}
         onOpenChange={setAddOpen}
+        organizationId={currentOrganization?.id ?? null}
         offers={offers}
         offersLoading={offersLoading}
         isPending={createManual.isPending}
@@ -188,24 +277,66 @@ export default function ClientsPage() {
             buyerName: input.buyerName,
             priceCents: input.priceCents,
             accessDurationMonths: input.accessDurationMonths,
+            soldAt: input.soldAt,
           })
         }}
       />
 
-      <div className="flex items-center gap-2">
-        <div className="relative min-w-[200px] max-w-sm flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="space-y-2">
+        <div className="relative min-w-[220px] flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search clients..."
+            className="w-full pl-9 pr-11"
+            placeholder="Search by name or email"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && applySearch()}
-            className="pl-9"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") applySearch()
+            }}
           />
+          <ClientsFiltersPopover values={filters} onApply={applyFilters} />
         </div>
-        <Button type="button" variant="secondary" onClick={applySearch}>
-          Search
-        </Button>
+        {hasActiveFilters ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {filters.statuses.map((value) => (
+              <Button
+                key={`status-${value}`}
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs"
+                onClick={() => removeStatus(value)}
+              >
+                {statusFilterLabel(value)}
+                <X className="h-3 w-3" />
+              </Button>
+            ))}
+            {hasTotalSpentFilter ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs"
+                onClick={clearTotalSpentFilter}
+              >
+                {totalSpentChipLabel()}
+                <X className="h-3 w-3" />
+              </Button>
+            ) : null}
+            {hasFirstJoinedFilter ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs"
+                onClick={clearFirstJoinedFilter}
+              >
+                {firstJoinedChipLabel()}
+                <X className="h-3 w-3" />
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {isLoading ? (
@@ -217,11 +348,15 @@ export default function ClientsPage() {
       ) : items.length === 0 ? (
         <EmptyState
           icon={Users}
-          title={total === 0 && !search.trim() ? "No clients yet" : "No clients match your search"}
+          title={
+            total === 0 && !search.trim() && !hasActiveFilters
+              ? "No clients yet"
+              : "No clients match your search"
+          }
           description={
-            total === 0 && !search.trim()
+            total === 0 && !search.trim() && !hasActiveFilters
               ? "Enrollments appear after purchases, or add one manually."
-              : undefined
+              : "Try another search or clear the filters."
           }
         />
       ) : (
@@ -274,7 +409,7 @@ export default function ClientsPage() {
               </div>
             }
           >
-            <div className="hidden overflow-x-auto lg:block">
+            <TableScroll className="hidden lg:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/60">
@@ -283,7 +418,6 @@ export default function ClientsPage() {
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total spent</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Enrollments</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">First joined</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Last expires</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -324,15 +458,12 @@ export default function ClientsPage() {
                         <td className="px-4 py-3 text-muted-foreground">
                           {client.first_enrollment_started_at ? formatDate(client.first_enrollment_started_at) : "—"}
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">
-                          {client.last_enrollment_expires_at ? formatDate(client.last_enrollment_expires_at) : "—"}
-                        </td>
                       </tr>
                     )
                   })}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           </SectionCard>
         </>
       )}
@@ -342,103 +473,95 @@ export default function ClientsPage() {
         open={!!selectedClientKey}
         onOpenChange={(open) => !open && setSelectedClientKey(null)}
       >
-        <SheetContent className="overflow-y-auto p-6 sm:max-w-md">
-          <SheetHeader className="pb-1">
-            <SheetTitle className="font-display">Client profile</SheetTitle>
+        <SheetContent className="overflow-y-auto p-0 sm:max-w-lg">
+          <SheetHeader className="sr-only">
+            <SheetTitle>Client</SheetTitle>
           </SheetHeader>
-          {detailLoading ? (
-            <div className="space-y-4 pt-4">
-              <div className="h-14 animate-pulse rounded-lg bg-muted" />
-              <div className="h-20 animate-pulse rounded-lg bg-muted" />
-              <div className="h-32 animate-pulse rounded-lg bg-muted" />
-            </div>
-          ) : clientDetail ? (
-            <div className="space-y-8">
-              <div className="flex items-center gap-4">
-                <Avatar className="h-14 w-14">
-                  <AvatarFallback className="bg-primary/10 text-lg font-bold text-primary">
-                    {getInitials(clientDetail.client_display)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0">
-                  <p className="font-bold text-foreground">
-                    {clientDetail.client_display}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {clientDetail.email_display}
-                  </p>
-                  {!clientDetail.has_account && (
-                    <Badge variant="secondary" className="mt-1 text-xs">
-                      No account yet
-                    </Badge>
-                  )}
+          <div className="space-y-5 p-4">
+            {detailLoading ? (
+              <div className="space-y-2">
+                <div className="h-10 animate-pulse rounded-md bg-muted" />
+                <div className="h-24 animate-pulse rounded-md bg-muted" />
+              </div>
+            ) : clientDetail ? (
+              <>
+                <div className="space-y-3 border-b border-border pb-4 pr-10">
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-semibold leading-tight text-foreground">
+                      {clientDetail.client_display}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      {clientDetail.email_display}
+                    </p>
+                  </div>
+                  {!clientDetail.has_account ? (
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="text-xs">
+                        No account yet
+                      </Badge>
+                    </div>
+                  ) : null}
                 </div>
-              </div>
 
-              <div>
-                <p className="mb-3 text-sm font-medium text-foreground">
-                  Enrollments ({clientDetail.enrollments.length})
-                </p>
-                <ul className="space-y-3">
-                  {clientDetail.enrollments.map((en) => (
-                    <li
-                      key={en.enrollment_id}
-                      className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-4 text-sm"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-foreground">
-                          {en.offer_title}
-                        </span>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "text-xs capitalize",
-                            getStatusConfig(en.enrollment_status).color
+                <section className="space-y-3">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Enrollments ({clientDetail.enrollments.length})
+                  </h4>
+                  <ul className="space-y-2">
+                    {clientDetail.enrollments.map((en) => (
+                      <li
+                        key={en.enrollment_id}
+                        className="flex flex-col gap-2 rounded-lg border border-border bg-muted/50 p-3 text-sm"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-foreground">
+                            {en.offer_title}
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "shrink-0 text-xs capitalize",
+                              getStatusConfig(en.enrollment_status).color
+                            )}
+                          >
+                            {en.enrollment_status}
+                          </Badge>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            Started: {formatDate(en.enrollment_started_at)}
+                          </span>
+                          {en.enrollment_expires_at ? (
+                            <span className="flex items-center gap-1">
+                              <Package className="h-3 w-3" />
+                              Expires: {formatDate(en.enrollment_expires_at)}
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1">
+                              <Package className="h-3 w-3" />
+                              No expiry
+                            </span>
                           )}
-                        >
-                          {en.enrollment_status}
-                        </Badge>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          Started: {formatDate(en.enrollment_started_at)}
-                        </span>
-                        {en.enrollment_expires_at ? (
-                          <span className="flex items-center gap-1">
-                            <Package className="h-3 w-3" />
-                            Expires: {formatDate(en.enrollment_expires_at)}
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1">
-                            <Package className="h-3 w-3" />
-                            No expiry
-                          </span>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
 
-              {clientDetail.email_for_mailto && (
-                <Button
-                  size="sm"
-                  className="mt-2 w-full gap-2"
-                  asChild
-                >
-                  <a href={`mailto:${clientDetail.email_for_mailto}`}>
-                    <Mail className="h-4 w-4" />
-                    Send email
-                  </a>
-                </Button>
-              )}
-            </div>
-          ) : selectedClientKey ? (
-            <p className="pt-4 text-sm text-muted-foreground">
-              Client not found.
-            </p>
-          ) : null}
+                {clientDetail.email_for_mailto ? (
+                  <Button size="sm" className="w-full gap-2" asChild>
+                    <a href={`mailto:${clientDetail.email_for_mailto}`}>
+                      <Mail className="h-4 w-4" />
+                      Send email
+                    </a>
+                  </Button>
+                ) : null}
+              </>
+            ) : selectedClientKey ? (
+              <p className="text-sm text-muted-foreground">Client not found.</p>
+            ) : null}
+          </div>
         </SheetContent>
       </Sheet>
     </div>

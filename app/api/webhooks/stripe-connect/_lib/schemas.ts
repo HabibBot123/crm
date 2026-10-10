@@ -4,6 +4,8 @@ const metadataSchema = z.record(z.string()).optional()
 
 export const checkoutSessionCompletedSchema = z.object({
   id: z.string(),
+  mode: z.enum(["payment", "subscription", "setup"]).optional(),
+  payment_status: z.string().nullable().optional(),
   amount_total: z.number().nullable().optional(),
   currency: z.string().nullable().optional(),
   metadata: metadataSchema,
@@ -44,14 +46,17 @@ export const invoicePaidSchema = z.object({
   id: z.string(),
   customer: z.string().nullable().optional(),
   subscription: z.string().nullable().optional(),
+  metadata: metadataSchema,
   parent: z
     .object({
       subscription_details: z
         .object({
           subscription: z.string().optional(),
+          metadata: metadataSchema,
         })
         .nullable()
         .optional(),
+      type: z.string().optional(),
     })
     .nullable()
     .optional(),

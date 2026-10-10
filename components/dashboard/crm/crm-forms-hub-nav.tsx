@@ -2,18 +2,13 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Building2, FileText, Link2, ListFilter } from "lucide-react"
+import { CircleDot, FileText, Link2, ListFilter } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const hubItems = [
   { href: "/dashboard/crm/forms", label: "Forms", icon: FileText, exact: true },
   { href: "/dashboard/crm/forms/fields", label: "Fields", icon: ListFilter, exact: false },
-  {
-    href: "/dashboard/crm/forms/business-units",
-    label: "Business units",
-    icon: Building2,
-    exact: false,
-  },
+  { href: "/dashboard/crm/forms/statuses", label: "Statuses", icon: CircleDot, exact: false },
   { href: "/dashboard/crm/forms/links", label: "Share links", icon: Link2, exact: false },
 ]
 

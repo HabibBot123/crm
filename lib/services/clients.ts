@@ -1,18 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
+import {
+  clientSummarySchema,
+  type ClientSummary,
+} from "@/schemas/clients.schema"
 
-/** One row from v_organization_clients (list endpoint). */
-export type ClientSummary = {
-  organization_id: number
-  client_key: string
-  user_id: string | null
-  client_display: string
-  client_email: string | null
-  total_spent: number
-  enrollment_count: number
-  first_enrollment_started_at: string | null
-  last_enrollment_expires_at: string | null
-  status: "active" | "expired" | "cancelled" | "paused"
-}
+export type { ClientSummary }
 
 export type ClientsPage = {
   items: ClientSummary[]
@@ -25,6 +17,15 @@ export type FetchClientsPageParams = {
   page: number
   pageSize: number
   search?: string
+  statuses?: Array<"active" | "expired">
+  /** Total spent in cents. */
+  totalSpentMinCents?: number
+  /** Total spent in cents. */
+  totalSpentMaxCents?: number
+  /** YYYY-MM-DD */
+  firstJoinedFrom?: string
+  /** YYYY-MM-DD */
+  firstJoinedTo?: string
 }
 
 export type FetchClientDetailParams = {
@@ -121,10 +122,43 @@ export function groupClientEnrollmentRows(
   )
 }
 
+/** Exact email match on the clients list view (for sheet deep-links). */
+export async function findClientByEmail(
+  supabase: SupabaseClient,
+  organizationId: number,
+  email: string
+): Promise<ClientSummary | null> {
+  const normalized = email.trim().toLowerCase()
+  if (!normalized) return null
+
+  const { data, error } = await supabase
+    .from("v_organization_clients")
+    .select("*")
+    .eq("organization_id", organizationId)
+    .ilike("client_email", normalized)
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data) return null
+  return clientSummarySchema.parse(data)
+}
+
 export async function fetchClientsPage(
   params: FetchClientsPageParams
 ): Promise<ClientsPage> {
-  const { supabase, organizationId, page, pageSize, search } = params
+  const {
+    supabase,
+    organizationId,
+    page,
+    pageSize,
+    search,
+    statuses,
+    totalSpentMinCents,
+    totalSpentMaxCents,
+    firstJoinedFrom,
+    firstJoinedTo,
+  } = params
   const from = (page - 1) * pageSize
   const to = from + pageSize - 1
 
@@ -139,6 +173,21 @@ export async function fetchClientsPage(
   if (term) {
     const q = term.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_").replace(/'/g, "''")
     query = query.or(`client_display.ilike.%${q}%,client_email.ilike.%${q}%`)
+  }
+  if (statuses && statuses.length > 0) {
+    query = query.in("status", statuses)
+  }
+  if (totalSpentMinCents != null) {
+    query = query.gte("total_spent", totalSpentMinCents)
+  }
+  if (totalSpentMaxCents != null) {
+    query = query.lte("total_spent", totalSpentMaxCents)
+  }
+  if (firstJoinedFrom) {
+    query = query.gte("first_enrollment_started_at", `${firstJoinedFrom}T00:00:00.000Z`)
+  }
+  if (firstJoinedTo) {
+    query = query.lte("first_enrollment_started_at", `${firstJoinedTo}T23:59:59.999Z`)
   }
 
   const { data, error, count } = await query

@@ -51,7 +51,7 @@ import {
   useUpdateMemberCommissionDefaults,
 } from "@/hooks/use-team"
 import type { TeamMember, TeamMemberRole } from "@/lib/services/team"
-import { isTeamMemberRole } from "@/lib/permissions/roles"
+import { isTeamMemberRole, teamMemberRoleLabel } from "@/lib/permissions/roles"
 import { PaginationControls } from "@/components/dashboard/pagination-controls"
 import { PaginationSummary } from "@/components/dashboard/pagination-summary"
 import { useAuth } from "@/hooks/use-auth"
@@ -69,7 +69,7 @@ const roleIcons: Record<string, typeof Crown> = {
   sales: DollarSign,
   ambassador: Megaphone,
   coach: MessageCircle,
-  member: Shield,
+  staff: Shield,
 }
 
 const roleColors: Record<string, string> = {
@@ -78,7 +78,7 @@ const roleColors: Record<string, string> = {
   sales: "bg-success/10 text-success",
   ambassador: "bg-chart-2/10 text-chart-2",
   coach: "bg-chart-3/10 text-chart-3",
-  member: "bg-muted text-foreground",
+  staff: "bg-muted text-foreground",
 }
 
 const DEFAULT_PAGE_SIZE = 10
@@ -96,8 +96,7 @@ function formatRate(value: number | null): string {
 }
 
 function formatRoleLabel(role: string): string {
-  if (!role) return role
-  return role.charAt(0).toUpperCase() + role.slice(1)
+  return teamMemberRoleLabel(role)
 }
 
 function memberCommissionSummary(member: TeamMember): string | null {
@@ -174,7 +173,7 @@ export default function TeamPage() {
     await inviteMutation.mutateAsync({
       organizationId: orgId,
       email,
-      role: role && isTeamMemberRole(role) && role !== "owner" ? role : "member",
+      role: role && isTeamMemberRole(role) && role !== "owner" ? role : "staff",
       defaultCommissionRateSales: rateSales,
       defaultCommissionRateAmbassador: rateAmbassador,
       defaultCommissionRateCoach: rateCoach,
@@ -208,7 +207,7 @@ export default function TeamPage() {
     "sales",
     "ambassador",
     "coach",
-    "member",
+    "staff",
   ]
 
   const parsedEditSales = parseOptionalPercent(editRateSales)
@@ -294,7 +293,7 @@ export default function TeamPage() {
                   <SelectItem value="sales">Sales</SelectItem>
                   <SelectItem value="ambassador">Ambassador</SelectItem>
                   <SelectItem value="coach">Coach</SelectItem>
-                  <SelectItem value="member">Member</SelectItem>
+                  <SelectItem value="staff">Staff</SelectItem>
                 </SelectContent>
               </Select>
               <Button className="gap-2" onClick={handleInvite} disabled={inviteMutation.isPending || !email || !orgId}>
@@ -398,9 +397,9 @@ export default function TeamPage() {
                     <p className="truncate text-xs text-muted-foreground">{commissionSummary}</p>
                   ) : null}
                 </div>
-                <Badge className={cn("shrink-0 text-xs capitalize gap-1.5", roleColors[member.role] ?? roleColors.member)}>
+                <Badge className={cn("shrink-0 text-xs gap-1.5", roleColors[member.role] ?? roleColors.staff)}>
                   <RoleIcon className="h-3 w-3" />
-                  {member.role}
+                  {formatRoleLabel(member.role)}
                 </Badge>
                 <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">
                   {member.status === "invited" && "Invitation pending"}

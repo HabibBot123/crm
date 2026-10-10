@@ -1,8 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { fetchTeamMembers } from "@/lib/services/team"
+import { z } from "zod"
 import {
+  CRM_FIELD_FILTERABLE_MAX,
   crmFieldSchema,
+  crmLeadFieldFilterSchema,
   createLeadSchema,
+  isCrmFieldFilterableType,
   leadSchema,
   leadStatusLogSchema,
   updateLeadStatusSchema,
@@ -13,12 +17,22 @@ import {
   type LeadStatusLog,
 } from "@/schemas/crm.schema"
 
+export type CrmLeadFieldFilter = z.infer<typeof crmLeadFieldFilterSchema>
+
 export type CrmLeadsFilters = {
   search?: string
   status?: LeadStatus[]
   origin?: ("form" | "manual")[]
-  assignedSalesId?: number[]
+  /** Members linked to the lead (owner and/or attributions). */
+  memberIds?: number[]
+  businessUnitIds?: number[]
+  fieldFilters?: CrmLeadFieldFilter[]
 }
+
+const crmLeadsPageRpcSchema = z.object({
+  items: z.array(z.unknown()),
+  total: z.number(),
+})
 
 export type CrmLeadsPage = {
   items: Lead[]
@@ -96,37 +110,35 @@ export async function fetchLeadsPage(
   }
 ): Promise<CrmLeadsPage> {
   const { organizationId, page, pageSize, filters } = params
-  const from = (page - 1) * pageSize
-  const to = from + pageSize - 1
+  const fieldFilters = (filters?.fieldFilters ?? [])
+    .map((item) => crmLeadFieldFilterSchema.parse(item))
+    .filter((item) => item.values.length > 0)
 
-  let query = supabase
-    .from("v_crm_leads")
-    .select("*", { count: "exact" })
-    .eq("organization_id", organizationId)
-    .order("status_at", { ascending: false })
-    .range(from, to)
+  const { data, error } = await supabase.rpc("crm_leads_page", {
+    p_organization_id: organizationId,
+    p_page: page,
+    p_page_size: pageSize,
+    p_search: filters?.search?.trim() || null,
+    p_statuses: filters?.status && filters.status.length > 0 ? filters.status : null,
+    p_origins: filters?.origin && filters.origin.length > 0 ? filters.origin : null,
+    p_member_ids:
+      filters?.memberIds && filters.memberIds.length > 0 ? filters.memberIds : null,
+    p_business_unit_ids:
+      filters?.businessUnitIds && filters.businessUnitIds.length > 0
+        ? filters.businessUnitIds
+        : null,
+    p_field_filters: fieldFilters.map((item) => ({
+      field_def_id: item.fieldDefId,
+      values: item.values,
+    })),
+  })
 
-  const search = filters?.search?.trim()
-  if (search) {
-    query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`)
-  }
-  if (filters?.status && filters.status.length > 0) {
-    query = query.in("status", filters.status)
-  }
-  if (filters?.origin && filters.origin.length > 0) {
-    query = query.in("origin", filters.origin)
-  }
-  if (filters?.assignedSalesId && filters.assignedSalesId.length > 0) {
-    query = query.in("assigned_sales_id", filters.assignedSalesId)
-  }
-
-  const { data, error, count } = await query
   if (error) throw error
 
-  const rows = data ?? []
+  const parsed = crmLeadsPageRpcSchema.parse(data ?? { items: [], total: 0 })
   return {
-    items: parseLeadRows(rows),
-    total: count ?? 0,
+    items: parseLeadRows(parsed.items),
+    total: parsed.total,
   }
 }
 
@@ -235,16 +247,117 @@ export async function updateLeadStatus(
   if (statusError) throw statusError
 }
 
-export async function updateLeadAssignment(
+function assertLeadOwnersEditable(lead: {
+  commissions_activated_at: string | null
+}): void {
+  if (lead.commissions_activated_at != null) {
+    throw new Error("Owner and business unit cannot be changed after commissions are activated.")
+  }
+}
+
+export async function updateLeadOwner(
   supabase: SupabaseClient,
-  input: { leadId: number; assignedSalesId: number | null }
-): Promise<void> {
+  input: { leadId: number; ownerId: number | null }
+): Promise<{ previousOwnerId: number | null }> {
+  const { data: existing, error: loadError } = await supabase
+    .from("leads")
+    .select("owner_id, commissions_activated_at")
+    .eq("id", input.leadId)
+    .single()
+  if (loadError) throw loadError
+
+  assertLeadOwnersEditable({
+    commissions_activated_at:
+      typeof existing.commissions_activated_at === "string"
+        ? existing.commissions_activated_at
+        : null,
+  })
+
+  const previousOwnerId =
+    typeof existing.owner_id === "number" && Number.isFinite(existing.owner_id)
+      ? existing.owner_id
+      : null
+
   const nowIso = new Date().toISOString()
   const { error } = await supabase
     .from("leads")
-    .update({ assigned_sales_id: input.assignedSalesId, updated_at: nowIso })
+    .update({ owner_id: input.ownerId, updated_at: nowIso })
     .eq("id", input.leadId)
   if (error) throw error
+
+  return { previousOwnerId }
+}
+
+export async function updateLeadBusinessUnit(
+  supabase: SupabaseClient,
+  input: { leadId: number; businessUnitId: number | null }
+): Promise<void> {
+  const { data: existing, error: loadError } = await supabase
+    .from("leads")
+    .select("commissions_activated_at")
+    .eq("id", input.leadId)
+    .single()
+  if (loadError) throw loadError
+
+  assertLeadOwnersEditable({
+    commissions_activated_at:
+      typeof existing.commissions_activated_at === "string"
+        ? existing.commissions_activated_at
+        : null,
+  })
+
+  const nowIso = new Date().toISOString()
+  const { error } = await supabase
+    .from("leads")
+    .update({ business_unit_id: input.businessUnitId, updated_at: nowIso })
+    .eq("id", input.leadId)
+  if (error) throw error
+}
+
+/** Client helper: assign business unit via API. */
+export async function assignLeadBusinessUnit(input: {
+  organizationId: number
+  leadId: number
+  businessUnitId: number | null
+}): Promise<void> {
+  const res = await fetch(
+    `/api/organizations/${input.organizationId}/leads/${input.leadId}/assign-business-unit`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ business_unit_id: input.businessUnitId }),
+    }
+  )
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    const message =
+      body && typeof body.error === "string"
+        ? body.error
+        : "Could not assign business unit"
+    throw new Error(message)
+  }
+}
+
+/** Client helper: assign owner via API (updates + notifies by email when set). */
+export async function assignLeadOwner(input: {
+  organizationId: number
+  leadId: number
+  ownerId: number | null
+}): Promise<void> {
+  const res = await fetch(
+    `/api/organizations/${input.organizationId}/leads/${input.leadId}/assign-owner`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ owner_id: input.ownerId }),
+    }
+  )
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    const message =
+      body && typeof body.error === "string" ? body.error : "Could not assign owner"
+    throw new Error(message)
+  }
 }
 
 export async function updateLeadFields(
@@ -283,6 +396,59 @@ export async function createLeadAttribution(
   if (error) throw error
 }
 
+export async function updateLeadAttribution(
+  supabase: SupabaseClient,
+  input: {
+    leadId: number
+    previousMemberId: number
+    previousAttributionType: LeadAttributionInput["attributionType"]
+    attribution: LeadAttributionInput
+  }
+): Promise<void> {
+  const keyChanged =
+    input.previousMemberId !== input.attribution.memberId ||
+    input.previousAttributionType !== input.attribution.attributionType
+
+  if (keyChanged) {
+    const { error: deleteError } = await supabase
+      .from("lead_attributions")
+      .delete()
+      .eq("lead_id", input.leadId)
+      .eq("member_id", input.previousMemberId)
+      .eq("attribution_type", input.previousAttributionType)
+    if (deleteError) throw deleteError
+  }
+
+  const { error } = await supabase.from("lead_attributions").upsert(
+    {
+      lead_id: input.leadId,
+      member_id: input.attribution.memberId,
+      attribution_type: input.attribution.attributionType,
+      commission_rate: input.attribution.commissionRate ?? null,
+      commission_fixed: input.attribution.commissionFixed ?? null,
+    },
+    { onConflict: "lead_id,member_id,attribution_type" }
+  )
+  if (error) throw error
+}
+
+export async function deleteLeadAttribution(
+  supabase: SupabaseClient,
+  input: {
+    leadId: number
+    memberId: number
+    attributionType: LeadAttributionInput["attributionType"]
+  }
+): Promise<void> {
+  const { error } = await supabase
+    .from("lead_attributions")
+    .delete()
+    .eq("lead_id", input.leadId)
+    .eq("member_id", input.memberId)
+    .eq("attribution_type", input.attributionType)
+  if (error) throw error
+}
+
 export async function fetchCrmFields(
   supabase: SupabaseClient,
   organizationId: number
@@ -309,9 +475,24 @@ export async function createCrmField(
     options?: { value: string; label: string }[] | null
     isRequired?: boolean
     showInCrm?: boolean
+    filterable?: boolean
     position?: number
   }
 ): Promise<CrmField> {
+  const filterable = input.filterable ?? false
+  if (filterable && !isCrmFieldFilterableType(input.fieldType)) {
+    throw new Error("Only select, multi_select, and boolean fields can be filterable.")
+  }
+  if (filterable) {
+    const existing = await fetchCrmFields(supabase, input.organizationId)
+    const filterableCount = existing.filter((field) => field.filterable).length
+    if (filterableCount >= CRM_FIELD_FILTERABLE_MAX) {
+      throw new Error(
+        `At most ${CRM_FIELD_FILTERABLE_MAX} filterable fields are allowed.`
+      )
+    }
+  }
+
   const row = {
     organization_id: input.organizationId,
     key: input.key,
@@ -321,6 +502,7 @@ export async function createCrmField(
     options: input.options ?? null,
     is_required: input.isRequired ?? false,
     show_in_crm: input.showInCrm ?? true,
+    filterable,
     position: input.position ?? 0,
   }
   const { data, error } = await supabase
@@ -341,15 +523,40 @@ export async function updateCrmField(
     options?: { value: string; label: string }[] | null
     isRequired?: boolean
     showInCrm?: boolean
+    filterable?: boolean
     position?: number
   }
 ): Promise<CrmField> {
+  const { data: currentRow, error: loadError } = await supabase
+    .from("crm_fields")
+    .select("*")
+    .eq("id", input.fieldId)
+    .single()
+  if (loadError) throw loadError
+  const current = crmFieldSchema.parse(currentRow)
+
+  if (input.filterable === true) {
+    if (!isCrmFieldFilterableType(current.field_type)) {
+      throw new Error("Only select, multi_select, and boolean fields can be filterable.")
+    }
+    if (!current.filterable) {
+      const existing = await fetchCrmFields(supabase, current.organization_id)
+      const filterableCount = existing.filter((field) => field.filterable).length
+      if (filterableCount >= CRM_FIELD_FILTERABLE_MAX) {
+        throw new Error(
+          `At most ${CRM_FIELD_FILTERABLE_MAX} filterable fields are allowed.`
+        )
+      }
+    }
+  }
+
   const patch: Record<string, unknown> = {}
   if (input.label !== undefined) patch.label = input.label
   if (input.clientQuestion !== undefined) patch.client_question = input.clientQuestion
   if (input.options !== undefined) patch.options = input.options
   if (input.isRequired !== undefined) patch.is_required = input.isRequired
   if (input.showInCrm !== undefined) patch.show_in_crm = input.showInCrm
+  if (input.filterable !== undefined) patch.filterable = input.filterable
   if (input.position !== undefined) patch.position = input.position
 
   const { data, error } = await supabase

@@ -25,9 +25,9 @@ Inventaire live (2026-07-23). Détail colonnes = à compléter progressivement.
 
 | Table | Rôle (court) |
 |-------|----------------|
-| `organizations` | Orgs coach ; branding JSON ; Stripe Connect. **`owner_id` → `profiles(user_id)`**. **`mode`** = `solo` \| `team` (existantes backfill `team` ; nouvelles default `solo`) |
-| `organization_role_permissions` | Matrix org × rôle (`admin`/`sales`/`ambassador`/`coach`/`member`/**`bu_owner`**) × capacité. `bu_owner` = statut BU (pas invite), scope BU. Owner non stocké (= tout). Seed auto + RLS member read / owner write. |
-| `organization_sales` | Ventes (webhook Stripe **ou** manuel). **`source`** = `stripe` \| `manual` |
+| `organizations` | Orgs coach ; branding JSON ; Stripe Connect. **`owner_id` → `profiles(user_id)`**. **`mode`** = `solo` \| `team`. **`commission_plan`** jsonb (overrides slots acquisition + coach ; null = defaults code) |
+| `organization_role_permissions` | Matrix org × rôle (`admin`/`sales`/`ambassador`/`coach`/`staff`/**`bu_owner`**) × capacité. `bu_owner` = statut BU (pas invite), scope BU. Owner non stocké (= tout). Seed auto + RLS member read / owner write. |
+| `organization_sales` | Encaissements (Stripe / manuel). + **`sold_at`** (date métier CA) ; `created_at` = insert. + `base_amount_cents`, `installment_index`, `installment_count`. Uniques Stripe. **`source`** = `stripe` \| `manual` |
 | `organization_members` | Membres / rôles ; defaults com **par type** : `default_commission_rate/fixed_{sales,ambassador,coach}`. **`user_id` → `profiles(user_id)`** |
 | `profiles` | **Profil app actif** (PK `user_id` = `auth.users.id`) — `full_name`, avatar, onboarding, `signup_source`. **Pas d’email.** Cible FK publique pour org/members/enrollments. |
 
@@ -70,12 +70,12 @@ Flux guest → compte : checkout pose `buyer_email` (+ `user_id` si compte exist
 | `business_units` | BU org ; **`owner_member_id`**, **`default_commission_rate/fixed`** |
 | `enrollments` | Achat / accès ; `user_id` nullable ; `buyer_email` ; `expires_at` ; Stripe IDs nullable (manuel OK) ; **`stripe_checkout_session_id`** (idempotence checkout Stripe) |
 | `enrollment_products` | **Snapshot** produits de l’offre au moment de l’INSERT enrollment |
-| `coaching_assignments` | Coach assigné sur un `enrollment_product_id` (1 coach ; trigger commission delivery) |
+| `coaching_assignments` | Coach assigné sur un `enrollment_product_id` (1 coach ; coms delivery à l’assign ; change/remove tant que 0 session + 0 paid) |
 | `coaching_sessions` | Tracking séances |
 | `course_lesson_progress` | Progression leçons |
 | `coached_invoices` | Factures côté coached |
-| `commissions` | Lignes dues ; `enrollment_id` **nullable** ; `manual_sale_id` ; pool ; installments ; `paid_at` ; status + `canceled` |
-| `manual_sales` | Ventes hors plateforme liées au lead — **à migrer** vers `organization_sales.source=manual` puis drop |
+| `commissions` | Argent via **`organization_sale_id`**. Acquisition : + `lead_id` + `attribution_id`. Delivery : + `beneficiary_member_id` (+ enrollment optionnel). |
+| `leads` | + `organization_sale_id` (Activate) ; `enrollment_id` optionnel (delivery) |
 | `commission_documents` | Stub factures/statements (v1 sans UI fiscale) |
 | `leads` | + `commissions_activated_at/by`, `sale_source` ; soft-lock attributions si activé |
 | `crm_forms` | Forms publics ; **`success_message`** |
@@ -88,8 +88,9 @@ Flux guest → compte : checkout pose `buyer_email` (+ `user_id` si compte exist
 
 | Table | Rôle (court) |
 |-------|----------------|
-| `leads` / `lead_status` / `lead_field_values` / `lead_attributions` | Pipeline leads |
-| `crm_fields` / `crm_forms` / `crm_form_fields` | Formulaires |
+| `leads` / `lead_status` / `lead_field_values` / `lead_attributions` | Pipeline leads ; `leads.owner_id` → `organization_members` (ops owner, pas pay role) ; `leads.business_unit_id` nullable + trigger same-org ; `leads.status` = text key FK `(organization_id, status)` → `organization_lead_statuses` |
+| `organization_lead_statuses` | Catalogue status org (≤10) ; seed `new`/`lost`/`converted` (trigger org insert) |
+| `crm_fields` / `crm_forms` / `crm_form_fields` | Formulaires ; `crm_forms.initial_status` ; `crm_fields.filterable` (max 4) ; **plus de `form_type`** |
 | `crm_ambassador_links` | Liens ambassadeur |
 
 ---
@@ -98,11 +99,16 @@ Flux guest → compte : checkout pose `buyer_email` (+ `user_id` si compte exist
 
 | Vue | Notes |
 |-----|--------|
-| `v_coached_products` | Accès portail / coaching ops. **`security_invoker=true`** (RLS des tables sous-jacentes). `SELECT` : `authenticated` (+ `service_role`) ; **pas `anon`**. Filtre status + expiry. `completion_total` coaching ← `offers.sessions_count`. |
+| `v_coached_products` | Accès **portail** coached. **`security_invoker=true`**. Filtre status vivant + expiry. `completion_total` coaching ← `offers.sessions_count`. |
+| `v_coaching_packs` | Accès **ops** `/dashboard/coaching`. Même grain que ci-dessus, **sans** filtre status/expiry (historique). Display client : `profiles.full_name` → `buyer_name` → `buyer_email`. `security_invoker=true` ; pas `anon`. |
 | `v_organization_clients` | Clients org (agrégats enrollments ; `client_email` ← `buyer_email` ; noms ← `profiles`) |
 | `v_organization_members` | Membres enrichis (`om.email` + `profiles.full_name`) |
 | `active_students` | Étudiants actifs |
-| `v_crm_leads` / `v_crm_forms` / `v_crm_ambassador_link_stats` | CRM inbound |
+| `v_crm_leads` / `v_crm_forms` / `v_crm_ambassador_link_stats` | CRM inbound ; `v_crm_leads` : `owner_id` / `owner_name` (+ `organization_sale_id`) |
+| `v_commissions` | Liste / search commissions ; `security_invoker` ; flux = `pending\|paid` (enum garde `canceled` legacy ; cancel CRM = DELETE pending). `lead_name` = lead → profile → `enrollments.buyer_name` ; `lead_email` = lead → `buyer_email`. |
+| `commissions_summary_by_member(...)` | Agrégat pending/overdue par bénéficiaire + `pending_ids` pour pay-all ; SECURITY INVOKER |
+| `crm_sales_analytics(org, from, to, bu_id?, preset?)` | Analytics Sales/CRM : KPIs (P&L + Cash coms) + `revenue_series` + `commission_series` (paid history + forecast miroir) + members/packs/BUs/funnel ; CA sur `sold_at` ; SECURITY INVOKER ; gate `sales.view` |
+| `v_organization_sales` | Liste Sales : offer/lead + sum coms ; + `offer_id`, `payment_kind`, **`sold_at`** ; `security_invoker` |
 
 > `organization_client_enrollments` **droppée** (2026-10-01) — remplacée par `v_organization_clients` + query `enrollments` détail.
 
@@ -118,10 +124,12 @@ Flux guest → compte : checkout pose `buyer_email` (+ `user_id` si compte exist
 | `is_org_owner` / `is_org_member` / `is_org_enrolled` | Helpers RLS (évite récursion policies). |
 | `has_org_capability(org, cap)` | Enforcement : owner **ou** matrix rôle invite **ou** (`is_bu_owner` ∧ row `role=bu_owner` allowed). Settings lit la table. Branché dans RLS dashboard (step 6). |
 | `can_update_crm_lead(org)` | OR des caps lead mutate (`update_status` / `edit` / `assign_sales` / `manage_attributions` / `activate_commissions`). |
+| `crm_leads_page(...)` | Liste CRM filtrée + paginée (SECURITY INVOKER) ; members via owner/attributions ; champs perso via `EXISTS` `lead_field_values`. |
+| `crm_sales_analytics(..., p_preset?)` | Payload jsonb analytics ; `p_preset` pilote la fenêtre forecast miroir (7d/30d/month/year/custom). Scope via `lead_in_scope` / `sales_row_in_scope` / `commission_in_scope`. |
 | `bu_owner_grants_capability(org, cap)` | Lookup matrix `bu_owner` (plus de liste hardcodée). |
 | `org_permission_scope(org)` | `org` \| `bu` \| `own` (owner/admin → org ; sinon BU owner → bu ; sinon own). |
-| `lead_is_own` / `lead_visible_to_caller` / `lead_in_scope` | Leads : `view_own` **ou** (`view` ∧ scope org/bu/own). Own = assigned / created_by / attributions / share link. |
-| `ambassador_link_in_scope` / `enrollment_in_scope` / `sales_row_in_scope` / `commission_in_scope` / `offer_in_bu_scope` | Filtres ligne RLS step 7. |
+| `lead_is_own` / `lead_visible_to_caller` / `lead_in_scope` | Leads : `view_own` **ou** (`view` ∧ scope org/bu/own). Own = `owner_id` / created_by / attributions / share link. |
+| `ambassador_link_in_scope` / `enrollment_in_scope` / `sales_row_in_scope` / `commission_in_scope` / `offer_in_bu_scope` | Filtres ligne RLS step 7. `enrollment_in_scope` : `clients.view` **ou** `commissions.view_all` (même scope org/bu) **ou** `commissions.view_own` (enrollments liés à mes coms) **ou** `coaching.view`. |
 | `current_org_member_role` / `current_org_member_id` / `is_bu_owner` / `is_bu_owner_of` | Contexte membre courant. |
 | `seed_organization_role_permissions(org)` | Seed / backfill matrix. |
 | `set_updated_at()` | Touch `updated_at`. |
@@ -163,7 +171,8 @@ Pas de `pg_cron` / job d’auto-expiry enrollment constaté (2026-07-23).
 - `offers.sessions_count` → quota séances coaching du SKU.
 - Portail : `v_coached_products` exclut les enrollments expirés.
 - Legacy `product_coaching.period_months` / `sessions_count` : ne plus écrire depuis l’UI produit.
-- **Rachat** : chaque checkout payé = **nouvel enrollment** (nouveau contrat). Après INSERT, les autres enrollments `active`/`paused` du même offer + buyer (`user_id` ou `buyer_email`) passent en `expired` (`expires_at = now()`). Idempotence webhook via `stripe_checkout_session_id` (unique).
+- **Rachat** : expire-then-insert (manuel + Stripe). Unique vivant = `(offer_id, user_id)` where `active|paused`. Idempotence webhook via `stripe_checkout_session_id`.
+- **Job** : `expire_due_enrollments()` + cron `expire-due-enrollments` (03:15 UTC) ; critère = `expires_at < now()` seulement (`NULL` = lifetime / abo ouvert).
 
 ### Gaps connus (ne pas “réparer” sans décision)
 

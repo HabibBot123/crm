@@ -3,7 +3,7 @@ import { sendInviteTeamMemberEmail } from "@/lib/email/workflows/send-invite-tea
 
 export type TeamMemberStatus = "invited" | "active" | "revoked"
 
-export type TeamMemberRole = "owner" | "admin" | "sales" | "ambassador" | "coach" | "member"
+export type TeamMemberRole = "owner" | "admin" | "sales" | "ambassador" | "coach" | "staff"
 
 export type MemberCommissionDefaults = {
   default_commission_rate_sales: number | null

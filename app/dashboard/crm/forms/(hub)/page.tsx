@@ -8,9 +8,11 @@ import { useCurrentOrganization } from "@/components/providers/organization-prov
 import { EmptyState } from "@/components/dashboard/empty-state"
 import { LoadingRows } from "@/components/dashboard/loading-rows"
 import { SectionCard } from "@/components/dashboard/section-card"
+import { TableScroll } from "@/components/dashboard/table-scroll"
 import { CreateFormDialog } from "@/components/dashboard/crm/create-form-dialog"
 import { Button } from "@/components/ui/button"
 import { useCrmForms, useCreateForm } from "@/hooks/use-crm-forms"
+import { useOrganizationLeadStatuses } from "@/hooks/use-organization-lead-statuses"
 import { toast } from "sonner"
 
 function formatDate(value: string) {
@@ -27,6 +29,7 @@ export default function CrmFormsListPage() {
   const [openCreate, setOpenCreate] = useState(false)
   const [copiedFormId, setCopiedFormId] = useState<number | null>(null)
   const { forms, isLoading, error } = useCrmForms(currentOrganization?.id ?? null)
+  const { statuses: leadStatuses } = useOrganizationLeadStatuses(currentOrganization?.id ?? null)
   const createForm = useCreateForm(currentOrganization?.id ?? null)
 
   const absoluteBaseUrl = useMemo(() => {
@@ -77,7 +80,7 @@ export default function CrmFormsListPage() {
         />
       ) : (
         <SectionCard noPadding>
-          <div className="overflow-x-auto">
+          <TableScroll>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/60">
@@ -85,7 +88,7 @@ export default function CrmFormsListPage() {
                     Title
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Type
+                    Arrival status
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Status
@@ -105,7 +108,10 @@ export default function CrmFormsListPage() {
                 {forms.map((form) => (
                   <tr key={form.id} className="transition-colors hover:bg-accent/60">
                     <td className="px-4 py-3 font-medium text-foreground">{form.title}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{form.form_type}</td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {leadStatuses.find((status) => status.key === form.initial_status)?.label ??
+                        form.initial_status}
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground">{form.status}</td>
                     <td className="px-4 py-3 text-muted-foreground">{form.leads_count}</td>
                     <td className="px-4 py-3 text-muted-foreground">{formatDate(form.created_at)}</td>
@@ -147,13 +153,14 @@ export default function CrmFormsListPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         </SectionCard>
       )}
 
       <CreateFormDialog
         open={openCreate}
         onOpenChange={setOpenCreate}
+        leadStatuses={leadStatuses}
         isPending={createForm.isPending}
         onSubmit={async (input) => {
           try {

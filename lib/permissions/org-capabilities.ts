@@ -23,8 +23,8 @@ export type OrgModeFeatures = {
   isTeam: boolean
   /** CRM closer / setter / ambassador columns + lead attributions / commissions activate */
   showAcquisitionRoles: boolean
-  /** Assigned sales column + pipeline assign on leads */
-  showLeadSalesAssignment: boolean
+  /** Owner column + assign owner on leads (team mode) */
+  showLeadOwnerAssignment: boolean
   /** Business unit column / forms BU management (team) */
   showBusinessUnits: boolean
   /** Coaching assign coach UI */
@@ -48,7 +48,7 @@ export function getOrgModeFeatures(mode: OrganizationMode | null | undefined): O
     mode: resolved,
     isTeam,
     showAcquisitionRoles: isTeam,
-    showLeadSalesAssignment: isTeam,
+    showLeadOwnerAssignment: isTeam,
     showBusinessUnits: isTeam,
     showCoachAssign: isTeam,
     requiresTeamPlan: !isTeam,

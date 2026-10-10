@@ -18,6 +18,7 @@ import { toast } from "sonner"
 import { useArchiveOffer, useOffersPage } from "@/hooks/use-offers"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { SectionCard } from "@/components/dashboard/section-card"
+import { TableScroll } from "@/components/dashboard/table-scroll"
 import { LoadingRows } from "@/components/dashboard/loading-rows"
 import { EmptyState } from "@/components/dashboard/empty-state"
 import { PaginationControls } from "@/components/dashboard/pagination-controls"
@@ -134,7 +135,7 @@ export default function OffersPage() {
   const archiveMutation = useArchiveOffer(orgId)
 
   if (!canAccess && guardContent) {
-    return <div className="space-y-4 p-6 lg:p-8">{guardContent}</div>
+    return <div className="min-w-0 space-y-4 p-6 lg:p-8">{guardContent}</div>
   }
 
   if (!capsLoading && !canManageCatalog) {
@@ -152,7 +153,7 @@ export default function OffersPage() {
       : `${total} offer${total !== 1 ? "s" : ""} total`
 
   return (
-    <div className="space-y-4 p-6 lg:p-8">
+    <div className="min-w-0 space-y-4 p-6 lg:p-8">
       <PageHeader title="Offers" subtitle={subtitle}>
         <Link href="/dashboard/offers/new">
           <Button className="gap-2">
@@ -245,7 +246,7 @@ export default function OffersPage() {
               </div>
             }
           >
-            <div className="overflow-x-auto">
+            <TableScroll>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/60">
@@ -318,7 +319,7 @@ export default function OffersPage() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           </SectionCard>
         </>
       )}

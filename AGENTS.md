@@ -23,3 +23,9 @@ Ce repo est **CoachStack** : CRM + delivery platform pour coachs / organisations
 - Toute décision durable (produit, stack, archi, contrainte, feature) → MAJ du fichier `docs/` concerné dans la même session.
 - Ajouter une entrée courte dans `docs/05-session-log.md`.
 - Ne jamais y mettre secrets / clés API.
+
+## Copy / UI text
+
+- **Pas de tiret long `—`** dans les textes UI, toasts, labels, descriptions, docs produit rédigés pour l’app. Préférer `:`, `.`, ou une phrase courte.
+- **Peu de texte** : labels courts, une idée par phrase, éviter les pavés d’explication et les sous-textes redondants.
+- Empty / helper : une ligne max si vraiment utile ; sinon rien.

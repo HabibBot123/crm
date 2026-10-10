@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { useCreateCrmField, useCrmFields, useDeleteCrmField, useUpdateCrmField } from "@/hooks/use-crm-fields"
-import type { CrmField } from "@/schemas/crm.schema"
+import { CRM_FIELD_FILTERABLE_MAX, type CrmField } from "@/schemas/crm.schema"
 
 const fieldTypeOptions: CrmField["field_type"][] = [
   "text",
@@ -59,6 +59,11 @@ export function CrmFieldsPanel({ organizationId }: { organizationId: number }) {
     if (fields.length === 0) return 0
     return Math.max(...fields.map((field) => field.position)) + 1
   }, [fields])
+
+  const filterableCount = useMemo(
+    () => fields.filter((field) => field.filterable).length,
+    [fields]
+  )
 
   const isChoiceType = type === "select" || type === "multi_select"
   const parsedOptions = optionsInput
@@ -183,7 +188,10 @@ export function CrmFieldsPanel({ organizationId }: { organizationId: number }) {
         </div>
       </SectionCard>
 
-      <SectionCard title="Fields" subtitle="Toggle fields visible in the CRM table.">
+      <SectionCard
+        title="Fields"
+        subtitle={`Toggle CRM table visibility and filters (max ${CRM_FIELD_FILTERABLE_MAX} filterable: select / multi-select / yes-no).`}
+      >
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading fields...</p>
         ) : fields.length === 0 ? (
@@ -197,6 +205,7 @@ export function CrmFieldsPanel({ organizationId }: { organizationId: number }) {
                 <CrmFieldRow
                   key={field.id}
                   field={field}
+                  filterableCount={filterableCount}
                   isPending={updateField.isPending || deleteField.isPending}
                   onEdit={(nextField) => {
                     setEditingFieldId(nextField.id)
@@ -210,6 +219,19 @@ export function CrmFieldsPanel({ organizationId }: { organizationId: number }) {
                   }}
                   onToggleShowInCrm={(fieldId, show) => {
                     updateField.mutate({ fieldId, showInCrm: show })
+                  }}
+                  onToggleFilterable={(fieldId, filterable) => {
+                    updateField.mutate(
+                      { fieldId, filterable },
+                      {
+                        onError: (err) => {
+                          toast.error("Could not update filter setting", {
+                            description:
+                              err instanceof Error ? err.message : "Unexpected error",
+                          })
+                        },
+                      }
+                    )
                   }}
                   onDelete={(fieldId) => {
                     deleteField.mutate(fieldId)

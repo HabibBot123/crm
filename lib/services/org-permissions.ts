@@ -9,7 +9,7 @@ import {
   resolvePermissionScope,
 } from "@/lib/permissions/capabilities"
 
-export type MatrixRole = "admin" | "sales" | "ambassador" | "coach" | "member" | "bu_owner"
+export type MatrixRole = "admin" | "sales" | "ambassador" | "coach" | "staff" | "bu_owner"
 
 export type OrgRolePermissionRow = {
   role: MatrixRole
@@ -30,7 +30,7 @@ function parseMatrixRole(value: string): MatrixRole | null {
     value === "sales" ||
     value === "ambassador" ||
     value === "coach" ||
-    value === "member" ||
+    value === "staff" ||
     value === "bu_owner"
   ) {
     return value

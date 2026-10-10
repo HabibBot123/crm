@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { z } from "zod"
 import {
+  ambassadorLinkRowSchema,
   ambassadorLinkStatsSchema,
   ambassadorLinkStatusSchema,
   createAmbassadorLinkSchema,
@@ -8,20 +9,6 @@ import {
   type AmbassadorLinkStatus,
   type CreateAmbassadorLinkInput,
 } from "@/schemas/crm.schema"
-
-const ambassadorLinkRowSchema = z.object({
-  id: z.number(),
-  organization_id: z.number(),
-  member_id: z.number(),
-  form_id: z.number(),
-  ref_code: z.string(),
-  label: z.string(),
-  status: ambassadorLinkStatusSchema,
-  clicks_count: z.number(),
-  created_at: z.string(),
-  default_field_values: z.record(z.string(), z.string()).nullable().optional(),
-  business_unit_id: z.number().nullable().optional(),
-})
 
 function slugifyRefBase(input: string): string {
   return input

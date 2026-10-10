@@ -5,6 +5,7 @@ export type EnrollmentRow = {
   offer_variant_id: number | null
   user_id: string | null
   buyer_email: string | null
+  stripe_checkout_session_id: string | null
 }
 
 export type BillingType = "one_time" | "subscription" | "installment"

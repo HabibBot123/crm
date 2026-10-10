@@ -5,10 +5,13 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { useTeamMembers } from "@/hooks/use-team"
 import {
   fetchCoachingEnrollmentProductsForOrg,
-  fetchCoachingSessionsForOrg,
+  fetchCoachingSessionsForEnrollmentProduct,
   upsertCoachingAssignment,
+  removeCoachingAssignment,
   updateCoachingSessionCompleted,
   type CoachingEnrollmentProduct,
+  type CoachingPackAssignmentFilter,
+  type CoachingPackEnrollmentStatus,
   type CoachingSessionRow,
 } from "@/lib/services/coaching"
 import { toast } from "sonner"
@@ -18,6 +21,8 @@ export type OrganizationMemberForSelect = {
   user_id: string
   role: string
   display_name: string | null
+  default_commission_rate_coach: number | null
+  default_commission_fixed_coach: number | null
 }
 
 export type UseCoachingPacksParams = {
@@ -25,16 +30,41 @@ export type UseCoachingPacksParams = {
   supabase: SupabaseClient | null
   page: number
   pageSize: number
+  search?: string
+  assignmentFilters?: CoachingPackAssignmentFilter[]
+  enrollmentStatuses?: CoachingPackEnrollmentStatus[]
 }
 
 export function useCoachingPacks(params: UseCoachingPacksParams) {
-  const { organizationId, supabase, page, pageSize } = params
+  const {
+    organizationId,
+    supabase,
+    page,
+    pageSize,
+    search = "",
+    assignmentFilters = [],
+    enrollmentStatuses = [],
+  } = params
 
   const query = useQuery({
-    queryKey: ["coaching-packs", organizationId, page, pageSize],
+    queryKey: [
+      "coaching-packs",
+      organizationId,
+      page,
+      pageSize,
+      search,
+      assignmentFilters,
+      enrollmentStatuses,
+    ],
     queryFn: () => {
       if (!organizationId || !supabase) throw new Error("organizationId and supabase required")
-      return fetchCoachingEnrollmentProductsForOrg(supabase, organizationId, page, pageSize)
+      return fetchCoachingEnrollmentProductsForOrg(supabase, organizationId, {
+        page,
+        pageSize,
+        search,
+        assignmentFilters,
+        enrollmentStatuses,
+      })
     },
     enabled: !!organizationId && !!supabase,
   })
@@ -47,28 +77,37 @@ export function useCoachingPacks(params: UseCoachingPacksParams) {
   }
 }
 
-export type UseCoachingSessionsParams = {
+export type UsePackSessionsParams = {
   organizationId: number | null
   supabase: SupabaseClient | null
-  page: number
-  pageSize: number
+  enrollmentProductId: number | null
+  enabled: boolean
 }
 
-export function useCoachingSessions(params: UseCoachingSessionsParams) {
-  const { organizationId, supabase, page, pageSize } = params
+export function usePackSessions(params: UsePackSessionsParams) {
+  const { organizationId, supabase, enrollmentProductId, enabled } = params
 
   const query = useQuery({
-    queryKey: ["coaching-sessions", organizationId, page, pageSize],
+    queryKey: ["coaching-sessions", organizationId, "pack", enrollmentProductId],
     queryFn: () => {
-      if (!organizationId || !supabase) throw new Error("organizationId and supabase required")
-      return fetchCoachingSessionsForOrg(supabase, organizationId, page, pageSize)
+      if (!organizationId || !supabase || enrollmentProductId == null) {
+        throw new Error("organizationId, supabase and enrollmentProductId required")
+      }
+      return fetchCoachingSessionsForEnrollmentProduct(
+        supabase,
+        organizationId,
+        enrollmentProductId
+      )
     },
-    enabled: !!organizationId && !!supabase,
+    enabled:
+      enabled &&
+      !!organizationId &&
+      !!supabase &&
+      enrollmentProductId != null,
   })
 
   return {
-    data: (query.data?.items ?? []) as CoachingSessionRow[],
-    total: query.data?.total ?? 0,
+    data: (query.data ?? []) as CoachingSessionRow[],
     isLoading: query.isLoading,
     error: query.error,
   }
@@ -76,16 +115,14 @@ export function useCoachingSessions(params: UseCoachingSessionsParams) {
 
 export type UseTeamMembersForAssignParams = {
   organizationId: number | null
-  search: string
 }
 
 export function useTeamMembersForAssign(params: UseTeamMembersForAssignParams) {
-  const { organizationId, search } = params
+  const { organizationId } = params
   const { data, isLoading, error } = useTeamMembers({
     organizationId,
     page: 1,
     pageSize: 100,
-    search: search.trim() || undefined,
   })
 
   const activeMembers: OrganizationMemberForSelect[] = (data.items ?? [])
@@ -95,6 +132,8 @@ export function useTeamMembersForAssign(params: UseTeamMembersForAssignParams) {
       user_id: m.user_id ?? "",
       role: m.role,
       display_name: m.full_name ?? null,
+      default_commission_rate_coach: m.default_commission_rate_coach,
+      default_commission_fixed_coach: m.default_commission_fixed_coach,
     }))
 
   return {
@@ -105,6 +144,16 @@ export function useTeamMembersForAssign(params: UseTeamMembersForAssignParams) {
   }
 }
 
+function invalidateCoachingQueries(
+  queryClient: ReturnType<typeof useQueryClient>,
+  organizationId: number | null
+) {
+  queryClient.invalidateQueries({ queryKey: ["coaching-packs", organizationId] })
+  queryClient.invalidateQueries({ queryKey: ["coaching-sessions", organizationId] })
+  queryClient.invalidateQueries({ queryKey: ["commissions", organizationId] })
+  queryClient.invalidateQueries({ queryKey: ["commissions-due-total", organizationId] })
+}
+
 export function useAssignCoachMutation(organizationId: number | null, supabase: SupabaseClient | null) {
   const queryClient = useQueryClient()
 
@@ -112,17 +161,55 @@ export function useAssignCoachMutation(organizationId: number | null, supabase: 
     mutationFn: ({
       enrollmentProductId,
       organizationMemberId,
+      rate,
+      fixed,
+      isChange,
     }: {
       enrollmentProductId: number
       organizationMemberId: number
+      rate?: number | null
+      fixed?: number | null
+      isChange?: boolean
     }) => {
       if (!supabase) throw new Error("Supabase client required")
-      return upsertCoachingAssignment(supabase, enrollmentProductId, organizationMemberId)
+      if (organizationId == null) throw new Error("organizationId is required")
+      return upsertCoachingAssignment(
+        supabase,
+        enrollmentProductId,
+        organizationMemberId,
+        organizationId,
+        { rate, fixed }
+      ).then((result) => ({ ...result, isChange: isChange === true }))
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["coaching-packs", organizationId] })
-      queryClient.invalidateQueries({ queryKey: ["coaching-sessions", organizationId] })
-      toast.success("Coach assigned")
+    onSuccess: (result) => {
+      invalidateCoachingQueries(queryClient, organizationId)
+      const verb = result.isChange ? "changed" : "assigned"
+      toast.success(
+        result.createdCount > 0
+          ? `Coach ${verb} : commission created`
+          : `Coach ${verb} : no commission created`
+      )
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+}
+
+export function useRemoveCoachMutation(organizationId: number | null, supabase: SupabaseClient | null) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ enrollmentProductId }: { enrollmentProductId: number }) => {
+      if (!supabase) throw new Error("Supabase client required")
+      if (organizationId == null) throw new Error("organizationId is required")
+      return removeCoachingAssignment(supabase, organizationId, enrollmentProductId)
+    },
+    onSuccess: (result) => {
+      invalidateCoachingQueries(queryClient, organizationId)
+      toast.success(
+        result.deletedCommissions > 0
+          ? "Coach removed : pending commissions deleted"
+          : "Coach removed"
+      )
     },
     onError: (e: Error) => toast.error(e.message),
   })

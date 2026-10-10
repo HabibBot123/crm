@@ -8,6 +8,7 @@ import { LoadingRows } from "@/components/dashboard/loading-rows"
 import { PaginationControls } from "@/components/dashboard/pagination-controls"
 import { PaginationSummary } from "@/components/dashboard/pagination-summary"
 import { SectionCard } from "@/components/dashboard/section-card"
+import { TableScroll } from "@/components/dashboard/table-scroll"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
@@ -148,7 +149,7 @@ export default function CrmFormsShareLinksPage() {
             <EmptyState title="No links found" description="Create a tracked link to start." />
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <TableScroll>
             <table className="w-full table-auto">
               <thead className="bg-muted/60">
                 <tr className="border-b border-border">
@@ -241,7 +242,7 @@ export default function CrmFormsShareLinksPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         )}
       </SectionCard>
 

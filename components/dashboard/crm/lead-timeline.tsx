@@ -1,4 +1,4 @@
-import type { LeadStatusLog } from "@/schemas/crm.schema"
+import type { LeadStatusLog, OrganizationLeadStatus } from "@/schemas/crm.schema"
 import { LeadStatusBadge } from "@/components/dashboard/crm/lead-status-badge"
 
 function formatDate(value: string) {
@@ -11,7 +11,13 @@ function formatDate(value: string) {
   })
 }
 
-export function LeadTimeline({ rows }: { rows: LeadStatusLog[] }) {
+export function LeadTimeline({
+  rows,
+  catalog,
+}: {
+  rows: LeadStatusLog[]
+  catalog?: OrganizationLeadStatus[]
+}) {
   if (rows.length === 0) {
     return <p className="text-xs text-muted-foreground">No status changes yet.</p>
   }
@@ -24,11 +30,11 @@ export function LeadTimeline({ rows }: { rows: LeadStatusLog[] }) {
             <div className="flex items-center gap-2">
               {row.from_status ? (
                 <>
-                  <LeadStatusBadge status={row.from_status} />
+                  <LeadStatusBadge status={row.from_status} catalog={catalog} />
                   <span className="text-xs text-muted-foreground">to</span>
                 </>
               ) : null}
-              <LeadStatusBadge status={row.to_status} />
+              <LeadStatusBadge status={row.to_status} catalog={catalog} />
             </div>
             <span className="text-xs text-muted-foreground">{formatDate(row.created_at)}</span>
           </div>
