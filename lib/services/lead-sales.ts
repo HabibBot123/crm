@@ -19,6 +19,7 @@ async function linkLeadToSale(
     organization_sale_id: number
     enrollment_id?: number | null
     sale_source: "platform" | "manual"
+    target_offer_id?: number | null
   }
 ): Promise<void> {
   const { error } = await supabase
@@ -26,6 +27,9 @@ async function linkLeadToSale(
     .update({
       organization_sale_id: patch.organization_sale_id,
       ...(patch.enrollment_id !== undefined ? { enrollment_id: patch.enrollment_id } : {}),
+      ...(patch.target_offer_id !== undefined
+        ? { target_offer_id: patch.target_offer_id }
+        : {}),
       sale_source: patch.sale_source,
       updated_at: new Date().toISOString(),
     })
@@ -81,6 +85,7 @@ export async function recordLeadSale(
       organization_sale_id: created.saleId,
       enrollment_id: created.enrollmentId,
       sale_source: "manual",
+      target_offer_id: input.offer_id,
     })
 
     return {
@@ -91,6 +96,9 @@ export async function recordLeadSale(
   }
 
   if (input.mode === "sale_only") {
+    if (input.offer_id == null) {
+      throw new Error("Select an offer for this sale.")
+    }
     const soldAtIso = input.sold_at
       ? `${input.sold_at}T12:00:00.000Z`
       : new Date().toISOString()
@@ -124,6 +132,7 @@ export async function recordLeadSale(
       organization_sale_id: saleId,
       enrollment_id: null,
       sale_source: "manual",
+      target_offer_id: input.offer_id,
     })
 
     return { enrollmentId: null, saleId, saleSource: "manual" }
@@ -209,6 +218,7 @@ export async function recordLeadSale(
     organization_sale_id: saleId,
     enrollment_id: enrollment.id,
     sale_source: saleSource,
+    target_offer_id: enrollment.offer_id,
   })
 
   return { enrollmentId: enrollment.id, saleId, saleSource }

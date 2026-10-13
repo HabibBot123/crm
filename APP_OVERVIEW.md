@@ -67,14 +67,14 @@ Capabilities are enforced in UX (`useOrgCapabilities().can` / `scope`) and RLS (
 - Share links: any member + channel label; optional default fields + BU; click tracking (`?ref=`).
 - Pipeline: `/dashboard/crm` (RPC `crm_leads_page`, FilterRefine, side panel).
 - **Owner** (`leads.owner_id`) = who follows the lead (ops, email on assign). **≠ pay roles**.
-- Pay roles = `lead_attributions` (closer / setter / ambassador / head). Money only via attributions + Activate.
+- Pay roles = `lead_attributions` (closer / setter / ambassador / business_unit = BU Owner). Money via attributions + Activate; Stripe auto for BU Owner.
 
 ### Record sale → Activate commissions
 
 - From lead: Record sale = Create enrollment+sale | Link existing | **Sale only**.
 - Sale = cash register (`organization_sales`); CA date = **`sold_at`** (manual UI date; Stripe = now).
 - Activate commissions (preview) creates acquisition `commissions` tied to `organization_sale_id`.
-- Residual **Head / BU owner** = after Sales & Ambassadors only (**coach delivery excluded** from residual).
+- Residual **BU Owner** = from the **offer** `business_unit_id` (not lead BU). Stripe payments auto-create BU Owner coms; CRM Activate skips BU Owner if already on the sale. Offer without BU → no BU Owner com.
 - Cancel Activate = DELETE pending lines (then re-activate recreates).
 
 ### Coaching ops
@@ -89,11 +89,10 @@ Capabilities are enforced in UX (`useOrgCapabilities().can` / `scope`) and RLS (
 ### Sales & analytics
 
 - `/dashboard/sales` — treasury list (`v_organization_sales`), filters, sale detail sheet.
-- `/dashboard/analytics` — Sales/CRM analytics (cap `sales.view`); RPC `crm_sales_analytics`.
-  - Period presets (7d / 30d / Month / Year) + FilterRefine (custom range, BU).
-  - Toggle **P&L** (coms accrued on deals in period) vs **Cash** (coms `paid_at` in period); CA always on `sold_at`.
-  - Charts: revenue series + commission series (Paid history + Due/forecast mirror window).
-  - Tables: members (Owner + Closer/Setter), BUs, funnel. Pack mix UI deferred.
+- `/dashboard/analytics` — Sales/CRM analytics (cap `analytics.view`); RPC `crm_sales_analytics`.
+  - Modes **org** (admin, filtre BU optionnel) vs **BU Owner** (`viewer_mode=head`, auto).
+  - Period presets + FilterRefine (custom/BU). P&L vs Cash; CA on `sold_at`.
+  - BU Owner: BU CA, BU Owner + Team coms (no org margin); chart = BU Owner coms.
 
 ### Commissions payouts
 
@@ -192,7 +191,7 @@ Detail and RLS contracts: **`docs/06-database.md`**.
 - `organization_members` — Roles; per-type default commission rates/fixed (sales / ambassador / coach).
 - `organization_role_permissions` — Matrix role × capability; `bu_owner` row for BU-scoped caps.
 - `profiles` — App profile (`user_id`); no email (email = `auth.users`).
-- `business_units` — BU + `owner_member_id` + default Head commission.
+- `business_units` — BU + `owner_member_id` + default BU Owner commission.
 
 ### 5.2 Catalog & content
 
@@ -248,7 +247,7 @@ Detail and RLS contracts: **`docs/06-database.md`**.
 | Buy links | CoachStack interstitial → Checkout Session (not raw Payment Links) |
 | Owner vs pay | Lead Owner ≠ commission; money via attributions only |
 | CA date | `organization_sales.sold_at` |
-| Coms residual Head | After Sales & Ambassadors; coach delivery on org margin |
+| Coms residual BU Owner | Via offer BU; after Sales & Ambassadors; coach on org margin |
 | Offer delete | Forbidden; archive via Stripe-aware API |
 | Role rename | Org role `member` → `staff` |
 | Analytics packs | Pack mix removed from Sales analytics UI (products analytics later) |

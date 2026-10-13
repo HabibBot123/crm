@@ -191,6 +191,7 @@ export async function createLead(
       ...payload,
       email: emailNormalized,
       is_duplicate: (existingCount ?? 0) > 0,
+      marketing_opt_in: true,
     })
     .select("id")
     .single()
@@ -198,6 +199,7 @@ export async function createLead(
   if (error) throw error
 
   const leadId = Number(data.id)
+
   const lead = await fetchLeadDetail(supabase, leadId)
   if (!lead) {
     throw new Error("Lead was created but could not be loaded")

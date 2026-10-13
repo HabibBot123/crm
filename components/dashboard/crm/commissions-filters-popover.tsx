@@ -13,7 +13,6 @@ export type CommissionAttributionRole =
   | "closer"
   | "setter"
   | "ambassador"
-  | "business_unit"
   | "coach"
 
 export type CommissionStatusFilter = "pending" | "overdue" | "paid"
@@ -50,7 +49,6 @@ const ROLE_OPTIONS: Array<{ value: CommissionAttributionRole; label: string }> =
   { value: "closer", label: "Closer" },
   { value: "setter", label: "Setter" },
   { value: "ambassador", label: "Ambassador" },
-  { value: "business_unit", label: "Head" },
   { value: "coach", label: "Coach" },
 ]
 
@@ -63,7 +61,6 @@ function isRoleFilter(value: string): value is CommissionAttributionRole {
     value === "closer" ||
     value === "setter" ||
     value === "ambassador" ||
-    value === "business_unit" ||
     value === "coach"
   )
 }

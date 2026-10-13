@@ -16,6 +16,7 @@ import { LoadingRows } from "@/components/dashboard/loading-rows"
 import { EmptyState } from "@/components/dashboard/empty-state"
 import { NoAccessState } from "@/components/dashboard/no-access-state"
 import { AnalyticsFiltersPopover } from "@/components/dashboard/analytics/analytics-filters-popover"
+import { MarketingAnalyticsPanel } from "@/components/dashboard/analytics/marketing-analytics-panel"
 import {
   ChartContainer,
   ChartTooltip,
@@ -25,7 +26,10 @@ import {
 import { useCurrentOrganization } from "@/components/providers/organization-provider"
 import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
 import { useBusinessUnits } from "@/hooks/use-business-units"
-import { useCrmSalesAnalytics } from "@/hooks/use-analytics"
+import {
+  useCrmMarketingAnalytics,
+  useCrmSalesAnalytics,
+} from "@/hooks/use-analytics"
 import { useOrganizationLeadStatuses } from "@/hooks/use-organization-lead-statuses"
 import { formatAmountFromCents, cn } from "@/lib/utils"
 import type {
@@ -33,9 +37,10 @@ import type {
   CrmSalesAnalytics,
 } from "@/schemas/analytics.schema"
 
-type Preset = "7d" | "30d" | "month" | "year"
+type Preset = "7d" | "30d" | "month" | "quarter" | "year"
 type RoleTab = AnalyticsRoleKind
 type FinanceMode = "pnl" | "cash"
+type AnalyticsSection = "sales" | "marketing"
 
 function toYmd(date: Date): string {
   return date.toLocaleDateString("en-CA")
@@ -55,6 +60,9 @@ function rangeForPreset(preset: Preset): { from: string; to: string } {
     from.setDate(from.getDate() - 29)
   } else if (preset === "month") {
     from.setDate(1)
+  } else if (preset === "quarter") {
+    const quarterStartMonth = Math.floor(from.getMonth() / 3) * 3
+    from.setMonth(quarterStartMonth, 1)
   } else {
     from.setMonth(0, 1)
   }
@@ -70,6 +78,14 @@ function previousRange(
     const start = parseYmd(from)
     const prevEnd = new Date(start.getFullYear(), start.getMonth(), 0)
     const prevStart = new Date(prevEnd.getFullYear(), prevEnd.getMonth(), 1)
+    return { from: toYmd(prevStart), to: toYmd(prevEnd) }
+  }
+
+  if (preset === "quarter") {
+    const start = parseYmd(from)
+    const prevEnd = new Date(start.getFullYear(), start.getMonth(), 0)
+    const prevStartMonth = Math.floor(prevEnd.getMonth() / 3) * 3
+    const prevStart = new Date(prevEnd.getFullYear(), prevStartMonth, 1)
     return { from: toYmd(prevStart), to: toYmd(prevEnd) }
   }
 
@@ -97,6 +113,16 @@ function formatMoney(cents: number): string {
 function daySpan(from: string, to: string): number {
   const ms = parseYmd(to).getTime() - parseYmd(from).getTime()
   return Math.floor(ms / 86_400_000) + 1
+}
+
+/** Align revenue chart with RPC commission grain (month for quarter/year). */
+function isMonthlyChartGrain(
+  preset: Preset | "custom",
+  from: string,
+  to: string
+): boolean {
+  if (preset === "quarter" || preset === "year") return true
+  return daySpan(from, to) > 60
 }
 
 function formatBucketLabel(key: string, monthly: boolean): string {
@@ -150,9 +176,9 @@ function pipelineStatusColor(
 function buildChartSeries(
   points: CrmSalesAnalytics["revenue_series"],
   from: string,
-  to: string
+  to: string,
+  monthly: boolean
 ): Array<{ key: string; label: string; revenue: number }> {
-  const monthly = daySpan(from, to) > 60
   const totals = new Map<string, number>()
 
   for (const point of points) {
@@ -309,7 +335,7 @@ function HeroStat({
           align="start"
           valueClassName={cn(
             "font-display font-bold tracking-tight text-foreground",
-            large ? "text-4xl sm:text-5xl" : "text-2xl"
+            large ? "text-3xl sm:text-4xl" : "text-2xl"
           )}
         />
       </div>
@@ -345,9 +371,17 @@ const thRightPlainClass =
 
 export default function AnalyticsPage() {
   const { currentOrganization } = useCurrentOrganization()
-  const { can, isLoading: capsLoading } = useOrgCapabilities()
+  const {
+    can,
+    scope,
+    ownedBusinessUnitIds,
+    isLoading: capsLoading,
+  } = useOrgCapabilities()
   const organizationId = currentOrganization?.id ?? null
-  const canView = can("sales.view")
+  const canView = can("analytics.view")
+  const isNaturalHead = scope === "bu"
+  const isHeadView = isNaturalHead
+  const viewerMode = isHeadView ? "head" : "org"
 
   const initialRange = useMemo(() => rangeForPreset("30d"), [])
   const [preset, setPreset] = useState<Preset | "custom">("30d")
@@ -356,10 +390,39 @@ export default function AnalyticsPage() {
   const [businessUnitId, setBusinessUnitId] = useState<string>("all")
   const [roleTab, setRoleTab] = useState<RoleTab>("closer")
   const [financeMode, setFinanceMode] = useState<FinanceMode>("pnl")
+  const [section, setSection] = useState<AnalyticsSection>("sales")
 
   const { units } = useBusinessUnits(organizationId)
   const { statuses: leadStatuses } = useOrganizationLeadStatuses(organizationId)
-  const showBuFilter = units.length > 0
+
+  const filterUnits = useMemo(() => {
+    if (isNaturalHead) {
+      const owned = new Set(ownedBusinessUnitIds)
+      return units.filter((unit) => owned.has(unit.id))
+    }
+    return units
+  }, [isNaturalHead, ownedBusinessUnitIds, units])
+
+  const showBuFilter = filterUnits.length > 0
+  const selectedBuId =
+    businessUnitId === "all" ? null : Number(businessUnitId)
+
+  const scopeSubtitle = useMemo(() => {
+    const selectedUnit =
+      selectedBuId == null
+        ? null
+        : filterUnits.find((unit) => unit.id === selectedBuId) ?? null
+
+    if (isHeadView) {
+      if (selectedUnit) return `BU Owner · ${selectedUnit.name}`
+      if (filterUnits.length === 1) return `BU Owner · ${filterUnits[0].name}`
+      if (filterUnits.length > 1) return "BU Owner · your business units"
+      return "BU Owner"
+    }
+
+    if (selectedUnit) return `Organization · ${selectedUnit.name}`
+    return "Organization"
+  }, [filterUnits, isHeadView, selectedBuId])
 
   const prev = useMemo(
     () => previousRange(from, to, preset),
@@ -371,19 +434,34 @@ export default function AnalyticsPage() {
     to,
     previousFrom: prev.from,
     previousTo: prev.to,
-    businessUnitId: businessUnitId === "all" ? null : Number(businessUnitId),
+    businessUnitId: selectedBuId,
     preset,
-    enabled: canView && !capsLoading,
+    viewerMode,
+    enabled: canView && !capsLoading && section === "sales",
+  })
+
+  const {
+    data: marketingData,
+    previous: marketingPrevious,
+    isLoading: marketingLoading,
+  } = useCrmMarketingAnalytics(organizationId, {
+    from,
+    to,
+    previousFrom: prev.from,
+    previousTo: prev.to,
+    businessUnitId: selectedBuId,
+    enabled: canView && !capsLoading && section === "marketing",
   })
 
   const kpis = data?.kpis
   const prevKpis = previous?.kpis
 
+  const chartIsMonthly = isMonthlyChartGrain(preset, from, to)
   const chartData = useMemo(
-    () => buildChartSeries(data?.revenue_series ?? [], from, to),
-    [data?.revenue_series, from, to]
+    () =>
+      buildChartSeries(data?.revenue_series ?? [], from, to, chartIsMonthly),
+    [data?.revenue_series, from, to, chartIsMonthly]
   )
-  const chartIsMonthly = daySpan(from, to) > 60
 
   const memberRows = useMemo(() => {
     if (!data) return []
@@ -415,7 +493,7 @@ export default function AnalyticsPage() {
 
   const pipelineMax = Math.max(...pipeline.map((row) => row.count), 1)
   const businessUnits = data?.business_units ?? []
-  const showBusinessUnits = businessUnits.length >= 2
+  const showBusinessUnits = !isHeadView && businessUnits.length >= 2
 
   const costsCents =
     financeMode === "cash"
@@ -425,11 +503,35 @@ export default function AnalyticsPage() {
     financeMode === "cash"
       ? (prevKpis?.commissions_paid_cents ?? 0)
       : (prevKpis?.commissions_cents ?? 0)
+  const teamCostsCents =
+    financeMode === "cash"
+      ? (kpis?.team_commissions_paid_cents ?? 0)
+      : (kpis?.team_commissions_cents ?? 0)
+  const prevTeamCostsCents =
+    financeMode === "cash"
+      ? (prevKpis?.team_commissions_paid_cents ?? 0)
+      : (prevKpis?.team_commissions_cents ?? 0)
+  const buOwnerCostsCents =
+    financeMode === "cash"
+      ? (kpis?.head_commissions_paid_cents ?? 0)
+      : (kpis?.head_commissions_cents ?? 0)
+  const prevBuOwnerCostsCents =
+    financeMode === "cash"
+      ? (prevKpis?.head_commissions_paid_cents ?? 0)
+      : (prevKpis?.head_commissions_cents ?? 0)
   const netCents = (kpis?.revenue_cents ?? 0) - costsCents
   const prevNetCents = (prevKpis?.revenue_cents ?? 0) - prevCostsCents
 
   const commissionShare =
     kpis && kpis.revenue_cents > 0 ? shareOf(costsCents, kpis.revenue_cents) : 0
+  const teamShare =
+    kpis && kpis.revenue_cents > 0
+      ? shareOf(teamCostsCents, kpis.revenue_cents)
+      : 0
+  const buOwnerShare =
+    kpis && kpis.revenue_cents > 0
+      ? shareOf(buOwnerCostsCents, kpis.revenue_cents)
+      : 0
   const netShare =
     kpis && kpis.revenue_cents > 0 ? shareOf(netCents, kpis.revenue_cents) : 0
 
@@ -476,15 +578,13 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-4 p-6 lg:p-8">
-      <PageHeader title="Analytics">
-        <div className="flex flex-nowrap items-center justify-end gap-1.5">
+      <PageHeader title="Analytics" subtitle={scopeSubtitle}>
+        <div className="flex w-full flex-wrap items-center gap-1.5 sm:justify-end">
           <div className="inline-flex items-center rounded-lg bg-muted p-0.5">
             {(
               [
-                ["7d", "7d"],
-                ["30d", "30d"],
-                ["month", "Month"],
-                ["year", "Year"],
+                ["sales", "Sales"],
+                ["marketing", "Marketing"],
               ] as const
             ).map(([key, label]) => (
               <button
@@ -492,6 +592,31 @@ export default function AnalyticsPage() {
                 type="button"
                 className={cn(
                   "inline-flex h-8 items-center rounded-md px-2.5 text-sm font-medium transition-colors",
+                  section === key
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+                onClick={() => setSection(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="inline-flex max-w-full flex-wrap items-center rounded-lg bg-muted p-0.5">
+            {(
+              [
+                ["7d", "7d"],
+                ["30d", "30d"],
+                ["month", "Month"],
+                ["quarter", "Quarter"],
+                ["year", "Year"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                className={cn(
+                  "inline-flex h-8 items-center rounded-md px-2 text-sm font-medium transition-colors sm:px-2.5",
                   preset === key
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
@@ -506,10 +631,9 @@ export default function AnalyticsPage() {
             values={{
               from: preset === "custom" ? from : null,
               to: preset === "custom" ? to : null,
-              businessUnitId:
-                businessUnitId === "all" ? null : Number(businessUnitId),
+              businessUnitId: selectedBuId,
             }}
-            units={units.map((unit) => ({ id: unit.id, name: unit.name }))}
+            units={filterUnits.map((unit) => ({ id: unit.id, name: unit.name }))}
             showBuFilter={showBuFilter}
             onApply={(next) => {
               if (next.from && next.to) {
@@ -527,7 +651,13 @@ export default function AnalyticsPage() {
         </div>
       </PageHeader>
 
-      {isLoading ? (
+      {section === "marketing" ? (
+        <MarketingAnalyticsPanel
+          data={marketingData}
+          previous={marketingPrevious}
+          isLoading={marketingLoading}
+        />
+      ) : isLoading ? (
         <SectionCard>
           <LoadingRows count={6} />
         </SectionCard>
@@ -568,7 +698,13 @@ export default function AnalyticsPage() {
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-foreground">
-                {financeMode === "pnl" ? "P&L" : "Cash"}
+                {isHeadView
+                  ? financeMode === "pnl"
+                    ? "BU Owner earnings"
+                    : "BU Owner cash"
+                  : financeMode === "pnl"
+                    ? "P&L"
+                    : "Cash"}
               </h3>
               <div className="inline-flex items-center rounded-lg bg-muted p-0.5">
                 <button
@@ -601,7 +737,7 @@ export default function AnalyticsPage() {
             </div>
             <SectionCard>
               <div className="space-y-4">
-                {kpis && kpis.revenue_cents > 0 ? (
+                {!isHeadView && kpis && kpis.revenue_cents > 0 ? (
                   <div className="space-y-2">
                     <div className="flex h-3 overflow-hidden rounded-full bg-muted">
                       <div
@@ -644,7 +780,9 @@ export default function AnalyticsPage() {
                   </thead>
                   <tbody>
                     <tr className="border-b border-border/60">
-                      <td className="py-3 text-foreground">Revenue</td>
+                      <td className="py-3 text-foreground">
+                        {isHeadView ? "BU revenue" : "Revenue"}
+                      </td>
                       <td className="py-3 text-right">
                         <ValueWithDelta
                           value={kpis?.revenue_cents ?? 0}
@@ -657,36 +795,85 @@ export default function AnalyticsPage() {
                         100%
                       </td>
                     </tr>
-                    <tr className="border-b border-border/60">
-                      <td className="py-3 text-foreground">
-                        Commissions                      </td>
-                      <td className="py-3 text-right">
-                        <ValueWithDelta
-                          value={costsCents}
-                          previous={prevCostsCents}
-                          formatValue={formatMoney}
-                          invert
-                          valueClassName="font-medium text-foreground"
-                        />
-                      </td>
-                      <td className="py-3 text-right tabular-nums text-muted-foreground">
-                        {commissionShare.toFixed(0)}%
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="py-3 font-medium text-foreground">Net</td>
-                      <td className="py-3 text-right">
-                        <ValueWithDelta
-                          value={netCents}
-                          previous={prevNetCents}
-                          formatValue={formatMoney}
-                          valueClassName="font-semibold text-foreground"
-                        />
-                      </td>
-                      <td className="py-3 text-right tabular-nums text-muted-foreground">
-                        {netShare.toFixed(0)}%
-                      </td>
-                    </tr>
+                    {isHeadView ? (
+                      <>
+                        <tr className="border-b border-border/60">
+                          <td className="py-3 text-foreground">Your settlement</td>
+                          <td className="py-3 text-right">
+                            <ValueWithDelta
+                              value={costsCents}
+                              previous={prevCostsCents}
+                              formatValue={formatMoney}
+                              valueClassName="font-medium text-foreground"
+                            />
+                          </td>
+                          <td className="py-3 text-right tabular-nums text-muted-foreground">
+                            {commissionShare.toFixed(0)}%
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="py-3 text-foreground">Team commissions</td>
+                          <td className="py-3 text-right">
+                            <ValueWithDelta
+                              value={teamCostsCents}
+                              previous={prevTeamCostsCents}
+                              formatValue={formatMoney}
+                              valueClassName="font-medium text-foreground"
+                            />
+                          </td>
+                          <td className="py-3 text-right tabular-nums text-muted-foreground">
+                            {teamShare.toFixed(0)}%
+                          </td>
+                        </tr>
+                      </>
+                    ) : (
+                      <>
+                        <tr className="border-b border-border/60">
+                          <td className="py-3 text-foreground">Team commissions</td>
+                          <td className="py-3 text-right">
+                            <ValueWithDelta
+                              value={teamCostsCents}
+                              previous={prevTeamCostsCents}
+                              formatValue={formatMoney}
+                              invert
+                              valueClassName="font-medium text-foreground"
+                            />
+                          </td>
+                          <td className="py-3 text-right tabular-nums text-muted-foreground">
+                            {teamShare.toFixed(0)}%
+                          </td>
+                        </tr>
+                        <tr className="border-b border-border/60">
+                          <td className="py-3 text-foreground">BU Owner settlements</td>
+                          <td className="py-3 text-right">
+                            <ValueWithDelta
+                              value={buOwnerCostsCents}
+                              previous={prevBuOwnerCostsCents}
+                              formatValue={formatMoney}
+                              invert
+                              valueClassName="font-medium text-foreground"
+                            />
+                          </td>
+                          <td className="py-3 text-right tabular-nums text-muted-foreground">
+                            {buOwnerShare.toFixed(0)}%
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="py-3 font-medium text-foreground">Net</td>
+                          <td className="py-3 text-right">
+                            <ValueWithDelta
+                              value={netCents}
+                              previous={prevNetCents}
+                              formatValue={formatMoney}
+                              valueClassName="font-semibold text-foreground"
+                            />
+                          </td>
+                          <td className="py-3 text-right tabular-nums text-muted-foreground">
+                            {netShare.toFixed(0)}%
+                          </td>
+                        </tr>
+                      </>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -751,7 +938,13 @@ export default function AnalyticsPage() {
               )}
             </SectionCard>
 
-            <SectionCard title="Commissions over time">
+            <SectionCard
+              title={
+                isHeadView
+                  ? "Your settlements over time"
+                  : "Costs over time"
+              }
+            >
               {!commissionChartHasData ? (
                 <p className="text-sm text-muted-foreground">
                   No paid or due commissions to show.
@@ -950,9 +1143,9 @@ export default function AnalyticsPage() {
               <div className="inline-flex items-center rounded-lg bg-muted p-0.5">
                 {(
                   [
+                        ["owner", "Owners", Crown],
                     ["closer", "Closers", Handshake],
                     ["setter", "Setters", Phone],
-                    ["owner", "Owners", Crown],
                   ] as const
                 ).map(([key, label, Icon]) => (
                   <button

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { sanitizeBioHtml } from "@/lib/branding/sanitize-bio-html"
 import { parseOrganizationBrandingJson } from "@/schemas/organization-branding.schema"
 import {
   parseOrganizationMode,
@@ -328,7 +329,8 @@ export async function updateOrganizationBranding(
   }
 
   if (input.bio !== undefined) {
-    updates.bio = input.bio?.trim() || null
+    const cleaned = input.bio ? sanitizeBioHtml(input.bio) : ""
+    updates.bio = cleaned || null
   }
 
   if (input.credentials !== undefined) {

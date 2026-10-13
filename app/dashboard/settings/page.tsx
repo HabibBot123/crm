@@ -10,6 +10,7 @@ import {
   KeyRound,
   Wallet,
   Building2,
+  Mail,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -21,20 +22,29 @@ import type { NavListItem } from "@/components/dashboard/nav-list"
 import { OrgPermissionsMatrix } from "@/components/dashboard/settings/org-permissions-matrix"
 import { OrgCommissionPlanSettings } from "@/components/dashboard/settings/org-commission-plan"
 import { BusinessUnitsPanel } from "@/components/dashboard/settings/business-units-panel"
+import { SendingDomainPanel } from "@/components/dashboard/settings/sending-domain-panel"
 import { EmptyState } from "@/components/dashboard/empty-state"
 import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
 import { TeamPlanGate } from "@/components/dashboard/team-plan-gate"
 
-type Section = "domain" | "payments" | "permissions" | "commissions" | "business-units"
+type Section =
+  | "domain"
+  | "email"
+  | "payments"
+  | "permissions"
+  | "commissions"
+  | "business-units"
 
 const baseNav: NavListItem<Section>[] = [
   { id: "domain", label: "Domain", icon: Globe },
+  { id: "email", label: "Email", icon: Mail },
   { id: "payments", label: "Payments", icon: CreditCard },
 ]
 
 function isSettingsSection(value: string | null): value is Section {
   return (
     value === "domain" ||
+    value === "email" ||
     value === "payments" ||
     value === "permissions" ||
     value === "commissions" ||
@@ -92,7 +102,8 @@ export default function SettingsPage() {
           className={
             section === "permissions" ||
             section === "commissions" ||
-            section === "business-units"
+            section === "business-units" ||
+            section === "email"
               ? "min-w-0 flex-1"
               : "min-w-0 flex-1 max-w-lg"
           }
@@ -109,6 +120,17 @@ export default function SettingsPage() {
                   : process.env.NEXT_PUBLIC_APP_URL}
               </p>
             </SectionCard>
+          )}
+
+          {section === "email" && (
+            !organizationId ? (
+              <EmptyState title="No organization" description="Select an organization first." />
+            ) : (
+              <SendingDomainPanel
+                organizationId={organizationId}
+                canEdit={can("org.settings")}
+              />
+            )
           )}
 
           {section === "payments" && (
@@ -176,10 +198,13 @@ export default function SettingsPage() {
           )}
 
           {section === "permissions" && (
-            <SectionCard
-              title="Role permissions"
-              subtitle="What each role can do."
-            >
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Role permissions</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  What each role can do.
+                </p>
+              </div>
               {!organizationId ? (
                 <EmptyState title="No organization" description="Select an organization first." />
               ) : !isOwner ? (
@@ -188,9 +213,11 @@ export default function SettingsPage() {
                   description="Only the organization owner can edit permissions."
                 />
               ) : (
-                <OrgPermissionsMatrix organizationId={organizationId} canEdit={isOwner} />
+                <SectionCard noPadding>
+                  <OrgPermissionsMatrix organizationId={organizationId} canEdit={isOwner} />
+                </SectionCard>
               )}
-            </SectionCard>
+            </div>
           )}
         </div>
       </div>

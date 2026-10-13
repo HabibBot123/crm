@@ -14,7 +14,7 @@ export function PaginationSummary({ page, pageSize, total }: PaginationSummaryPr
   const to = Math.min(end, total)
 
   return (
-    <p className="text-xs text-muted-foreground">
+    <p className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
       Showing {from}–{to} of {total}
     </p>
   )

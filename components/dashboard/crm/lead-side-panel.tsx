@@ -58,7 +58,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function AttributionTypeBadge({ type }: { type: string }) {
   const label =
-    type === "business_unit" ? "Head" : type.charAt(0).toUpperCase() + type.slice(1)
+    type === "business_unit" ? "BU Owner" : type.charAt(0).toUpperCase() + type.slice(1)
   return (
     <span
       className={cn(

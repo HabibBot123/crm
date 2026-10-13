@@ -17,7 +17,7 @@ export const MATRIX_ROLE_LABELS: Record<MatrixRole, string> = {
   ambassador: "Ambassador",
   coach: "Coach",
   staff: "Staff",
-  bu_owner: "BU owner",
+  bu_owner: "BU Owner",
 }
 
 export type CapabilityGroup = {
@@ -49,6 +49,7 @@ export const CAPABILITY_GROUPS: CapabilityGroup[] = [
       { capability: "clients.view", label: "View clients" },
       { capability: "clients.enroll_manual", label: "Add manual enrollment" },
       { capability: "sales.view", label: "View sales / revenue" },
+      { capability: "analytics.view", label: "View analytics" },
     ],
   },
   {
@@ -97,6 +98,11 @@ export const CAPABILITY_GROUPS: CapabilityGroup[] = [
       { capability: "commissions.mark_paid", label: "Mark commissions paid" },
       { capability: "bu.manage", label: "Manage business units" },
     ],
+  },
+  {
+    id: "campaigns",
+    label: "Campaigns",
+    items: [{ capability: "campaigns.manage", label: "Manage campaigns" }],
   },
   {
     id: "org",

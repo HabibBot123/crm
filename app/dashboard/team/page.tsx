@@ -81,7 +81,7 @@ const roleColors: Record<string, string> = {
   staff: "bg-muted text-foreground",
 }
 
-const DEFAULT_PAGE_SIZE = 10
+const DEFAULT_PAGE_SIZE = 25
 
 function parseOptionalPercent(raw: string): number | null | "invalid" {
   const trimmed = raw.trim()

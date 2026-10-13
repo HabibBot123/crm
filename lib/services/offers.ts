@@ -254,6 +254,15 @@ export type UpdateOfferInput = {
   status?: OfferStatus
 }
 
+const PRICING_LOCKED_FIELDS = [
+  "price",
+  "currency",
+  "interval",
+  "installment_count",
+  "access_duration_months",
+  "sessions_count",
+] as const
+
 export async function updateOffer(
   supabase: SupabaseClient,
   offerId: number,
@@ -305,9 +314,33 @@ export async function updateOffer(
     return updated as Offer
   }
 
+  const { data: existing, error: existingError } = await supabase
+    .from("offers")
+    .select("id, status")
+    .eq("id", offerId)
+    .single()
+
+  if (existingError || !existing) {
+    throw existingError ?? new Error("Offer not found")
+  }
+
+  const currentStatus = (existing as { status: OfferStatus }).status
+  const pricingLocked = currentStatus !== "draft"
+  if (pricingLocked) {
+    const attempted = PRICING_LOCKED_FIELDS.filter((field) => input[field] !== undefined)
+    if (attempted.length > 0) {
+      throw new Error(
+        "Base pricing can’t be changed after an offer is published. Archive it and create a new offer."
+      )
+    }
+  }
+
   const payload: Record<string, unknown> = {}
   if (input.title !== undefined) payload.title = input.title.trim()
-  if (input.description !== undefined) payload.description = input.description?.trim() || null
+  if (input.description !== undefined) {
+    const trimmed = input.description?.trim() || null
+    payload.description = trimmed
+  }
   if (input.key_features !== undefined) payload.key_features = sanitizeKeyFeatures(input.key_features)
   if (input.price !== undefined) payload.price = input.price
   if (input.currency !== undefined) payload.currency = input.currency

@@ -19,9 +19,9 @@ Statuts :
 | Manual enrollment + sale | done | Dialog Add enrollment ; lookup email → name + enrollments vivants ; `source=manual` |
 | Products list + CRUD course/coaching | done | Course = content ; coaching = pack commercial + ops assign |
 | Content library upload | done | `/dashboard/content`, tus |
-| Offers + variants + billing types | done | one-time / sub / installment ; accès + séances sur l’offre ; composition éditable si 0 vente |
+| Offers + variants + billing types | done | Overview = name + TipTap desc + preview buy ; Pricing = base (lock si active) + checkout links/variants ; plus de key features |
 | Offer archive via Stripe Connect | done | pas de delete offre |
-| Branding / store page | done | Logo, bio, 1 couleur, offers actives + Buy. Cut hero/FAQ/testimonials/stats |
+| Branding / store page | done | Logo, TipTap bio, 1 couleur, offers + Buy. Editor split + preview live (`StorefrontView`) — `docs/04` |
 | Public buy links | done | Interstitial → Stripe Checkout Session ; share links sur offre |
 | Headless checkout API docs / embed | todo | Moins prioritaire si redirect Session suffit |
 | Stripe Connect onboarding | done | Requis pour **publish/sell** seulement (plus pour draft catalogue) |
@@ -45,7 +45,7 @@ Statuts :
 | Pipeline leads + side panel | partial | `/dashboard/crm` ; **Owner** (`owner_id`, mail à l’assign) ≠ pay roles ; colonnes Closer/Setter/Ambassadors |
 | CRM filters (RPC + custom fields) | done | `crm_leads_page` ; status/origin/members/BU ; champs filtrables ≤4 — `docs/04` |
 | Org lead statuses (≤10, nom+couleur) | done | Hub Statuses ; système `new`/`lost`/`converted` ; custom add ; no delete if used — `docs/04` |
-| Commission calc of_base / of_residual + schedules | partial | Settings UI + preview Activate ; residual Head = acquisition only (coach hors residual) — `docs/04` |
+| Commission calc of_base / of_residual + schedules | partial | Team/coach via Settings + Activate ; BU Owner → settlement périodique (backlog ci-dessous) — `docs/04` |
 | Forms hub (inbound) | done | `/dashboard/crm/forms` : Forms, Fields, Statuses, Share links |
 | CRM fields + form builder | partial | hub Fields + form editor ; hidden + success message ; drop `form_type` ; `initial_status` |
 | Public form `/org/.../form/...` | done | clicks `?ref=`, honeypot, rate limit ; thank-you + redirect cumulables ; status d’arrivée form |
@@ -53,16 +53,24 @@ Statuts :
 | Dedup email (lead + badge) | done | `is_duplicate` ; UI row + badge |
 | Clicks tracking + anti-spam POST | done | GET+ref / honeypot + rate limit |
 | Business Units first-class | done | Settings → Business units ; colonne CRM si ≥1 BU ; owner + % default |
-| Commissions (acquisition + delivery) | partial | Activate / cancel (= delete pending) ; page table + résumé member ; pending↔paid ; unpay ; audit `paid_by` ; PDF later — `docs/04` |
+| BU Owner settlement (périodique) | backlog | Voir section backlog ci-dessous — `docs/04` |
+| Commissions (acquisition + delivery) | partial | Team + coach ; page payouts ; BU Owner sorti vers settlement — `docs/04` |
 | Record sale depuis lead CRM | partial | Create / Link / **Sale only** ; sale = tréso + `base_amount` installment — `docs/04` |
 | Page Sales (dashboard) | done | `/dashboard/sales` ; cap `sales.view` ; enrollment + lead + coms |
-| Analytics Sales/CRM | done | `/dashboard/analytics` ; RPC `crm_sales_analytics` ; toggle P&L/Cash ; courbes CA + coms (miroir) ; presets segmentés + FilterRefine (custom/BU) ; members/BU/funnel ; packs UI retirée (analytics produits plus tard) ; cap `sales.view` ; `docs/04` |
-| Analytics Marketing | todo later | Share links / ambassadors ; page séparée |
+| Analytics Sales/CRM | done | `/dashboard/analytics` ; cap `analytics.view` ; modes org / BU Owner ; presets 7d/30d/Month/Quarter/Year ; RPC `crm_sales_analytics` ; P&L/Cash ; `docs/04` |
+| Analytics Marketing | done | Switch Sales/Marketing sur `/dashboard/analytics` ; RPC `crm_marketing_analytics` ; links / ambassadors / forms — `docs/04` |
+| Overview Home (member / org / bu) | done | `/dashboard` : défaut Member ; Organization = `analytics.view` ; Business unit = statut BU owner ; KPIs 30j + attention — `docs/04` |
 | Analytics Products / packs | todo later | Best sellers / mix packs (sorti de Sales analytics) |
+| Devise org (1 currency) | todo later | 1 devise / org ; Checkout + sales + coms + analytics + settlements dans cette devise ; reject Stripe ≠ org — `docs/04` |
 | Booking Nylas | todo | phases ultérieures |
 | Messagerie prospect (email / WhatsApp) | todo later | Via Unipile (user connecte ses comptes). Inbox + historique sur lead. Billing : **add-on par siège / connexion**, pas crédits (coût Unipile = compte connecté). WhatsApp officiel Meta / crédits = éventuelle phase 2. |
 | Outbound CRM events (webhooks) | todo | Fondation integrations : émettre events (`lead.created`, `lead.updated`, `call.booked`, `client.converted`…) vers URL org → Zapier / Make / ESP. À mettre en place — `docs/04`. |
-| Marketing ESP (welcome / nurture / campagnes) | revisit | CoachStack = CRM vérité ; ESP externe via API pour envois + segments. Pas de DIY deliverability (IP/DKIM/warming). ESP à trancher — `docs/04`. Brief EDGE : persona, urgency, exit au call booked. Après / avec outbound events. |
+| Marketing : domaine custom org (DNS) | partial | Settings → Email ; create/verify/refresh/remove via Resend Domains API ; table `organization_sending_domains` — `docs/04` |
+| Marketing : sync contacts → Resend | partial | Page Campaigns `/dashboard/campaigns` (cap `campaigns.manage`) : Sync audience + stats + segments ; indexes pending sync — `docs/04` |
+| Marketing : segments CRM → Resend | partial | `campaign_segments.filter_json` (AND/OR/NOT) ; resolve local ; membership mise à jour au Sync audience — `docs/04` |
+| Marketing : campagnes Broadcast | todo | Draft / schedule / send ; templates React Email ; topics + unsub ; webhooks bounce/complaint |
+| Marketing : consent / topics | partial | Form case obligatoire + `leads.marketing_opt_in` + `campaign_contacts` / `campaign_topics` ; lead manuel + enrollment = opt-in true ; sync triggers ; topic Resend à l’ajout domaine — `docs/04` |
+| Marketing : séquences auto (welcome pack, nurture) | todo later | Phase 2 ; orchestration CoachStack (Inngest/Trigger…), **pas** Resend Automations — `docs/04` |
 
 ## Public & vente
 
@@ -94,6 +102,22 @@ Statuts :
 | Bloquer delete produit/offre/content si déjà utilisé | todo / revisit | `todo.txt` ligne 1 — vérifier couverture réelle |
 | Inactiver `offer_variants` | todo | `todo.txt` |
 | Durcir règles métier archive/delete | revisit | partiellement fait côté products/offers |
+
+## Backlog — BU Owner settlement (décidé 2026-10-10)
+
+Cible produit figée dans `docs/04`. Projet pas live : mock data wipeable.
+
+| Item | Status | Notes |
+|------|--------|--------|
+| Schema `bu_owner_settlements` | done | RLS view_all/view_own + mark_paid |
+| Config **par BU** | done | `%`, `settlement_basis`, `payout_delay_months` ; Settings Business units |
+| Job settlement | done (manual/RPC) | `settle_bu_owner_month` ; cron pg_cron encore todo |
+| Payouts UX | done | Nav **Payouts** ; tabs Team / BU Owners ; expand calcul settlement |
+| Analytics org + BU Owner | done | RPC lit settlements ; UI settlement/team |
+| Retirer Stripe auto + Activate Head | done | Wipe legacy ; Activate team-only |
+| Seed / wipe mock | done | Offers org1 liées BU ; backfill fév–sept 2026 |
+| Slot plan `head` Settings Commissions | done | UI retirée ; JSON legacy conservé |
+| Cron mensuel auto | todo | Appeler `settle_bu_owner_month` au 1er du mois |
 
 ## Vision reprise (vide jusqu’à discussion)
 

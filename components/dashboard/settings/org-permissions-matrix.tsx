@@ -65,9 +65,8 @@ export function OrgPermissionsMatrix({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="min-w-0 max-w-full overflow-x-auto rounded-xl border border-border">
-        <table className="w-full min-w-[820px] text-left text-sm">
+    <div className="min-w-0 max-w-full overflow-x-auto">
+      <table className="w-full min-w-[820px] text-left text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/60">
               <th className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -117,7 +116,6 @@ export function OrgPermissionsMatrix({
             ))}
           </tbody>
         </table>
-      </div>
     </div>
   )
 }

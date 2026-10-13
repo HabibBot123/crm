@@ -87,6 +87,8 @@ export async function createBusinessUnit(
       owner_member_id: parsed.owner_member_id ?? null,
       default_commission_rate: parsed.default_commission_rate ?? null,
       default_commission_fixed: parsed.default_commission_fixed ?? null,
+      settlement_basis: parsed.settlement_basis ?? "of_residual",
+      payout_delay_months: parsed.payout_delay_months ?? 0,
     })
     .select("*")
     .single()

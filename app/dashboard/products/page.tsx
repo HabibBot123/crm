@@ -42,7 +42,7 @@ const statusStyles: Record<string, string> = {
   archived: "bg-muted text-muted-foreground",
 }
 
-const DEFAULT_PAGE_SIZE = 10
+const DEFAULT_PAGE_SIZE = 25
 
 export default function ProductsPage() {
   const router = useRouter()

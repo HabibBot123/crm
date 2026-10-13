@@ -37,7 +37,7 @@ CRM + commerce + delivery **spécialisé coaching**, pas un CRM générique ni u
 ## À confirmer (vision revive)
 
 - [x] ICP prioritaire : **organisations / multi-coach** (solo secondaire)
-- [x] Site CoachStack vs site externe : **buy links OK** ; delivery chez nous ; branding = store minimal
+- [x] Site CoachStack vs site externe : **buy links OK** ; delivery chez nous ; branding = store minimal (TipTap bio + preview live décidés 2026-10)
 - [ ] Vertical prioritaire (sport déjà dans le nom du repo vs “tous coachs”) ?
 - [ ] Queue diff vs Teachable / Kajabi / Systeme.io / Notion-CRM ?
 - [x] Coaching v1 : packs + assign (pas booking) — voir `04-decisions.md`

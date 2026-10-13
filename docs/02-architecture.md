@@ -59,7 +59,7 @@ organizations ──< organization_members
 - `enrollment_products` : snapshot à l’achat (trigger `enrollment_products_fill` — détail `docs/06-database.md`) — grain pour assign / progress / sessions.
 - Guest purchase → compte : RPC `link_guest_purchases_to_user` via `app/auth/callback` (voir `docs/06-database.md`).
 - Coaching v1 : **assignation** prioritaire ; pas de booking calendrier.
-- Dashboard metrics : RPC Supabase `dashboard_overview` (incl. unassigned coaching).
+- Dashboard Overview : RPC `dashboard_overview` (member \| org via `analytics.view` \| bu via statut BU owner).
 - Branding org → JSON / champs utilisés par `/org/[slug]`.
 
 ## Design

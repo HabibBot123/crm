@@ -18,6 +18,8 @@ const defaultConfigs: Record<string, StatusConfig> = {
   paused:    { label: "Paused",    variant: "warning"     },
   invited:   { label: "Invited",   variant: "warning"     },
   revoked:   { label: "Revoked",   variant: "destructive" },
+  editable:  { label: "Editable",  variant: "warning"     },
+  locked:    { label: "Locked",    variant: "muted"       },
 }
 
 const variantStyles: Record<StatusVariant, string> = {
@@ -36,7 +38,8 @@ interface StatusBadgeProps {
 
 export function StatusBadge({ status, configs, className }: StatusBadgeProps) {
   const merged = configs ? { ...defaultConfigs, ...configs } : defaultConfigs
-  const config = merged[status.toLowerCase()] ?? { label: status, variant: "default" as StatusVariant }
+  const fallback: StatusConfig = { label: status, variant: "default" }
+  const config = merged[status.toLowerCase()] ?? fallback
   return (
     <Badge
       variant="outline"

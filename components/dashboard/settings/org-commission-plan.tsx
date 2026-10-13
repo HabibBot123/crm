@@ -1,8 +1,13 @@
 "use client"
 
 import { useEffect, useState, type ReactNode } from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from "@/components/ui/input-group"
 import {
   Select,
   SelectContent,
@@ -24,7 +29,6 @@ import {
   dueDatesForSchedule,
   type AcquisitionBasis,
   type AcquisitionSlot,
-  type CommissionCalcMode,
   type CommissionScheduleKind,
   type OrgCommissionPlan,
   type SlotPlan,
@@ -50,7 +54,6 @@ const SAMPLE_PACK_EUR = 10_000
 const SAMPLE_INSTALLMENT_COUNT = 3
 const SAMPLE_SALES_RATE = 10
 const SAMPLE_AMBASSADOR_RATE = 5
-const SAMPLE_HEAD_RATE = 5
 
 type ExampleScenario = "one_shot" | "installments"
 
@@ -81,10 +84,6 @@ function scheduleSelectValue(
   schedule: CommissionScheduleKind
 ): "single_delayed" | "equal_front_loaded" {
   return schedule === "single_delayed" ? "single_delayed" : "equal_front_loaded"
-}
-
-function isCalcMode(value: string): value is CommissionCalcMode {
-  return value === "of_base" || value === "of_residual"
 }
 
 function scenarioMeta(scenario: ExampleScenario): {
@@ -141,15 +140,7 @@ function SettingsExample({ draft }: { draft: OrgCommissionPlan }) {
 
   const sales = Math.round((calcBase * SAMPLE_SALES_RATE) / 100)
   const amb = Math.round((calcBase * SAMPLE_AMBASSADOR_RATE) / 100)
-  const residual = calcBase - sales - amb
-  const headBase =
-    draft.acquisition.head.calcMode === "of_residual" ? residual : calcBase
-  const head = Math.round((headBase * SAMPLE_HEAD_RATE) / 100)
-  const org = calcBase - sales - amb - head
-  const headBaseLabel =
-    draft.acquisition.head.calcMode === "of_residual"
-      ? "Pack minus sales & ambassadors"
-      : "On pack"
+  const org = calcBase - sales - amb
   const whenLabel =
     draft.acquisitionBasis === "on_deal"
       ? "Once per deal on pack amount"
@@ -167,18 +158,12 @@ function SettingsExample({ draft }: { draft: OrgCommissionPlan }) {
       detail: `${SAMPLE_AMBASSADOR_RATE}% ${amountDetailSuffix}`,
       amount: amb,
     },
-    {
-      role: "BU owner",
-      detail: `${SAMPLE_HEAD_RATE}% · ${headBaseLabel}`,
-      amount: head,
-    },
     { role: "Org", detail: "Remainder", amount: org },
   ]
   const dueRows: Array<{ role: string; plan: SlotPlan }> = [
     { role: "Sales", plan: draft.acquisition.sales },
     { role: "Ambassador", plan: draft.acquisition.ambassador },
     { role: "Coach", plan: draft.delivery.coach },
-    { role: "BU owner", plan: draft.acquisition.head },
   ]
 
   return (
@@ -311,48 +296,43 @@ function DelayStepper({
   onChange: (next: SlotPlan) => void
 }) {
   return (
-    <div className="flex shrink-0 items-center gap-0.5">
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-8 w-7 shrink-0"
-        disabled={disabled || plan.delayMonths <= 0}
-        aria-label="Decrease delay months"
-        onClick={() =>
-          onChange(patchSlotPlan(plan, { delayMonths: Math.max(0, plan.delayMonths - 1) }))
-        }
-      >
-        <ChevronLeft className="h-4 w-4" />
-      </Button>
-      <Tooltip>
-        <TooltipTrigger
-          type="button"
-          className="min-w-[2.25rem] cursor-help rounded-sm px-0.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <p className="text-sm font-medium tabular-nums leading-none text-foreground">
-            {plan.delayMonths}
-          </p>
-          <p className="mt-0.5 text-[10px] leading-none text-muted-foreground">mo</p>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-[16rem] text-xs">
-          How many months to wait before the commission becomes due.
-        </TooltipContent>
-      </Tooltip>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-8 w-7 shrink-0"
-        disabled={disabled || plan.delayMonths >= 60}
-        aria-label="Increase delay months"
-        onClick={() =>
-          onChange(patchSlotPlan(plan, { delayMonths: Math.min(60, plan.delayMonths + 1) }))
-        }
-      >
-        <ChevronRight className="h-4 w-4" />
-      </Button>
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="w-[4.75rem] shrink-0">
+          <InputGroup className="h-8 w-full">
+            <InputGroupInput
+              className="h-8 min-w-0 tabular-nums"
+              inputMode="numeric"
+              disabled={disabled}
+              value={String(plan.delayMonths)}
+              aria-label="Delay months"
+              onChange={(event) => {
+                const raw = event.target.value.replace(/[^\d]/g, "")
+                if (raw === "") {
+                  onChange(patchSlotPlan(plan, { delayMonths: 0 }))
+                  return
+                }
+                const next = Number(raw)
+                if (!Number.isInteger(next)) return
+                onChange(
+                  patchSlotPlan(plan, {
+                    delayMonths: Math.min(60, Math.max(0, next)),
+                  })
+                )
+              }}
+            />
+            <InputGroupAddon align="inline-end" className="pr-2.5">
+              <InputGroupText className="text-xs text-muted-foreground">
+                mo
+              </InputGroupText>
+            </InputGroupAddon>
+          </InputGroup>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[16rem] text-xs">
+        How many months to wait before the commission becomes due.
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -516,120 +496,80 @@ export function OrgCommissionPlanSettings({
         </div>
       </SectionCard>
 
-      <SectionCard
-        title="Payouts"
-        subtitle="Who gets paid, when lines are created, and how the amount is due over time. Save plan to apply."
-        noPadding
-        footer={actions}
-      >
-        <PlanTable
-          rows={[
-            {
-              key: "sales",
-              role: "Sales",
-              trigger: "CRM",
-              base: "Pack",
-              schedule: (
-                <ScheduleSelect
-                  plan={draft.acquisition.sales}
-                  disabled={!canEdit}
-                  onChange={(next) => patchAcquisition("sales", next)}
-                />
-              ),
-              delay: (
-                <DelayStepper
-                  plan={draft.acquisition.sales}
-                  disabled={!canEdit}
-                  onChange={(next) => patchAcquisition("sales", next)}
-                />
-              ),
-            },
-            {
-              key: "ambassador",
-              role: "Ambassador",
-              trigger: "CRM",
-              base: "Pack",
-              schedule: (
-                <ScheduleSelect
-                  plan={draft.acquisition.ambassador}
-                  disabled={!canEdit}
-                  onChange={(next) => patchAcquisition("ambassador", next)}
-                />
-              ),
-              delay: (
-                <DelayStepper
-                  plan={draft.acquisition.ambassador}
-                  disabled={!canEdit}
-                  onChange={(next) => patchAcquisition("ambassador", next)}
-                />
-              ),
-            },
-            {
-              key: "coach",
-              role: "Coach",
-              trigger: "Coaching",
-              base: "Pack",
-              schedule: (
-                <ScheduleSelect
-                  plan={draft.delivery.coach}
-                  disabled={!canEdit}
-                  onChange={patchCoach}
-                />
-              ),
-              delay: (
-                <DelayStepper
-                  plan={draft.delivery.coach}
-                  disabled={!canEdit}
-                  onChange={patchCoach}
-                />
-              ),
-            },
-            {
-              key: "head",
-              role: "BU owner",
-              trigger: "CRM",
-              base: (
-                <Select
-                  value={draft.acquisition.head.calcMode}
-                  disabled={!canEdit}
-                  onValueChange={(value) => {
-                    if (isCalcMode(value)) {
-                      patchAcquisition("head", {
-                        ...draft.acquisition.head,
-                        calcMode: value,
-                      })
-                    }
-                  }}
-                >
-                  <SelectTrigger className="h-8 w-[13.5rem]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="of_base">Pack</SelectItem>
-                    <SelectItem value="of_residual">
-                      Pack minus sales & ambassadors
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              ),
-              schedule: (
-                <ScheduleSelect
-                  plan={draft.acquisition.head}
-                  disabled={!canEdit}
-                  onChange={(next) => patchAcquisition("head", next)}
-                />
-              ),
-              delay: (
-                <DelayStepper
-                  plan={draft.acquisition.head}
-                  disabled={!canEdit}
-                  onChange={(next) => patchAcquisition("head", next)}
-                />
-              ),
-            },
-          ]}
-        />
-      </SectionCard>
+      <div className="space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Team payouts</h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Sales, ambassador, coach and schedules.
+          </p>
+        </div>
+        <SectionCard noPadding footer={actions}>
+          <PlanTable
+            rows={[
+              {
+                key: "sales",
+                role: "Sales",
+                trigger: "CRM",
+                base: "Pack",
+                schedule: (
+                  <ScheduleSelect
+                    plan={draft.acquisition.sales}
+                    disabled={!canEdit}
+                    onChange={(next) => patchAcquisition("sales", next)}
+                  />
+                ),
+                delay: (
+                  <DelayStepper
+                    plan={draft.acquisition.sales}
+                    disabled={!canEdit}
+                    onChange={(next) => patchAcquisition("sales", next)}
+                  />
+                ),
+              },
+              {
+                key: "ambassador",
+                role: "Ambassador",
+                trigger: "CRM",
+                base: "Pack",
+                schedule: (
+                  <ScheduleSelect
+                    plan={draft.acquisition.ambassador}
+                    disabled={!canEdit}
+                    onChange={(next) => patchAcquisition("ambassador", next)}
+                  />
+                ),
+                delay: (
+                  <DelayStepper
+                    plan={draft.acquisition.ambassador}
+                    disabled={!canEdit}
+                    onChange={(next) => patchAcquisition("ambassador", next)}
+                  />
+                ),
+              },
+              {
+                key: "coach",
+                role: "Coach",
+                trigger: "Coaching",
+                base: "Pack",
+                schedule: (
+                  <ScheduleSelect
+                    plan={draft.delivery.coach}
+                    disabled={!canEdit}
+                    onChange={patchCoach}
+                  />
+                ),
+                delay: (
+                  <DelayStepper
+                    plan={draft.delivery.coach}
+                    disabled={!canEdit}
+                    onChange={patchCoach}
+                  />
+                ),
+              },
+            ]}
+          />
+        </SectionCard>
+      </div>
 
       <SettingsExample draft={draft} />
     </div>

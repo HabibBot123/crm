@@ -13,8 +13,13 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, subtitle, back, children, className }: PageHeaderProps) {
   return (
-    <div className={cn("flex items-start justify-between gap-4", className)}>
-      <div className="flex items-start gap-3">
+    <div
+      className={cn(
+        "flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4",
+        className
+      )}
+    >
+      <div className="flex min-w-0 items-start gap-3">
         {back && (
           <Link
             href={back}
@@ -23,12 +28,16 @@ export function PageHeader({ title, subtitle, back, children, className }: PageH
             <ArrowLeft className="h-4 w-4" />
           </Link>
         )}
-        <div>
+        <div className="min-w-0">
           <h1 className="font-display text-2xl font-bold text-foreground">{title}</h1>
           {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
         </div>
       </div>
-      {children && <div className="flex shrink-0 items-center gap-2">{children}</div>}
+      {children ? (
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+          {children}
+        </div>
+      ) : null}
     </div>
   )
 }

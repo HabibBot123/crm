@@ -161,6 +161,7 @@ export const leadSchema = z.object({
   commissions_activated_at: z.string().nullable().optional().default(null),
   commissions_activated_by: z.number().nullable().optional().default(null),
   sale_source: z.enum(["platform", "manual"]).nullable().optional().default(null),
+  marketing_opt_in: z.boolean().default(true),
   created_at: z.string(),
   updated_at: z.string(),
   owner_name: z.string().nullable(),
@@ -310,6 +311,8 @@ export const submitPublicFormSchema = z.object({
   phone: z.string().trim().optional().nullable(),
   /** Honeypot — must be empty. */
   website: z.string().optional().nullable(),
+  /** Marketing consent checkbox (required to submit). */
+  marketing_opt_in: z.literal(true),
   field_values: z.array(
     z.object({
       fieldDefId: z.number(),
@@ -370,6 +373,8 @@ export const createAmbassadorLinkSchema = z.object({
 
 export const businessUnitStatusSchema = z.enum(["active", "archived"])
 
+export const buSettlementBasisSchema = z.enum(["of_revenue", "of_residual"])
+
 export const businessUnitSchema = z.object({
   id: z.number(),
   organization_id: z.number(),
@@ -379,6 +384,8 @@ export const businessUnitSchema = z.object({
   owner_member_id: z.number().nullable().optional().default(null),
   default_commission_rate: z.number().nullable().optional().default(null),
   default_commission_fixed: z.number().nullable().optional().default(null),
+  settlement_basis: buSettlementBasisSchema.optional().default("of_residual"),
+  payout_delay_months: z.number().int().min(0).max(24).optional().default(0),
   created_at: z.string(),
 })
 
@@ -394,12 +401,16 @@ export const createBusinessUnitSchema = z.object({
   owner_member_id: z.number().nullable().optional(),
   default_commission_rate: z.number().min(0).max(100).nullable().optional(),
   default_commission_fixed: z.number().min(0).nullable().optional(),
+  settlement_basis: buSettlementBasisSchema.optional(),
+  payout_delay_months: z.number().int().min(0).max(24).optional(),
 })
 
 export const updateBusinessUnitSchema = z.object({
   owner_member_id: z.number().nullable().optional(),
   default_commission_rate: z.number().min(0).max(100).nullable().optional(),
   default_commission_fixed: z.number().min(0).nullable().optional(),
+  settlement_basis: buSettlementBasisSchema.optional(),
+  payout_delay_months: z.number().int().min(0).max(24).optional(),
   name: z.string().trim().min(1).optional(),
 })
 
@@ -488,7 +499,8 @@ export const recordLeadSaleSchema = z.discriminatedUnion("mode", [
     mode: z.literal("sale_only"),
     /** Pack price in cents */
     price_cents: z.number().int().positive(),
-    offer_id: z.number().int().positive().nullable().optional(),
+    /** Required: BU Owner coms resolve from the offer business unit. */
+    offer_id: z.number().int().positive(),
     pack_title: z.string().trim().min(1).optional(),
     sold_at: z.string().optional(),
   }),
@@ -522,6 +534,7 @@ export type BusinessUnit = z.infer<typeof businessUnitSchema>
 export type CreateBusinessUnitInput = z.infer<typeof createBusinessUnitSchema>
 export type UpdateBusinessUnitInput = z.infer<typeof updateBusinessUnitSchema>
 export type BusinessUnitStatus = z.infer<typeof businessUnitStatusSchema>
+export type BuSettlementBasis = z.infer<typeof buSettlementBasisSchema>
 export type Commission = z.infer<typeof commissionSchema>
 export type CommissionStatus = z.infer<typeof commissionStatusSchema>
 export type ActivateLeadCommissionsInput = z.infer<typeof activateLeadCommissionsSchema>

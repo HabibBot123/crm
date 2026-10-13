@@ -7,6 +7,7 @@ export const ORG_CAPABILITIES = [
   "clients.view",
   "clients.enroll_manual",
   "sales.view",
+  "analytics.view",
   "crm.leads.view",
   "crm.leads.view_own",
   "crm.leads.update_status",
@@ -31,6 +32,7 @@ export const ORG_CAPABILITIES = [
   "commissions.mark_paid",
   "bu.manage",
   "org.settings",
+  "campaigns.manage",
 ] as const
 
 export type OrgCapability = (typeof ORG_CAPABILITIES)[number]

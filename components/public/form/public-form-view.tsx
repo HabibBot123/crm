@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import type { CrmForm } from "@/schemas/crm.schema"
+import { marketingConsentLabel } from "@/schemas/campaign.schema"
 
 type PublicFormViewProps = {
   orgSlug: string
@@ -49,6 +50,7 @@ export function PublicFormView({
   const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
+  const [marketingOptIn, setMarketingOptIn] = useState(false)
   const [values, setValues] = useState<Record<string, string>>({})
   const [submitted, setSubmitted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -82,6 +84,11 @@ export function PublicFormView({
       }
     }
 
+    if (!marketingOptIn) {
+      setError("Please accept the contact consent to continue.")
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const body = {
@@ -89,6 +96,7 @@ export function PublicFormView({
         email: email.trim(),
         phone: phone.trim() || null,
         website: "",
+        marketing_opt_in: marketingOptIn,
         field_values: form.fields.map((field) => ({
           fieldDefId: field.field_def_id,
           value: values[field.key] ?? "",
@@ -325,11 +333,24 @@ export function PublicFormView({
             )
           })}
 
+          <label className="flex items-start gap-2.5 text-sm text-foreground">
+            <Checkbox
+              className="mt-0.5"
+              checked={marketingOptIn}
+              onCheckedChange={(checked) => {
+                setMarketingOptIn(checked === true)
+              }}
+            />
+            <span className="leading-snug text-muted-foreground">
+              {marketingConsentLabel(organization.name)}
+            </span>
+          </label>
+
           {error && <p className="text-sm text-destructive">{error}</p>}
 
           <Button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || !marketingOptIn}
             className="w-full"
             style={{ background: primaryColor, color: onPrimary.fg }}
           >

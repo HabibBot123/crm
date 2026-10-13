@@ -65,7 +65,7 @@ export async function GET(request: Request, context: RouteContext) {
   const statusFilter: TeamMemberStatus | null = statusResult === null ? null : statusResult
 
   const page = Math.max(1, Number(pageParam) || 1)
-  const pageSize = Math.min(100, Math.max(1, Number(pageSizeParam) || 10))
+  const pageSize = Math.min(100, Math.max(1, Number(pageSizeParam) || 25))
 
   const from = (page - 1) * pageSize
   const to = from + pageSize - 1

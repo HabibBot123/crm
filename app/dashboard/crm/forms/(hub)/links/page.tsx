@@ -44,7 +44,7 @@ export default function CrmFormsShareLinksPage() {
   const [openCreate, setOpenCreate] = useState(false)
   const [copiedLinkId, setCopiedLinkId] = useState<number | null>(null)
   const [linksPage, setLinksPage] = useState(1)
-  const linksPageSize = 10
+  const linksPageSize = 25
 
   const organizationId = currentOrganization?.id ?? null
   const organizationSlug = currentOrganization?.slug ?? null

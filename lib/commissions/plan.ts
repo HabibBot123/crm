@@ -2,7 +2,8 @@ import { z } from "zod"
 
 /**
  * Org-global commission plan (docs/04 — 2026-10-07).
- * Defaults = immediate payouts; Head = of_residual.
+ * Defaults = immediate payouts for team slots.
+ * Slot `head` kept for legacy JSON only; BU Owner payout is monthly settlement on business_units.
  * Overrides stored on organizations.commission_plan.
  */
 

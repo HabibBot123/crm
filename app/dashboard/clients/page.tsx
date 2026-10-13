@@ -101,7 +101,7 @@ function formatDate(dateStr: string): string {
   })
 }
 
-const perPage = 10
+const perPage = 25
 
 export default function ClientsPage() {
   const searchParams = useSearchParams()

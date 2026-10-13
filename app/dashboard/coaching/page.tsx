@@ -58,7 +58,7 @@ import { StatusBadge } from "@/components/dashboard/status-badge"
 import { toast } from "sonner"
 import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
 
-const PAGE_SIZE = 10
+const PAGE_SIZE = 25
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-US", {

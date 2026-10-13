@@ -14,6 +14,7 @@ import {
   Wallet,
   Receipt,
   BarChart3,
+  Megaphone,
 } from "lucide-react"
 import type { OrgCapability } from "@/lib/permissions/capabilities"
 
@@ -49,41 +50,26 @@ function gated(
 /** Shared dashboard nav — sidebar groups + flat mobile list. */
 export const DASHBOARD_NAV_GROUPS: DashboardNavGroup[] = [
   {
-    label: "Workspace",
+    label: "Home",
     items: [
       { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
-      {
-        label: "Clients",
-        href: "/dashboard/clients",
-        icon: Users,
-        isVisible: (ctx) => gated(ctx, (can) => can("clients.view")),
-      },
-      {
-        label: "Sales",
-        href: "/dashboard/sales",
-        icon: Receipt,
-        isVisible: (ctx) => gated(ctx, (can) => can("sales.view")),
-      },
       {
         label: "Analytics",
         href: "/dashboard/analytics",
         icon: BarChart3,
-        isVisible: (ctx) => gated(ctx, (can) => can("sales.view")),
+        isVisible: (ctx) => gated(ctx, (can) => can("analytics.view")),
       },
+    ],
+  },
+  {
+    label: "Pipeline",
+    items: [
       {
         label: "CRM",
         href: "/dashboard/crm",
         icon: ClipboardList,
         isVisible: (ctx) =>
           gated(ctx, (can) => can("crm.leads.view") || can("crm.leads.view_own")),
-      },
-      {
-        label: "Commissions",
-        href: "/dashboard/crm/commissions",
-        icon: Wallet,
-        isVisible: (ctx) =>
-          !ctx.requiresTeamPlan &&
-          gated(ctx, (can) => can("commissions.view_own") || can("commissions.view_all")),
       },
       {
         label: "Forms",
@@ -100,6 +86,37 @@ export const DASHBOARD_NAV_GROUPS: DashboardNavGroup[] = [
           ),
       },
       {
+        label: "Campaigns",
+        href: "/dashboard/campaigns",
+        icon: Megaphone,
+        isVisible: (ctx) => gated(ctx, (can) => can("campaigns.manage")),
+      },
+      {
+        label: "Sales",
+        href: "/dashboard/sales",
+        icon: Receipt,
+        isVisible: (ctx) => gated(ctx, (can) => can("sales.view")),
+      },
+      {
+        label: "Payouts",
+        href: "/dashboard/crm/commissions",
+        icon: Wallet,
+        isVisible: (ctx) =>
+          !ctx.requiresTeamPlan &&
+          gated(ctx, (can) => can("commissions.view_own") || can("commissions.view_all")),
+      },
+    ],
+  },
+  {
+    label: "Delivery",
+    items: [
+      {
+        label: "Clients",
+        href: "/dashboard/clients",
+        icon: Users,
+        isVisible: (ctx) => gated(ctx, (can) => can("clients.view")),
+      },
+      {
         label: "Coaching",
         href: "/dashboard/coaching",
         icon: MessageCircle,
@@ -108,7 +125,7 @@ export const DASHBOARD_NAV_GROUPS: DashboardNavGroup[] = [
     ],
   },
   {
-    label: "Monetize",
+    label: "Catalog",
     items: [
       {
         label: "Offers",
@@ -128,17 +145,17 @@ export const DASHBOARD_NAV_GROUPS: DashboardNavGroup[] = [
         icon: FileText,
         isVisible: (ctx) => gated(ctx, (can) => can("catalog.manage")),
       },
-    ],
-  },
-  {
-    label: "Manage",
-    items: [
       {
         label: "Store page",
         href: "/dashboard/branding",
         icon: Palette,
         isVisible: (ctx) => gated(ctx, (can) => can("org.settings")),
       },
+    ],
+  },
+  {
+    label: "Organization",
+    items: [
       {
         label: "Team",
         href: "/dashboard/team",

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { LayoutList, Search, Settings, Users, Wallet, X } from "lucide-react"
+import { Building2, LayoutList, Search, Settings, Users, Wallet, X } from "lucide-react"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { SectionCard } from "@/components/dashboard/section-card"
 import { TableScroll } from "@/components/dashboard/table-scroll"
@@ -35,18 +35,18 @@ import {
   type CommissionStatusFilter,
   type CommissionsFilterValues,
 } from "@/components/dashboard/crm/commissions-filters-popover"
+import { BuOwnerSettlementsTable } from "@/components/dashboard/crm/bu-owner-settlements-table"
 import { TeamPlanGate } from "@/components/dashboard/team-plan-gate"
 import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
 import { cn } from "@/lib/utils"
 import type { Commission, CommissionStatus } from "@/schemas/crm.schema"
 
-const pageSize = 10
+const pageSize = 25
 
 const ROLE_LABELS: Record<string, string> = {
   closer: "Closer",
   setter: "Setter",
   ambassador: "Ambassador",
-  business_unit: "Head",
   coach: "Coach",
 }
 
@@ -80,6 +80,7 @@ function isDueOverdue(dueAt: string | null | undefined, status: string): boolean
 }
 
 type ViewMode = "table" | "by_member"
+type PayoutTab = "team" | "bu_owners"
 
 export default function CommissionsPage() {
   const { currentOrganization } = useCurrentOrganization()
@@ -91,6 +92,7 @@ export default function CommissionsPage() {
   const canViewCommissions = can("commissions.view_own") || canViewAll
   const searchParams = useSearchParams()
   const initialSearch = searchParams.get("search")?.trim() ?? ""
+  const [payoutTab, setPayoutTab] = useState<PayoutTab>("team")
   const [page, setPage] = useState(1)
   const [searchInput, setSearchInput] = useState(initialSearch)
   const [search, setSearch] = useState(initialSearch)
@@ -241,11 +243,11 @@ export default function CommissionsPage() {
     return (
       <div className="min-w-0 space-y-4 p-6 lg:p-8">
         <PageHeader
-          title="Commissions"
-          subtitle="Track acquisition payouts for your team"
+          title="Payouts"
+          subtitle="Track team and BU Owner amounts owed"
         />
         <TeamPlanGate
-          title="Commissions are a Team feature"
+          title="Payouts are a Team feature"
           description="This option is for when you have a team (setters, closers, ambassadors) and need to split commissions."
         />
       </div>
@@ -255,8 +257,8 @@ export default function CommissionsPage() {
   if (!capsLoading && !canViewCommissions) {
     return (
       <NoAccessState
-        title="Commissions"
-        description="You don’t have permission to view commissions with your role."
+        title="Payouts"
+        description="You don’t have permission to view payouts with your role."
       />
     )
   }
@@ -264,12 +266,18 @@ export default function CommissionsPage() {
   return (
     <div className="min-w-0 space-y-4 p-6 lg:p-8">
       <PageHeader
-        title="Commissions"
-        subtitle="Track amounts owed by lead / pack. Mark paid when you settle with your team."
+        title="Payouts"
+        subtitle="Team commissions by deal. BU Owner monthly settlements."
       >
         {can("org.settings") ? (
           <Button variant="outline" size="sm" asChild>
-            <Link href="/dashboard/settings?section=commissions">
+            <Link
+              href={
+                payoutTab === "bu_owners"
+                  ? "/dashboard/settings?section=business-units"
+                  : "/dashboard/settings?section=commissions"
+              }
+            >
               <Settings className="mr-1.5 h-4 w-4" />
               Settings
             </Link>
@@ -277,6 +285,51 @@ export default function CommissionsPage() {
         ) : null}
       </PageHeader>
 
+      <div className="inline-flex items-center rounded-lg bg-muted p-0.5">
+        <button
+          type="button"
+          className={cn(
+            "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors",
+            payoutTab === "team"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+          onClick={() => {
+            setPayoutTab("team")
+            setSelectedIds([])
+          }}
+        >
+          <Users className="h-3.5 w-3.5" />
+          Team
+        </button>
+        <button
+          type="button"
+          className={cn(
+            "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors",
+            payoutTab === "bu_owners"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+          onClick={() => {
+            setPayoutTab("bu_owners")
+            setSelectedIds([])
+          }}
+        >
+          <Building2 className="h-3.5 w-3.5" />
+          BU Owners
+        </button>
+      </div>
+
+      {payoutTab === "bu_owners" ? (
+        <BuOwnerSettlementsTable
+          organizationId={organizationId}
+          memberId={memberId}
+          canPay={canPay}
+        />
+      ) : null}
+
+      {payoutTab === "team" ? (
+      <div className="space-y-4">
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[220px] flex-1">
@@ -561,7 +614,7 @@ export default function CommissionsPage() {
             <table className="w-full border-collapse text-sm">
               <thead className="bg-muted/60 border-b border-border">
                 <tr>
-                  {canPay ? <th className="px-4 py-3 w-10" /> : null}
+                  {canPay ? <th className="w-10 px-4 py-3" /> : null}
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Beneficiary
                   </th>
@@ -672,6 +725,8 @@ export default function CommissionsPage() {
           </TableScroll>
         </SectionCard>
       )}
+      </div>
+      ) : null}
     </div>
   )
 }

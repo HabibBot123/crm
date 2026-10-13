@@ -88,7 +88,7 @@ export function SearchSelect(props: SearchSelectProps) {
           aria-expanded={open}
           disabled={disabled}
           className={cn(
-            "h-9 w-full justify-between font-normal",
+            "w-full justify-between font-normal pr-2.5",
             selectedLabels.length === 0 && "text-muted-foreground",
             className
           )}
@@ -98,12 +98,14 @@ export function SearchSelect(props: SearchSelectProps) {
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="z-[60] w-[var(--radix-popover-trigger-width)] p-0"
         align="start"
+        side="bottom"
+        collisionPadding={16}
+        className="z-[60] w-[var(--radix-popover-trigger-width)] max-h-[min(20rem,var(--radix-popover-content-available-height))] overflow-hidden p-0"
       >
-        <Command>
+        <Command className="flex max-h-[inherit] flex-col overflow-hidden">
           <CommandInput placeholder={searchPlaceholder} />
-          <CommandList>
+          <CommandList className="max-h-none min-h-0 flex-1 overflow-y-auto">
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup>
               {allOptions.map((option) => {

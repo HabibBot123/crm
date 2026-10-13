@@ -130,7 +130,13 @@ export function LeadCommissionsPanel({
     }
     const priceCents = majorStringToCents(priceMajor)
     if (recordMode === "sale_only") {
-      return priceCents != null && priceCents > 0
+      const offerIdNum = Number(offerId)
+      return (
+        priceCents != null &&
+        priceCents > 0 &&
+        Number.isFinite(offerIdNum) &&
+        offerIdNum > 0
+      )
     }
     if (recordMode === "create") {
       const offerIdNum = Number(offerId)
@@ -196,16 +202,14 @@ export function LeadCommissionsPanel({
 
     if (recordMode === "sale_only") {
       if (priceCents <= 0) return
-      const offerIdNum = offerId ? Number(offerId) : null
+      const offerIdNum = Number(offerId)
+      if (!Number.isFinite(offerIdNum) || offerIdNum <= 0) return
       await recordSale.mutateAsync({
         leadId: lead.id,
         input: {
           mode: "sale_only",
           price_cents: priceCents,
-          offer_id:
-            offerIdNum != null && Number.isFinite(offerIdNum) && offerIdNum > 0
-              ? offerIdNum
-              : null,
+          offer_id: offerIdNum,
           sold_at: soldAt,
         },
       })
@@ -450,14 +454,14 @@ export function LeadCommissionsPanel({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Offer (optional)</Label>
+                  <Label className="text-xs">Offer</Label>
                   <Select
                     value={offerId || undefined}
                     onValueChange={setOfferId}
                     disabled={offersLoading || offers.length === 0}
                   >
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="None" />
+                      <SelectValue placeholder="Select offer" />
                     </SelectTrigger>
                     <SelectContent>
                       {offers.map((offer) => (
@@ -524,8 +528,7 @@ export function LeadCommissionsPanel({
                       <SelectContent>
                         {matches.map((item) => (
                           <SelectItem key={item.id} value={String(item.id)}>
-                            #{item.id}
-                            {item.offer_title ? ` · ${item.offer_title}` : ""}
+                            {item.offer_title ? `${item.offer_title}` : ""}
                             {item.buyer_email ? ` · ${item.buyer_email}` : ""} ·{" "}
                             {new Date(item.started_at).toLocaleDateString()}
                           </SelectItem>
@@ -537,14 +540,16 @@ export function LeadCommissionsPanel({
               </div>
             ) : null}
 
-            <div className="space-y-1.5">
-              <Label className="text-xs">Sale date</Label>
-              <Input
-                type="date"
-                value={soldAt}
-                onChange={(event) => setSoldAt(event.target.value)}
-              />
-            </div>
+            {recordMode !== "link" ? (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Sale date</Label>
+                <Input
+                  type="date"
+                  value={soldAt}
+                  onChange={(event) => setSoldAt(event.target.value)}
+                />
+              </div>
+            ) : null}
 
             {recordMode === "link" && !matchesLoading && matches.length === 0 ? null : (
               <Button
@@ -667,7 +672,8 @@ export function LeadCommissionsPanel({
           {canActivateCommissions ? (
             <>
               <p className="text-xs text-muted-foreground">
-                Preview splits, then lock pay roles and create payout lines.
+                Preview splits, then lock sales / ambassador pay roles. BU Owner
+                is settled monthly from Settings → Business units.
               </p>
               <Button
                 size="sm"

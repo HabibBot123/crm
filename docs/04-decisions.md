@@ -1,518 +1,258 @@
 # Decisions log (ADR léger)
 
-Format : date · décision · pourquoi · conséquences.
+Décisions **figées** (produit / archi). Implémentation détaillée → `docs/03`, `docs/06`, session → `docs/05`.  
+Format : date · quoi · pourquoi (court) · conséquences.
 
 ---
 
-### 2026-10-10 — Analytics P&L vs Cash + commission forecast
+## 2026-10 — Controls UX (Resend-like density)
 
-- **Toggle P&L | Cash** sur le bloc marge (default **P&L**).
-- **P&L** : coms = toutes lignes non `canceled` rattachées aux ventes `sold_at` ∈ période (marge économique de la vente).
-- **Cash** : coms = `status=paid` et `paid_at` ∈ période. CA reste sur `sold_at` (encaissement enregistré).
-- **Chart commissions** : timeline **miroir** selon le preset. Séries **Paid** (`paid_at`) + **Due** (`pending` / vraie `due_at`, y compris overdue dans le passé). Trait **Today** = début de la fenêtre à venir. 7d/30d/custom = même durée après `to` ; Month = mois suivant ; Year = +3 mois. Pas de libellé “Forecast”.
-- **Hors scope** : charges hors coms ; KPI Overdue séparé.
+- Dashboard controls share one atom: **`h-8` + `rounded-xl` + `px-3` + `gap-1` + `text-sm` + focus `ring-2`**.
+- Primary CTA = `Button` default (`font-semibold` + border). Secondary / filters / combobox = `outline`. Select triggers = same height/radius, `font-normal`, `pr-2.5`.
+- Tabs = pills sans track muted (actif = `bg-accent`), pas le style shadcn “segmented control”.
+- Source de vérité : composants `components/ui/{button,input,select,tabs,input-group}` + `search-select`. Pas d’overrides page sauf cas touch / landing (`size="lg"`, `h-7` densité locale, etc.).
 
-### 2026-10-09 — Analytics Sales/CRM (V1)
+## 2026-10 — Offer editor (Overview TipTap + Pricing lock)
 
-- **Page** : `/dashboard/analytics` (Sales/CRM). Marketing (share links / ambassadors) = **page séparée plus tard**.
-- **Accès** : cap **`sales.view`** (réutilise l’existant). Admin/org + **BU owner** (scope BU). Sales / staff / coach / ambassador **ne voient pas** la page.
-- **Données** : 1 RPC SECURITY INVOKER (`crm_sales_analytics` ou nom proche) · période + `business_unit_id` nullable · pas d’agrégat client-side.
-- **CA période** : filtre sur **`organization_sales.sold_at`** (date métier). `created_at` = audit insert. Manuel : date choisie à l’enregistrement (Record sale / enrollment). Stripe : `sold_at = now()` à l’insert webhook.
-- **€ rapportés** = **CA du deal** (`organization_sales.price`). **Commissions = coût** (PnL light = CA − coms acquisition − coms delivery).
-- **Owner vs pay roles** : argent toujours via attributions seulement (Owner ≠ ligne com). **Analytics members** : Owner **et** Closer/Setter ont les **mêmes colonnes** : leads suivis / touchés, converted, taux, **CA rapporté**. (Owner = leads `owner_id` ; Closer/Setter = attributions + CA des deals liés.)
-- **V1 UI** : période + BU · KPIs (leads, converted, conv %, CA, coms, marge) · courbe CA · table members (Owner + pay roles) · table **packs** (best sellers, CA, qty, prix moyen) · table BU si ≥1 BU · funnel statuses (nice).
-- **Hors V1** : Marketing analytics, charges hors coms, comparo N vs N-1, drill-down listes.
+- Navigation latérale type Settings (`NavList`) : **Overview** · **Pricing** · **Settings**. Panneaux dans `components/dashboard/offers/`.
+- Overview : name + description TipTap light + preview carte buy **sous** les détails. Plus de key features.
+- Pricing : pleine largeur. **Base pricing** (access, price, interval/installments, sessions) + **Checkout links**. Base pricing **éditable seulement en draft** ; `active`/`archived` → lecture seule + reject `updateOffer`.
+- **Business unit** : éditable dans Settings même si offre active (pas archivée).
+- Variants = overrides + liens share, pas un second prix “source de vérité”.
 
-### 2026-10-09 — `organization_sales.sold_at`
+## 2026-10 — Store page editor (Stan-simple + bio riche)
 
-- **Décision** : colonne **`sold_at`** (timestamptz, NOT NULL, default now). UI date sur création manuelle de sale (CRM Record sale create/sale_only/link-create + Add enrollment).
-- **Pourquoi** : analytics CA par période + backdate ventes manuelles. Stripe inchangé (sold_at à l’insert = now).
-- **Conséquence** : `v_organization_sales` expose `sold_at` ; expires_at enrollment manuel ancré sur `sold_at` si durée limitée.
-
-### 2026-10-09 — Org role `member` → `staff`
-
-- **Décision** : rôle org/invite `member` renommé **`staff`** (DB + UI). Même caps qu’avant (clients view/enroll, etc.).
-- **Pourquoi** : “Member” trop flou ; Staff = ops sans rôle sales/coach/ambassador.
-- **Conséquence** : check constraints + seed permissions + types TS. Pas de migration de valeur partielle : update `organization_members` / `organization_role_permissions`.
-
-### 2026-10-09 — Two commission pools (acquisition ≠ coach residual)
-
-- **Décision** : residual Head / BU owner = **après coms acquisition seulement** (Sales, Ambassador `of_base`). **Coach delivery n’entre pas** dans ce residual.
-- **Pourquoi** : Activate CRM et Assign coach sont des triggers séparés ; le coach n’est souvent pas connu à l’Activate.
-- **Conséquence** : com coach = coût delivery pris sur la **marge org** après coup. Pas de recalc Head à l’assign. Pas d’estimation coach à l’Activate. UI Base Head : “Pack minus Sales & Ambassadors (excl. Coach)”.
-- **Hors scope V1** : Head “après coach” (recalc pending à l’assign) = itération future si besoin métier réel.
-
-### 2026-10-09 — Change / remove coach (pre-session lock)
-
-- **Décision** : tant qu’il n’y a **aucune** `coaching_sessions` sur le pack **et** aucune com delivery **paid**, on peut **Change** (modal preview) ou **Remove** coach.
-- **Remove** : DELETE assignment + DELETE coms delivery `pending`. **Change** : upsert + replace pending (comme assign).
-- **Lock** après 1ère session ou 1er paid — pas de crédit manuel v1.
-- **RLS** : `coaching.assign` peut INSERT/DELETE coms `pool=delivery` (pending pour delete).
-
-### 2026-10-09 — Commission list client label = enrollment_in_scope
-
-- **Décision** : affichage coms = **lead d’abord**, sinon client enrollment (JOIN). Pas de colonnes dénormalisées ni helper DEFINER dédié.
-- **RLS** : `enrollment_in_scope` accepte aussi `commissions.view_all` (même scope org/bu) et `commissions.view_own` (enrollments liés à mes coms).
-- **Pourquoi** : `v_commissions` security_invoker ; sans ça le JOIN enrollment est vide pour qui a coms sans `clients.view`.
-
-### 2026-10-08 — Commissions page (no panel, drop validated, member summary)
-
-- **Décision** : page commissions = table + **toggle résumé par member** ; **pas de side panel**. Statuts ligne = `pending` | `paid` | `canceled` (**drop `validated`**). Unpay `paid→pending`. Audit paiement = `paid_at`/`paid_by` (déjà en DB). PDF facture de paiement = **plus tard**.
-- **Résumé member** : RPC `commissions_summary_by_member(...)` **SECURITY INVOKER** (même esprit que `crm_leads_page`) — pas une vue seule ni agrégat client.
-- **Pourquoi** : vue SQL = filtres/RLS/pay-all IDs pénibles ; client-side = faux dès que paginé ; RPC renvoie agrégats + ids pending pour « Pay all ».
-- **Conséquence** : enum/check status à migrer ; UI couleurs pending/paid/overdue ; mark paid / unpay gardent `paid_by`.
-
-### 2026-10-08 — Lead Owner ≠ pay roles
-
-- **Décision** : `leads.owner_id` (ex-`assigned_sales_id`) = **qui suit le lead** (ops). Pas de commission liée. Les € passent uniquement par `lead_attributions` (closer / setter / ambassador / head).
-- **Lead Owners UI** : BU (`leads.business_unit_id`, nullable) + owner éditables ensemble (admin / BU owner via caps) **tant que les commissions ne sont pas activées**. Form ≠ BU (BU vient surtout du share link).
-- **Assign owner** : action dédiée ; envoie un mail (détail lead + réponses form si dispo). Unassign = pas de mail. **Pas** d’auto-création closer.
-- **Pourquoi** : ownership ops et splits $ sont des jobs différents ; auto-closer mélangerait les deux.
-- **Conséquence** : UI « Owner » séparée de « Team & pay » ; cap `crm.assign_sales` garde la clé (assigne l’owner).
-
-## Baseline figées (pré-pause — héritées)
-
-### 2026-Q1 (approx) — Vertical coaching SaaS
-- **Décision** : CRM + vente + delivery pour coachs/orgs, pas LMS seul.
-- **Pourquoi** : besoin unifié catalogue, clients, paiements, portail.
-- **Conséquence** : 3 surfaces (dashboard / org public / coached).
-
-### 2026-Q1 — Stack Next + Supabase + Stripe Connect
-- **Décision** : App Router, React Query, services `lib/services`, RLS.
-- **Pourquoi** : auth/DB/storage unifiés + Connect pour multi-vendeurs.
-- **Conséquence** : pas de Stripe “compte plateforme seul” pour les coachs.
-
-### 2026-Q1 — Offres non supprimables
-- **Décision** : archiver (Stripe-aware) plutôt que delete.
-- **Pourquoi** : historique paiements / enrollments.
-- **Conséquence** : UI et API doivent passer par archive.
-
-### 2026-Q1 — Produits liés = contraintes delete/archive
-- **Décision** : delete draft uniquement si non lié ; archive bloquée si sur offre.
-- **Pourquoi** : intégrité catalogue / offres actives.
+- Store reste un **store link** type Stan/Gumroad : logo, nom, bio, 1 couleur, offers actives, Buy. Pas de website builder, pas de layouts multiples, pas de sections drag & drop.
+- **Bio** : éditeur riche **borné** (TipTap light) : gras, italique, liens, listes, alignement gauche/centre/droite. Pas de titres / images / embeds / couleurs dans le texte.
+- Stockage bio : HTML sanitizé (ou JSON TipTap) dans branding ; rendu public + preview via le **même composant**.
+- **Édition** : split contrôles (gauche) + **preview live** (droite) = **vraie page** telle qu’affichée (`/org/[slug]`), **offers incluses** (données org réelles, state local pour branding draft). Save explicite ; preview suit le draft sans save.
+- Design refresh du template public possible ensuite, sans changer ce modèle.
 
 ---
 
-## Reprise 2026-07 — en cours
+## 2026-10 — Analytics, sales, commissions, CRM ops
 
-### 2026-07-15 — Mémoire agent structurée
-- **Décision** : `docs/` + `AGENTS.md` + rule `project-memory.mdc` comme mémoire vivante.
-- **Pourquoi** : reprise après pause + discussions vision multi-sessions.
-- **Conséquence** : MAJ docs à chaque décision ; `APP_OVERVIEW.md` reste référence routes longue.
+### Naming : Business unit · BU Owner
 
-### 2026-07-19 — Stripe deferred until sell/publish
-- **Décision** : Stripe Connect n’est plus un hard-block pour products / content / offers draft. Obligatoire seulement pour publish offer (`create-price`), génération de prix variants, et checkout live.
-- **Pourquoi** : réduire le churn onboarding (KYC trop tôt).
-- **Conséquence** : message UX “Build your offer first. Connect Stripe when you're ready to sell.” sur offer draft ; guards `requireStripe` retirés des pages catalogue.
+- Entité = **Business unit**. Personne qui la gère / est payée dessus = **BU Owner** (UI partout ; plus de label “Head”).
+- Code interne peut encore dire `head` / `viewer_mode=head` / slot plan `head` (= BU Owner).
 
-### 2026-07-19 — Coaching v1 = packs + assign (org-first)
-- **Décision** : Garder type produit `course` | `coaching`. Coaching ops v1 = **packs vendus + assignation coach↔étudiant** (`enrollment_products` + `coaching_assignments`). Garder KPI unassigned + page `/dashboard/coaching`.
-- **Pourquoi** : 1er client = org multi-coach qui assigne puis paiera les coachs selon volume. Couper l’assignation casserait ce besoin.
-- **Hors scope v1** : booking/calendrier/dispos type Calendly ; payouts coach automatiques.
-- **Config produit coaching** : `delivery_mode` (delivery). Volume séances + durée d’accès = **sur l’offre** (voir 2026-07-23).
-- **Séances** = tracking optionnel (preuve / futur payout), secondaire vs assignation.
-- **Garder** `enrollment_products` (snapshot multi-produits par achat) — pas de complexité inutile.
+### Analytics Sales/CRM + `sold_at`
 
-### 2026-07-21 — RLS: orgs related-only + offers members + lesson progress
-- **Décision** : `organizations` SELECT limité à owner / membre actif / enrolled (plus de `USING true` global). Offers (+ products links/variants) gérables par **tout membre org actif** (aligné products). `course_lesson_progress` : policies own-row.
-- **Pourquoi** : views coached continuent de joindre orgs sans exposer toutes les orgs + `stripe_account_id` ; catalogue cohérent en attendant matrix rôles.
-- **Roadmap** : permissions catalogue **par rôle** (admin définit qui crée/édite products & offers) — UI + RLS plus fines.
+- Page `/dashboard/analytics` ; cap dédiée **`analytics.view`** (≠ `sales.view`). Même cap pour la vue **Organization** de Overview. Défauts : **admin ✓**, **bu_owner ✓** (owner peut couper), autres ✗. Sans cap → pas d’accès Analytics / vue org Overview.
+- **Deux modes seulement** (pas de vue perso sales) :
+  - **Org** : owner/admin. CA org, coms coût, marge, team, pipeline. Filtre BU optionnel.
+  - **BU Owner** (scope `bu`). Même page. Hero = **CA BU**. Coms = **BU Owner** (`attribution_type=business_unit`) + **Team** (sales/ambassador). **Pas de marge org**. Team + pipeline scopés BU. Chart coms = coms BU Owner.
+  - Admin aussi BU Owner → reste en **vue org** ; filtre BU optionnel.
+- 1 RPC INVOKER `crm_sales_analytics` (+ `p_viewer_mode`) ; pas d’agrégat client-side.
+- **CA** = `organization_sales.sold_at`. **P&L** : coms accrues ; **Cash** : `paid_at`. Chart coms miroir (Paid + Due). Packs analytics = plus tard.
+- **Marketing analytics** (même page `/dashboard/analytics`, switch Sales | Marketing) :
+  - Lead marketing = `origin = form` **ou** `ambassador_link_id` set.
+  - KPIs période : leads créés, converted (parmi eux), conv %, CA (`sold_at` des sales liées à ces leads).
+  - Tables : share links (clicks = **lifetime** ; leads/converted/CA = période), ambassadors, forms. Pas de table “channels” (doublon du label link).
+  - Chart : top share links by revenue ; tooltip = créateur + form.
+  - Même cap `analytics.view` + filtre BU ; clicks non datés → pas de série clicks période.
+- Colonne **`sold_at`** NOT NULL ; vue + expires_at enrollment manuel ancrés dessus.
 
-### 2026-07-21 — Storefront branding (Stan/Gumroad style), not mini-site
-- **Décision** : La page publique org = **store link** minimal (identité + liste d’offers + buy). Pas un page builder / landing multi-sections.
-- **Canaux** : vente possible hors CoachStack via **buy links** ; **delivery** (vidéos / packs / portail coached) reste chez nous.
-- **Branding v1 keep** : logo, nom (org), bio courte, 1 couleur primaire, liste offers actives, CTA buy.
-- **Branding cut / freeze** : hero image, secondary color, credentials, stats, testimonials, FAQ, about long, footer CTA, featured complexity — ne plus pousser dans l’UI ; données legacy OK en lecture si présentes.
-- **Pourquoi** : ICP multi-persona (pas de site vs site existant) ; setup rapide > vitrine premium.
+### Lead Owner ≠ pay · statuses · filters
 
-### 2026-07-21 — External sales = CoachStack interstitial → Stripe Checkout Session
-- **Décision** : Pour coachs avec site externe, le lien de vente n’est **pas** un Payment Link Stripe brut. C’est un **lien CoachStack court** qui ouvre une **Checkout Session** (même moteur metadata / variants / installments qu’aujourd’hui).
-- **UX** : écran d’attente court (EN) — “{Org} partners with CoachStack…” + auto-redirect ~2.5s + CTA “Continue to checkout” (pas de formulaire email/nom ; Stripe collecte).
-- **Return URLs** :
-  - **success** → toujours CoachStack `/order-success` → signup coached (même email) — **jamais** le site du coach (lier paiement → compte → delivery).
-  - **cancel** → même `/org/{slug}/buy/{offerId}` (retry) — pas d’URL externe arbitraire (open redirect).
-- **Store / Buy** : même flow interstitial.
-- **Offer key features** : non nécessaires.
-- **Pourquoi** : friction proche de “site → Stripe”, sans perdre metadata / variants / installments.
+- `leads.owner_id` = ops (mail à l’assign) ; **pas** de com. € = `lead_attributions` seulement. Cap `crm.assign_sales` = assign owner. Pas d’auto-closer.
+- BU + owner éditables tant que coms non activées ; Form ≠ BU.
+- Statuses **par org** ≤10 ; système lockés `new` / `lost` / `converted` (seed = ces 3). Delete interdit si système ou used. `converted` = gate Record sale / Activate.
+- Forms : **pas de `form_type`** ; `initial_status` ; `success_message` + `redirect_url` cumulables (soft redirect ~3.5s).
+- Liste CRM = RPC `crm_leads_page` + EXISTS ; champs filtrables opt-in max **4** (select/multi/boolean).
 
-### 2026-07-23 — CRM IA : hub Forms vs pipeline
+### Record sale · Stripe cash · base coms
 
-- **Hub** `/dashboard/crm/forms` : Forms | Fields | Statuses | Share links (sous-nav).
-- **Business units** : Settings (`?section=business-units`), pas Forms. Pipeline CRM peut raccourcir vers Settings.
-- Redirects : `/dashboard/crm/settings` → fields ; `/dashboard/crm/ambassador` → share links.
-- Sidebar : entrée **Forms** séparée de **CRM**.
-- **Pourquoi** : construire l’inbound vs qualifier les leads — moins d’éclatement settings/ambassador.
+- Vente = `organization_sales`. Enrollment = delivery optionnel. Coms → **`organization_sale_id`**.
+- Record sale : **Create** | **Link** | **Sale only**. Activate exige sale. Stripe ne lie pas le lead (raccord manuel).
+- Stripe : `checkout.completed` + `invoice.paid` → sale idempotente ; renewals = nouvelles sales. Metadata sub toujours posée. Réconciliation job = plus tard.
+- Sales = tréso (`price`) ; installment → `base_amount_cents` + index/count. Plan `acquisitionBasis` : **`on_deal`** (défaut) | **`on_payment`**.
+- Enrollment manuel + `source=manual` (one_time). Drop `manual_sales`.
+- Gap : Activate sans sale / sans offre produit — **fermer** (décidé 2026-10-10).
 
-### 2026-07-23 — CRM forms / share links / BU (chantier)
+### BU Owner = settlement périodique (cible, ≠ closer)
 
-- **Qui partage** : tout membre de l’org (pas seulement rôle ambassador). Lien = `member_id` + **label canal** libre (“partage insta”, “tiktok…”) pour comparer les canaux.
-- **Doublon email** : on **crée quand même** le lead ; **pas de colonne dédiée** — ligne CRM en rouge clair + badge “déjà connu”.
-- **Post-submit** : configurable par form (message de succès, redirect URL, etc.).
-  - ~~Redirect URL uniquement pour `form_type = default`~~ → **supersédé 2026-10-08** (plus de `form_type` ; message + redirect cumulables).
-  - Si redirect : écran merci + lien affiché + auto-redirect ~3.5s (pas de jump immédiat).
-- **Clics** : compter au GET du form public (par lien).
-- **Anti-spam** : honeypot + rate limit sur POST public (phase chantier).
-- **Email confirmation prospect** : non pour l’instant.
-- **Prefill / champs cachés** : **gardés** — valeurs injectées via le lien (et/ou query allowlistée), non affichées si `hidden`, stockées en `lead_field_values` (complément aux Business Units, pas un substitut).
-- **BU / splits** : **ne pas** fonder les commissions futures sur des règles génériques “si champ CRM = X”. → introduire une entité légère **Business Unit** (first-class) avant la feature paiements/splits ; le champ CRM peut servir de bridge temporaire pour le filtrage, mais l’argent s’attachera à `business_unit_id` (ou équivalent) sur le lead/lien.
-- **Colonne BU dans le CRM** : affichée **seulement** si l’org a ≥1 business unit active (évite de polluer les coaches solo).
-- **Pourquoi** : attribution personne + canal + contexte BU sans casser le CRM flexible ; splits $ exigent une identité stable, pas des options de select renommables.
+Séparé des coms sales/ambassador/coach (event-driven). BU Owner = P&L de la BU, pas une 4ᵉ attribution deal.
 
-### 2026-07-23 — Rachat = nouveau contrat
+- **Config par BU** (pas org-wide) : owner, %, cadence, base, **payout delay**.
+- **Périmètre CA** : sales dont l’offre a `offers.business_unit_id` = cette BU (`sold_at` dans la période). Abos : chaque invoice/sale compte.
+- **Offre sans BU** : hors settlement BU Owner (marge org).
+- **Cadence** : v1 simple = **monthly**, close = fin de mois civil (période = calendrier). UI Settings → Business units.
+- **Base** : par BU **`of_revenue`** (CA brut) | **`of_residual`** (CA − coms team acquisition **accrued** via `sold_at` − coms **delivery coach** accrues via `created_at` / assign, rattachées à la BU par l’offre du pack). Pas de rétrocession si assign après la période de vente.
+- **Due date (simple)** : à la cloture de période, `due_at` = **début du mois suivant + `payout_delay_months`** (défaut **0** = exigible dès le 1er du mois suivant la perf). Ex. perf octobre → due 1 nov si delay 0 ; 1 déc si delay 1. Pas d’autres fréquences v1.
+- **Matérialisation** : **1 settlement / BU / période**. Job mensuel (1er du mois ou cron). Statuts **`pending` | `paid`** ; overdue = pending + `due_at` passé (même logique que coms team). Unpay + audit comme coms.
+- **Table dédiée** `bu_owner_settlements` (period_start/end, basis, revenue_cents, team_costs_cents, amount_cents, due_at, paid_at, paid_by, status…).
+- **Analytics** :
+  - **Org P&L / Cash** : détail **Team commissions** + **BU Owner settlements** (accrued période / `paid_at`) ; Net = CA − total coûts.
+  - **Vue BU Owner** : préciser coûts team (accrued) vs net / settlement dû ; pas de “marge org”.
+- **Lead BU** : filtre CRM ops seulement.
+- **Supersède** : auto Stripe `ensureHeadCommissionForSale` + BU Owner Activate (retirés). Mock wipe OK.
 
-- **Décision** : chaque checkout payé crée un **nouvel** `enrollment` (courses et coaching).
-- **Expire-then-insert** : expire d’abord les `active`/`paused` du même offer + buyer, **puis** INSERT (manuel + Stripe). Évite le reject si l’ancien contrat a encore 1–2 jours.
-- Unique `(offer_id, user_id)` **seulement** si `status IN ('active','paused')` : historique `expired` OK.
-- Idempotence : `enrollments.stripe_checkout_session_id` unique (retries webhook).
-- Effet : nouveau `enrollment_product_id` → progress / séances / assign coach repartent à zéro ; l’ancien reste en historique.
-- **Pourquoi** : un paiement = un contrat de delivery clair ; pas de chevauchement d’accès actifs.
-- **Job** : `expire_due_enrollments()` (cron quotidien) passe en `expired` si `expires_at < now()`. Abos lifetime = `expires_at` null (inchangés ; statut via webhooks).
+### Commission pools · schedules · page payouts
 
-### 2026-07-23 — Offer composition + commercial terms on offer
-- **Composition** : éditable si **0 enrollment** ; si déjà vendue → créer une nouvelle offre + **archiver** l’ancienne (pas de mutation rétroactive).
-- **Accès** : `offers.access_duration_months` (`NULL` = lifetime, `N` = mois depuis l’achat). Plus de durée commerciale sur `product_coaching.period_months`.
-- **Séances coaching** : `offers.sessions_count` (total inclus dans le SKU). Plus de `sessions_count` commercial sur le produit ; produit coaching garde surtout `delivery_mode`.
-- **Checkout** : refuser si aucun produit lié / actif.
-- **Accès portail** : `v_coached_products` filtre aussi `expires_at IS NULL OR expires_at > now()`.
-- **Pourquoi** : offre = promesse commerciale (prix, durée, volume séances) ; produit = delivery.
+- **Acquisition** (Activate) : sales/ambassador `of_base` seulement (plus de ligne BU Owner au Activate en cible). Plan org pour team + delivery.
+- Slot plan `head` / residual BU Owner dans Settings Commissions → **migrer** vers config settlement BU (cadence + base).
+- **Delivery** : trigger assign ; base = sale only (pas fallback offer) ; override %/fixe pack ; re-assign remplace pending ; solo = pas de com coach.
+- `delayMonths` = offset 1ère échéance (One payment | Equal installments). Legacy `equal_deferred` → front_loaded + delay 1.
+- Page coms : table + résumé member (RPC INVOKER) ; **pas** de side panel. Statuts `pending`|`paid` ; drop `validated`. Overdue = dérivé `due_at`. Unpay + audit `paid_by`. Cancel CRM = **DELETE** pending. PDF payout = plus tard.
+- Label client liste : lead d’abord, sinon enrollment JOIN ; `enrollment_in_scope` accepte aussi caps commissions.
 
-### 2026-07-23 — Coach ↔ Coached access hardening (prioritized)
-- **#1 Guards** : UX client OK, mais **edge** doit exiger une session sur `/dashboard/*` et `/coached/*` (hors login/signup/landing). RLS reste la vérité data.
-- **#2 `v_coached_products`** : passer en `security_invoker` + **REVOKE** `SELECT` pour `anon` (plus de bypass RLS via vue owner).
-- **#3 / #9 Rôles coaching ops** : **plus tard** (matrix owner/admin/coach/sales).
-- **#4 Routes coached** : **done** — URLs `/coached/.../courses|coaching/[enrollment_product_id]`.
-- **#5 Guest sans compte** : déjà indiqué côté coaching (“Waiting for client to sign up”) — garder ; améliorer link login si besoin.
-- **#6 Dual rôle** : **done** — CTAs soft dashboard (student area vs create org) + lien “Open coach workspace” sur profil coached.
-- **#7 Vocabulaire portail** : **done** — Programs ; coach = personne assignée ; nav/listes = Organizations.
-- **#8 Empty states / dead ends** : **done** — actionnables ; Discover retiré tant que pas de catalog.
-- **#10 Design Card coached** : **done** — page coaching pack hors shadcn `Card` (bordures plates).
-- **Pourquoi** : split 3 surfaces conservé ; durcir sécu + clarté avant scale multi-coach.
+### Coaching change/remove
 
-### 2026-10-09 — Equal installments + delayMonths (start offset)
+- Change / Remove si **0** session et **0** delivery paid. Remove = delete assignment + pending delivery. Lock après. RLS `coaching.assign` INSERT/DELETE delivery pending.
 
-- `delayMonths` = mois jusqu’à la **première** échéance pour **tous** les schedules (One payment et Equal installments).
-- Equal : due_at = anchor + delayMonths, puis +1 mois par part. UI = 2 options (One payment | Equal installments) + stepper mois.
-- Legacy `equal_deferred` (ex-+1 hardcodé) : normalisé au read → `equal_front_loaded` + `delayMonths: 1` si delay était 0.
+### Role `member` → `staff`
 
-### 2026-10-07 — Commission calc modes + schedules (org-global)
+- Même caps ; wording ops sans sales/coach/ambassador.
 
-Complète la spec 2026-07-27. Vocab client « Mentor » = notre **coach** (delivery), pas un type d’attribution CRM.
+---
 
-#### Slots acquisition (Activate CRM)
-| Slot | Source | Calcul défaut | Échéancier défaut |
-|------|--------|---------------|-------------------|
-| sales | attributions closer / setter | `of_base` = HT × % | **1× immédiat** |
-| ambassador | attribution ambassador | `of_base` | **1× immédiat** |
-| head | **BU owner** auto (`business_unit` attribution) | **`of_residual`** = (HT − Σ of_base) × % | **1× immédiat** |
+## 2026-10-04 — Permissions · Solo/Team · Offer↔BU
 
-- Head = BU owner (pas un rôle d’invite séparé).
-- `of_residual` = défaut Head ; **Settings → Commissions** peut basculer Head en `of_base` + schedules par slot.
-- Plan stocké : `organizations.commission_plan` (jsonb) ; null = défauts code (1× immédiat).
-- Ordre calcul : toutes lignes `of_base` → puis `of_residual`.
-- Marge org = HT − Σ commissions (affichage, **pas** de ligne commission owner/associés en V1).
-- `commissions.due_at` pour l’échéancier.
+### Permissions = capacité × scope
 
-#### Slot delivery (hors Activate)
-- **Coach** : pool `delivery`, trigger = assign (`coaching_assignments`) après enrollment.
-- **UI** : bouton Assign coach → modal (SearchSelect coach + preview com + override % ou fixe € pour **ce pack**). Prefill = defaults member coach.
-- Calcul `of_base` sur HT de la **sale** (`organization_sales.price`) × %/fixe (override modal ou `default_commission_*_coach`) ; échéance via plan org (défaut 1× immédiat).
-- **Pas de fallback** sur `offers.price` : sans sale (ou prix ≤ 0) → assign OK, **aucune** commission ; warning dans le modal.
-- Ligne commission : `beneficiary_member_id` = coach ; `attribution_id` null ; `lead_id` si lead lié à l’enrollment ; `organization_sale_id` requis.
-- Re-assign : cancel pending delivery du même enrollment, recrée.
-- Solo : pas de commission coach (inchangé).
+- Matrix owner-configurable par rôle : `admin` / `sales` / `ambassador` / `coach` / `staff`. Owner = tout. Pas de rôles custom / overrides membre en V1.
+- Scope calculé : owner/admin → `org` ; sinon BU owner → `bu` ; sinon → `own`.
+- **BU owner** ≠ invite : `business_units.owner_member_id` + colonne matrix `bu_owner` (caps scope BU, cumul rôle org).
+- Enforcement : UX `can()` + RLS `has_org_capability` + helpers `*_in_scope`. Owner-only hors matrix : `org.billing`, `org.permissions`.
 
-### 2026-07-27 — Commissions / splits (spec figée)
+**Sous-actions (clés matrix)**  
+Team: `team.invite|manage_roles|revoke` · Catalog: `catalog.manage` · Clients/sales: `clients.view|enroll_manual`, `sales.view`, `analytics.view` · CRM: `crm.leads.view_own|view|update_status|edit|delete`, `crm.assign_sales`, `crm.manage_attributions`, `crm.activate_commissions`, `crm.view_lead_commissions` · Forms: `forms.view|manage`, `forms.links.view_own|create_own|delete_own|manage_others` · Coaching: `coaching.view|assign`, `coaching.sessions.create|complete` · Coms/BU: `commissions.view_own|view_all|mark_paid`, `bu.manage` · Campaigns: `campaigns.manage` (général V1 : page + sync + segments) · Org: `org.settings` (domaine email reste ici).
 
-Feature de suivi des commissions (acquisition + delivery) sur le **prix brut du pack**. Pas de plafond plateforme : le coach fixe ses %.
-
-#### Trigger & cycle
-- Lead `converted` → bouton CRM **Activer commissions** / **Annuler commissions** (validation admin/org).
-- Statuts ligne : **`pending` ↔ `paid`**. **`validated` retiré**. **Overdue = dérivé** (`pending` + `due_at` < now) — pas de statut DB ni cron (évite drift / jobs).
-- Page commissions : **uniquement** mark paid / unpay (`paid → pending`). Pas d’action “cancel” ici.
-- **Annuler commissions** (CRM) : **DELETE** des lignes `pending` du lead + unlock attributions. Les `paid` bloquent l’annulation. Réactivation = nouvelles lignes. (Plus de soft-status `canceled` en flux.)
-- Marquage **paid** = `commissions.mark_paid` ; audit = `paid_at` + `paid_by`.
-- Refund Stripe : **pas** d’auto-void ; l’org annule manuellement (CRM ou page commissions).
-- Soft-lock attributions : après activation, attributions **verrouillées** (trigger DB). Pour changer sales/ambassadeur : **Annuler commissions** → corriger → **Réactiver**.
-- **Preview obligatoire** avant Activate : dialog avec lignes (slot, membre, %), échéances `due_at`, total commissions + marge org.
-- Page commissions UX : **pas de side panel** ; table (clic ligne = select) + **vue résumé par member** (pay all) ; pending jaune / paid vert / due overdue rouge ; filtre Overdue plus tard ok.
-- **PDF facture de paiement** : plus tard (après event log / export).
-
-#### Base de calcul
-- % (ou fixe) du **prix pack brut** pour slots `of_base` ; Head peut être `of_residual` (voir 2026-10-07).
-- Installments commissions = **étalement du même % total** (ex. 10 % sur 3 mois → ~3,33 % × 3), pas un 10 % × 3.
-
-#### Deux sources de vente
-- **On-platform** : lier lead ↔ enrollment (match **email** si possible ; sinon choix manuel pack/enrollment). Liaison auto **corrigeable** si mauvaise.
-- **Off-platform** : plus de table `manual_sales` (drop 2026-10-07). Vente économique = `organization_sales` ; Activate CRM peut encore créer des coms sur `lead_id` sans sale (gap à fermer — voir « CRM vs ventes »).
-
-#### Pools (même pot = brut pack)
-1. **Acquisition** : ambassador / setter / closer + **BU** (même base %).
-2. **Delivery** : coach assigné (plus tard / 2e temps produit, même pot).
-- Pas de plafond système.
-
-#### Defaults & override
-- % **par personne** défini à l’**invitation** team member (éditable ensuite).
-- % **default par BU**.
-- Override possible sur attribution lead (déjà partiel en UI) et sur règles offer.
-
-#### Coach / solo
-- Commission coach déclenchée à l’**assign** (`coaching_assignments`).
-- Solo : auto-assign + **pas de commission coach**.
-- **1 coach** par pack/lead pour l’instant.
-
-#### Échéancier commissions
-- Admin définit des règles **globales** + défauts **par offer** (appliqués auto) ; override possible **par offer** (et preview à l’activation deal).
-
-#### UI / droits
-- Page suivi commissions (dues / payées / par pack-lead).
-- v1 = **suivi dettes + marquage payé + export** (pas de facture fiscale PDF).
-- DB **préparée** pour factures PDF plus tard (numérotation / docs).
-- Visibilité : member → **ses** commissions ; BU owner → commissions de **sa BU** + peut marquer payé ; admin/owner → **tout** + payer.
-
-#### Conséquences schéma (à implémenter)
-- Defaults commission **par type de rôle** sur `organization_members` (`sales` / `ambassador` / `coach`) + sur `business_units` (+ `owner_member_id` BU pour droits). Un membre peut être sales et ambassador en même temps → 2 % distincts.
-- ~~`manual_sales`~~ droppé ; assouplir lien commission ↔ enrollment / sale unifiée.
-- Attribution types / pool delivery (`coach`) ; schedule fields (installments count, start rule).
-- Tables futures factures (stubs) sans UI fiscale v1.
-
-### 2026-10-01 — Manual enrollment + sale (`source`)
-- **Décision** : un coach peut créer un enrollment + `organization_sales` hors Stripe (`source=manual`, `billing_type=one_time` sur la sale). Accès via `expires_at` depuis `offers.access_duration_months` (lifetime si null).
-- **Pourquoi** : ventes cash / off-platform avec delivery + assign, sans Customer Portal.
-- **UI** : `/dashboard/clients` → Add enrollment.
-- **Plus tard** : gérer abonnements manuels + lier une txn Stripe si possible ; job qui passe les enrollments `expires_at` dépassée en `status=expired` (vues filtrent déjà la date).
-
-### 2026-10-07 — Record sale + page Sales (figé)
-
-**Décision** : une vente = `organization_sales`. Enrollment = delivery CoachStack **optionnel**. CRM = pipeline + attributions. Commissions = argent → rattachées à la **sale**, pas à l’enrollment.
-
-**Rattachement commissions**
-- FK principale : `commissions.organization_sale_id` → `organization_sales`.
-- `enrollment_id` sur commission = dénormalisé / optionnel (utile delivery + navigation), **pas** la source de vérité argent.
-- Acquisition Activate bloqué sans sale liée au lead.
-- Delivery coach : toujours via assign ; **exige** une sale sur l’enrollment (sinon 0 com ; plus de fallback offer).
-
-**Record sale — 3 modes**
-1. **Create enrollment + sale** — formation chez nous.
-2. **Link existing** enrollment (Stripe / Clients) → rattache aussi sa sale.
-3. **Sale only** — cash / formation hors CoachStack : `organization_sales` avec `enrollment_id` null ; pas de client delivery / pas de com coach.
-
-**Flux**
-1. Lead Converted → Record sale (un des 3 modes).
-2. Attributions OK → Activate (preview) — exige sale liée.
-3. Page Sales : `organization_sales` + enrollment (si présent) + coms.
-
-**Pourquoi sale_id > enrollment_id** : enrollment = accès/produit ; sale = encaissement. Formations externes = sale sans enrollment ; enrollments sans vente (essais) ne doivent pas inventer des coms.
-
-**État / dette**
-- Auto-link email lead↔sale/enrollment = nice-to-have.
-
-### 2026-10-07 — Stripe → `organization_sales` garanti (couches 1+2)
-
-**Décision** : tout paiement Stripe Connect aboutit à une ligne `organization_sales` (idempotent).
-
-**Écriture**
-1. `checkout.session.completed` + `payment_status=paid` + `amount_total>0` → upsert sale sur `stripe_checkout_session_id`.
-2. `invoice.paid` → upsert / attach sur `stripe_invoice_id` ; si une sale checkout existe déjà pour le même enrollment/session → **update** `stripe_invoice_id` (pas de double comptage 1er paiement).
-3. Renouvellements (`subscription_cycle`) → nouvelle sale (invoice id).
-
-**Résolution invoice** (ordre) : `stripe_subscription_id` → customer+org → metadata `organization_id`.
-Metadata Checkout **toujours** copiée sur `subscription_data.metadata` (pas seulement installments).
-
-**Hors scope (couche 3)** : job de réconciliation Stripe ↔ sales — plus tard.
-
-**Pourquoi** : enrollment et sale étaient découplés ; `invoice.paid` pouvait ne pas résoudre l’enrollment (race vs checkout, customer seul, filtre `billing_reason`).
-
-### 2026-10-07 — Sales = tréso ; base coms = deal ; `on_deal` | `on_payment`
-
-**Décision**
-- `organization_sales` = **encaissements** (`price`). Sur installment (sub + `cancel_at`) : + `base_amount_cents`, `installment_index`, `installment_count`.
-- **Pas** de table “contract”. Prix de base = `base_amount_cents` (ou variant → offre → `proposed_amount`).
-- Org plan : `acquisitionBasis` = **`on_deal`** (défaut) | **`on_payment`**.
-  - `on_deal` : Activate une fois sur le **prix de base** ; sale liée = ancre.
-  - `on_payment` : Activate (1er) puis **chaque nouvel encaissement** crée des coms sur le `price` de cette sale.
-- Stripe n’a pas de “pack en N fois” hors abo + fin après N cycles — on continue ce pattern.
-
-**Pourquoi** : éviter coms sur 1k au lieu de 3k ; clarifier UI tréso vs base ; choix org sans 2ᵉ entité.
-
-### 2026-10-04 — Org mode Solo vs Team (UX)
-- **Décision** : `organizations.mode` = `solo` \| `team`. Orgs existantes → **team**. Nouvelles → **solo**.
-- **Solo** : masquer colonnes/attributions CRM acquisition, assign sales, assign coach ; pages Team / Commissions / Business units restent accessibles avec **TeamPlanGate** + CTA Upgrade (stub todo billing).
-- **Team** : UX complète actuelle.
-- **Pourquoi** : simplifier solopreneurs sans casser l’ICP multi-coach ; monétisation upgrade plus tard.
-- **Impl** : flags via `useOrgCapabilities().mode` ; pas de changement RLS.
-- **Solo auto-assign coach** : trigger DB `enrollment_products_solo_auto_assign_coach` (pas app-only) — invariant sur tous les chemins d’insert. Commission coach delivery reste « pas en solo » (quand ce pool sera branché).
-
-### 2026-10-04 — Offer → Business unit
-- **Décision** : `offers.business_unit_id` nullable (FK `business_units`, same-org trigger). `NULL` = org-wide.
-- Enrollments / clients BU scope via `enrollment.offer_id → offers.business_unit_id` (pas de BU sur enrollment — un achat Stripe ne pourrait pas être rattaché proprement sinon).
-- **Trade-off accepté** : une offre = une BU ; multi-BU ⇒ dupliquer l’offre.
-- UI : create/edit offer → select BU. Default matrix `bu_owner.clients.view` = on.
-
-### 2026-10-04 — Permissions org = capacité × scope (owner-configurable)
-- **Décision** : l’owner configure une **matrix par rôle org**. Rôles : `admin` / `sales` / `ambassador` / `coach` / `staff` (`owner` = tout, non éditable). Pas de rôles custom ni overrides par membre en V1. (Historique : `member` → `staff`, 2026-10-09.)
-- **Nouveau rôle `coach`** : par défaut **rien** sauf coaching (packs où il est assigné) + capacités **own** (leads attribués, share links à lui, `commissions.view_own`).
-- **Deux axes** : (1) capacité matrix (2) scope calculé `org` | `bu` | `own`.
-- **BU owner ≠ rôle d’invite** : `business_units.owner_member_id` + colonne matrix configurable `bu_owner` (caps **scope BU only**, cumul avec le rôle org).
-- **Résolution scope** : owner/admin → `org` ; sinon BU owner → `bu` ; sinon → `own`.
-
-#### Règles structurelles (defaults produit — au-delà d’une case on/off naïve)
-- **CRM view** : tout rôle → ses leads `own` (attribué). BU owner → tous les leads de sa BU. Admin/owner → tous.
-- **CRM manage** : tout rôle → **update status** de ses leads `own` seulement (**pas delete**). Admin + BU owner → manage complet dans leur scope (edit/delete/etc.).
-- **CRM assign_sales / manage_attributions** : admin ou BU owner (scope BU).
-- **sales.view** : admin (org) ou BU owner (sa BU) — pas sales/ambassador/staff/coach par défaut.
-- **clients.view / enroll_manual** : admin + **staff** seulement (pas sales).
-- **forms.view** : tout le monde.
-- **forms.manage** : admin (org) ; BU owner pour les forms de **sa BU** (qu’il gère pour la BU).
-- **forms.manage_links** : tout le monde → créer/voir **ses** links (`own`). Admin + BU owner → voir / ajouter / supprimer links dans leur scope (org / BU).
-- **Coaching** (`view` / `manage_sessions`) : admin **ou** le member **assigné** sur le pack. `coaching.assign` : admin seulement (solo = auto-assign owner).
-- **Owner only (hors matrix)** : `org.billing`, `org.permissions`.
-
-#### Sous-actions = clés réelles de la matrix
-Les groupes UI (`CRM`, `Forms`…) agrègent ces clés. Scope `org|bu|own` s’applique **en plus** (sauf coaching assigné = scope pack).
-
-**Team**
-- `team.invite` — inviter
-- `team.manage_roles` — changer rôle
-- `team.revoke` — révoquer / cancel invite
-
-**Catalogue**
-- `catalog.manage` — create/edit products & offers
-
-**Clients / sales**
-- `clients.view` — liste clients / enrollments
-- `clients.enroll_manual` — add enrollment manuel
-- `sales.view` — voir ventes / revenue (scope org ou BU)
-
-**CRM leads**
-- `crm.leads.view_own` — voir ses leads (attribué / créé / share link)
-- `crm.leads.view` — voir tous les leads dans le scope (`org` / `bu`)
-- `crm.leads.update_status` — changer stage/statut seulement
-- `crm.leads.edit` — éditer champs / notes / détails (pas delete)
-- `crm.leads.delete` — supprimer un lead
-- `crm.assign_sales` — assigner l’**owner** du lead (pas les rôles commission)
-- `crm.manage_attributions` — attributions / %
-- `crm.activate_commissions` — activer / annuler commissions
-- `crm.view_lead_commissions` — voir bloc commissions + attributions dans le détail lead
-
-**Forms**
-- `forms.view` — voir forms / fields (catalogue forms de l’org ou BU selon scope)
-- `forms.manage` — create/edit/archive forms (+ fields) dans le scope
-- `forms.links.view_own` — voir ses share links
-- `forms.links.create_own` — créer ses share links
-- `forms.links.delete_own` — supprimer ses share links
-- `forms.links.manage_others` — voir / créer / supprimer links **des autres** dans le scope (org ou BU)
-
-**Coaching** (hors scope org/bu/own classique : **admin = tous packs** ; sinon **packs où `coaching_assignments` = moi**)
-- `coaching.view` — voir packs
-- `coaching.assign` — assigner / réassigner coach
-- `coaching.sessions.create` — créer une séance
-- `coaching.sessions.complete` — marquer séance done / undo
-
-**Commissions / BU**
-- `commissions.view_own`
-- `commissions.view_all` (ou scope BU si BU owner)
-- `commissions.mark_paid`
-- `bu.manage`
-
-**Org**
-- `org.settings` — branding / général  
-- Hors matrix owner-only : `org.billing`, `org.permissions`
-
-#### Defaults matrix (✓ = on au seed)
+**Defaults seed**
 
 | Clé | admin | sales | ambassador | coach | staff |
 |---|---|---|---|---|---|
-| `team.invite` | ✓ | — | — | — | — |
-| `team.manage_roles` | ✓ | — | — | — | — |
-| `team.revoke` | ✓ | — | — | — | — |
-| `catalog.manage` | ✓ | — | — | — | — |
-| `clients.view` | ✓ | — | — | — | ✓ |
-| `clients.enroll_manual` | ✓ | — | — | — | ✓ |
-| `sales.view` | ✓ | — | — | — | — |
-| `crm.leads.view_own` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `crm.leads.view` | ✓ | — | — | — | — |
-| `crm.leads.update_status` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `crm.leads.edit` | ✓ | — | — | — | — |
-| `crm.leads.delete` | ✓ | — | — | — | — |
-| `crm.assign_sales` | ✓ | — | — | — | — |
-| `crm.manage_attributions` | ✓ | — | — | — | — |
-| `crm.activate_commissions` | ✓ | — | — | — | — |
-| `crm.view_lead_commissions` | ✓ | — | — | — | — |
-| `forms.view` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `forms.manage` | ✓ | — | — | — | — |
-| `forms.links.view_own` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `forms.links.create_own` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `forms.links.delete_own` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `forms.links.manage_others` | ✓ | — | — | — | — |
-| `coaching.view` | ✓ | — | — | ✓ | — |
+| `team.*` / `catalog.manage` / `bu.manage` / `org.settings` / `campaigns.manage` | ✓ | — | — | — | — |
+| `clients.view` / `enroll_manual` | ✓ | — | — | — | ✓ |
+| `sales.view` / `analytics.view` | ✓ | — | — | — | — |
+| `crm.leads.view_own` / `update_status` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `crm.leads.view` + edit/delete/assign/attributions/activate/view_coms | ✓ | — | — | — | — |
+| `forms.view` + links `*_own` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `forms.manage` / `links.manage_others` | ✓ | — | — | — | — |
+| `coaching.view` / sessions | ✓ | — | — | ✓ | — |
 | `coaching.assign` | ✓ | — | — | — | — |
-| `coaching.sessions.create` | ✓ | — | — | ✓ | — |
-| `coaching.sessions.complete` | ✓ | — | — | ✓ | — |
 | `commissions.view_own` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `commissions.view_all` | ✓ | — | — | — | — |
-| `commissions.mark_paid` | ✓ | — | — | — | — |
-| `bu.manage` | ✓ | — | — | — | — |
-| `org.settings` | ✓ | — | — | — | — |
+| `commissions.view_all` / `mark_paid` | ✓ | — | — | — | — |
 
-**BU owner** : colonne matrix `bu_owner` (éditable Settings). Defaults : invite members, catalog, clients view/enroll, sales.view, CRM lead ops (dont `view_lead_commissions` + `manage_attributions`), forms/links, **coaching view/assign/sessions** (packs dont l’offre est sur sa BU), commissions view/mark paid. Scope données = BU via `offers.business_unit_id` (RLS/queries étape 6–7).
+**BU owner defaults** : invite, catalog, clients, sales.view, **analytics.view**, CRM ops (dont view_coms + attributions), forms/links, coaching packs offre→BU, commissions view/mark paid. Scope via `offers.business_unit_id`.
 
-- **Enforcement** : UI (matrix fetch + provider rôle) + RLS `has_org_capability` **(step 6)** + scope row filters `org|bu|own` **(step 7)** via `*_in_scope` helpers. Settings = table directe.
-- **Hors V1** : rôles custom, overrides individuels, matrix dupliquée “version BU”.
+Règles structurelles : CRM manage full = admin/BU ; sales/analytics défaut = admin + bu_owner ; coaching assign = admin (+ packs assignés pour view/sessions).
 
-### 2026-10-03 — Domaine final = `coachstack.co`
-- **Décision** : domaine produit = **`coachstack.co`**. Espace coached = **`app.coachstack.co`** (DNS/CNAME + Vercel + cookies Auth encore à finaliser en prod).
-- **Pourquoi** : tranché par Habib ; plus “à confirmer”.
-- **Conséquence** : env prod / Stripe return URLs / docs infra pointent vers ce domaine ; storefront orgs restent `/{slug}` ou sous-domaines org selon setup existant.
+### Overview Home (member | org | bu)
 
-### 2026-10-07 — Marketing automation = ESP externe via API (pas DIY deliverability)
+- Page `/dashboard` : snapshot **30j** (action + KPIs), pas un doublon Analytics.
+- **Défaut = Member** pour tous.
+- **Organization** : même cap qu’Analytics (**`analytics.view`**) + scope org.
+- **Business unit** : si le membre est BU owner (statut, pas une permission). Même switch que Member / Organization.
+- Vue org / bu : mêmes KPIs (Revenue / New leads / Converted / Active clients) ; `bu` filtre sur les BU owned. Recent sales + recent leads + top products + top forms (leads/converted 30j + clicks lifetime des links).
+- Vue member : My leads / Converted / Commissions earned / Pending ; recent leads (status label/couleur) ; Share links = top 5 par clicks ; Coaching si data. Attention “Assigned to N new coaching” si assign ≤**3 jours**.
+- “New leads” attention = statut pipeline `new` (pas une fenêtre de dates).
+- RPC `dashboard_overview(org, viewer_mode)` modes `member`\|`org`\|`bu` ; source `scripts/dashboard-overview.sql`.
 
-- **Décision** : CoachStack reste **source de vérité CRM** (leads, PERSONA, URGENCY, CALL_STATUS, CLIENT_STATUS, attribution). L’envoi marketing (welcome, nurture evergreen, campagnes, segments) passe par un **ESP externe** piloté **via API** depuis CoachStack — pas une UI ESP comme cerveau, et **pas** d’orchestration email marketing DIY sur Resend seul.
-- **Pourquoi** :
-  - Resend = email **transactionnel** déjà en stack ; insuffisant pour segments dynamiques / nurtures / campagnes / deliverability marketing à l’échelle.
-  - DIY “CoachStack envoie tout” implique deliverability lourde : warming IP/domaine, SPF/DKIM/DMARC, réputation, bounces/complaints, suppression lists, envoi **au nom de** l’org (domaine custom par tenant) — coût ops élevé vs valeur produit.
-  - ESP gère l’infra d’envoi ; CoachStack orchestre *quand* / *qui* / *quels attributs* / *sortie marketing au booking*.
-- **Conséquence** :
-  - Choisir un ESP **API-first** (candidats : Brevo, Customer.io, MailerLite — arbitrage prix vs features pause-nurture / exit event).
-  - Sync attributs CRM → contacts ESP ; events CoachStack (`call_booked`, `client_status=client`, …) pilotent exit / pause.
-  - Resend reste pour transactionnel app (auth, receipts, etc.) sauf décision contraire.
-  - Brief EDGE (form → persona → welcome → nurture → campagne hebdo → exit au call booked) = use-case cible de cette archi ; implémentation pas démarrée.
+### Solo vs Team · Offer BU
 
-### 2026-10-07 — Outbound CRM events (fondation integrations)
+- `organizations.mode` = `solo`|`team` (existantes → team ; create → solo). Solo : hide attributions/assign CRM+coach ; Team/Coms/BU derrière TeamPlanGate (upgrade billing todo).
+- Solo auto-assign coach = trigger DB sur `enrollment_products`.
+- `offers.business_unit_id` nullable ; clients BU via offer (pas enrollment). 1 offre = 1 BU.
 
-- **Décision** : **mettre en place l’envoi d’events outbound** depuis CoachStack (webhooks / event stream par org). C’est la **fondation** avant (ou en parallèle d’) un connecteur ESP natif.
-- **Pourquoi** : permet au client de brancher Zapier, Make, n8n, Brevo, etc. sans attendre un connecteur dédié ; pattern générique multi-org ; le connecteur ESP reste un add-on UX (“tout depuis CoachStack”), pas le seul chemin.
-- **Events cibles (v1 à préciser au build)** : au minimum `lead.created`, `lead.updated` (champs / attributs marketing), `call.booked` (ou équivalent CALL_STATUS), `client.converted` / changement `CLIENT_STATUS` — payload stable + secret / signature.
-- **Conséquence** : feature à builder (Settings org : URL webhook + secret ; émission fiable côté services CRM). Connecteur Brevo/ESP = phase suivante optionnelle, pas un prérequis pour automatiser.
+### Domaine
 
-### 2026-10-08 — CRM list filters via RPC + custom field filters
+- Produit = **`coachstack.co`** ; coached = **`app.coachstack.co`** (DNS/cookies prod encore todo).
 
-- **Décision** : liste CRM (`crm_leads_page`) = **RPC + `EXISTS`** (status/origin/members/BU/champs perso). Pas de resolve d’IDs côté app.
-- **Champs filtrables** : opt-in `crm_fields.filterable` ; max **4** / org ; types `select` | `multi_select` | `boolean` uniquement.
-- **Pourquoi** : pagination/`count` corrects ; multi_select via split CSV côté SQL ; index `(field_def_id, value)`.
-- **Conséquence** : `fetchLeadsPage` appelle le RPC ; Fields UI toggle Filter ; FilterRefine dynamique.
+### Sidebar dashboard (IA nav)
 
-### 2026-10-08 — Lead statuses org-level + forms sans `form_type`
+Groupes (source `lib/permissions/dashboard-nav.ts`, sidebar + mobile) :
+- **Home** : Overview, Analytics
+- **Pipeline** : CRM, Forms, Campaigns (`campaigns.manage`), Sales, Payouts
+- **Delivery** : Clients, Coaching
+- **Catalog** : Offers, Products, Content, Store page
+- **Organization** : Team, Settings
 
-- **Décision** : les status CRM sont **par organisation** (catalogue ≤ **10**), avec 3 status **système** toujours présents et **non supprimables** : `new`, `lost`, `converted`.
-- **Defaults seed** (création org / migration data test) : uniquement ces 3. Plus de `booked` / `deadline` / `contact_later` / `failed` en catalogue par défaut (`failed` → **`lost`**).
-- **Custom** : l’org peut **ajouter** des status (nom + couleur) jusqu’au plafond de 10 (incluant les 3 système). Label max **24** chars ; clé dérivée = label lower + `_` pour espaces. Sur les 3 système : **label + clé figés** ; couleur éditable. Custom : clé figée à la création ; couleur (+ label display) éditables.
-- **Delete** : interdit sur système ; interdit sur tout status **encore utilisé** par un lead (ou historique à trancher au build — a minima leads courants).
-- **Sémantique** : `converted` reste le gate Record sale / commissions ; `new` = entrée pipeline / défaut DB ; `lost` = perdu.
-- **Migration** : pas de couche de transition — pas en prod ; **adapter les lignes test** existantes vers le nouveau modèle.
-- **Forms** :
-  - **Supprimer `form_type`** (`default` / `webinar` / `freegiveaway`) pour l’instant — réintroductible plus tard si besoin.
-  - Chaque form définit le **status d’arrivée** du lead (parmi le catalogue org ; défaut raisonnable = `new`).
-  - Post-submit : **`success_message` et `redirect_url` cumulables** (merci + soft-redirect si URL renseignée — plus de blocage selon type).
-- **Pourquoi** : pipeline adaptable sans casser conversion/commissions ; forms plus simples.
-- **Remplace** (partiel) : règle 2026-07-23 « redirect seulement si `form_type = default` ».
-- **Conséquence** : abandon enum global `lead_status_enum` au profit d’un catalogue org (table/FK ou équivalent) ; UI Settings statuses ; badges couleur org ; public form POST pose le status du form.
+### Devise org (décidé, build = plus tard)
 
-### À décider (ne pas coder de pivot avant)
+- **1 devise / org** (`eur` | `usd` | `gbp`…), source de vérité pour offres, Checkout Stripe, ventes manuelles, commissions, analytics, settlements.
+- Tous les clients de l’org sont encaissés **dans cette devise** (la banque du payeur convertit éventuellement). Pas de multi-devise parallèle, pas de FX v1.
+- Sale / session Stripe ≠ devise org → **reject / quarantine** (pas de SUM silencieux cross-currency).
+- Aujourd’hui : `currency` existe déjà sur offre/sale, mais analytics & settlements somment des cents sans garde. Build ultérieur : champ org + enforcement + formatters.
 
-- [ ] Garder le positionnement “tous types de coachs” vs recentrer (ex. sport) ?
-- [ ] Quelle surface simplifier en priorité pour un MVP relancé ?
-- [ ] Ce qui reste “must” vs “coupable” dans le backlog features (hors coaching / commissions déjà tranchés)
-- [ ] Ordre de build commissions : acquisition-only d’abord vs acquisition+delivery ensemble ?
-- [x] UX vente↔CRM : **Record sale** depuis lead + page Sales — figé 2026-10-07
-- [x] Outbound CRM events — **à mettre en place** (fondation) — figé 2026-10-07
-- [ ] Quel ESP API-first (Brevo vs Customer.io vs MailerLite / autre) — critère : prix + segments attributs + pause/reprise nurture + webhooks events
+### Marketing / integrations
+
+- **Outbound events** (todo) : `lead.created|updated`, `call.booked`, `client.converted` → Zapier/Make. Utile même avec Resend natif.
+
+### Marketing email (Resend) — décidé 2026-10-12
+
+- CoachStack = vérité CRM (leads, clients, filtres, consent). **Resend** = envoi (transactionnel existant + **Broadcast** campagnes). Switch ESP possible plus tard si scale.
+- **Compte plateforme** unique CoachStack (pas BYOK). Domaines org créés/vérifiés via API Resend multi-tenant ; factu volume = CoachStack.
+- **Audience** = leads **et** clients. Segments = query CRM chez nous → sync contacts vers segment Resend au send (Resend segments = sacs, pas query builder).
+- **Templates** = **React Email** (déjà en place). Éditeur riche possible via `@react-email/editor` (TipTap) plus tard ; pas d’éditeur Resend Dashboard comme source de vérité.
+- **Pas** Resend Automations. Séquences (welcome pack J1/J3, nurture conditionnel) = **phase 2**, orchestrées chez nous (Inngest / Trigger.dev ou équivalent) + envoi transactionnel Resend.
+- **V1 scope** : domaine custom org (DNS guidé) · consent/topics/unsub · sync contacts · campagnes Broadcast · templates React Email · webhooks bounce/complaint/unsub. Séquences auto = plus tard.
+- Domaine envoi org : sous-domaine recommandé (`mail.` / `send.`) pour isoler la réputation.
+- **Étape 1 (2026-10-12)** : Settings → **Email** ; table `organization_sending_domains` ; API create / verify / refresh / remove via Resend Domains (compte plateforme). Cap `org.settings`.
+- **Étape 2 consent (2026-10-13)** :
+  - Form public : case **décochée** mais **obligatoire** pour soumettre + copy `I agree that {orgName} may keep my contact details to get in touch with me.` → lead form toujours opt-in true.
+  - Tables `campaign_contacts` (unique org+email lower) + `campaign_topics` (1× Marketing / org).
+  - FKs soft : `lead_id` + `enrollment_id` (SET NULL on delete). Delete lead ≠ delete contact.
+  - Clients (enrollment) + lead **manuel** CRM : `marketing_opt_in = true` auto. Pas de toggle CRM.
+  - Interim mock : **tous** leads + `campaign_contacts` opt-in true (default DB + backfill 2026-10-13).
+  - Topic local seedé à la création org ; `resend_topic_id` attaché à l’enregistrement du sending domain (`attachResendCampaignTopic`).
+  - Sync audience locale = **triggers DB** (`leads` / `enrollments` → `campaign_contacts`).
+  - **Étape 3 sync Resend (2026-10-13)** : sync **à la demande** via Pipeline → **Campaigns** → **Sync audience** (pas de soft-sync à chaque lead). Service upsert Contact + topic org ; `resend_contact_id`. Sync auto au Send Broadcast = plus tard. Quota contacts = à décider en fin de V1. Compte plateforme = 1 contact Resend / email ; isolation = topics par org.
+  - **Étape 4 segments (2026-10-13)** :
+    - Table `campaign_segments` : `filter_json` (AST AND/OR/NOT) = vérité CoachStack ; Resend segment = sac.
+    - Conditions v1 : `lead_status`, `lead_origin`, `form_field`, `is_client`, `offer`, `product`, `business_unit`, `lead_created_at` (entrée CRM), `enrollment_created_at` (inscription client).
+    - UI filtre = un bloc **Match all / any** ; exclusions via opérateurs (`is none of`, `Is client = No`, etc.).
+    - **Pas** de bouton Sync segment : **Sync audience** sync les contacts pending **puis** réconcilie chaque segment (resolve filtre → add/remove memberships Resend).
+    - Cap **`campaigns.manage`** (admin défaut) : nav Campaigns, APIs sync/segments, RLS contacts/segments. Domaine Resend reste `org.settings`.
+    - Indexes sync : partial `(organization_id, id) WHERE marketing_opt_in AND resend_contact_id IS NULL` + opted-in / synced.
+    - Preview count en local sans Resend.
+
+---
+
+## 2026-07 — Reprise (baseline produit)
+
+### Mémoire · Stripe soft-gate · Coaching v1
+
+- Mémoire vivante = `docs/` + `AGENTS.md` + rules ; `APP_OVERVIEW` = routes longues.
+- Stripe Connect obligatoire seulement publish/sell/checkout (pas draft catalogue).
+- Coaching v1 = packs + assign (`enrollment_products` + assignments) ; pas booking/payouts auto. Accès/séances commerciaux = **sur l’offre**.
+
+### Storefront · checkout · RLS
+
+- Page org = **store link** minimal (logo, bio, 1 couleur, offers, Buy). Cut hero/FAQ/stats/testimonials (legacy lecture OK).
+- Éditeur store 2026-10 : TipTap light bio + preview live = vraie page (offers) — section ci-dessus.
+- Buy = store boutons Stan → page buy (logo org + ligne partenariat CoachStack discrète + détail offre) → Continue → **Checkout Session**. Success → `/order-success` ; cancel = retry buy.
+- Orgs SELECT = owner | membre | enrolled. Offers manage = membres actifs. Lesson progress = own-row. Matrix catalogue fine = suite permissions (faite 2026-10).
+
+### CRM inbound · offre · rachat · portail
+
+- Hub Forms : Forms | Fields | Statuses | Share links. **BU = Settings** (pas Forms). Sidebar Forms ≠ CRM.
+- Share links : tout membre + label canal ; doublon email = create + badge ; clicks GET ; honeypot + rate limit ; hidden fields gardés. Coms ≠ règles “si champ CRM”.
+- Offre : composition éditable si 0 vente sinon nouvelle + archive ; `access_duration_months` + `sessions_count` sur offer. Base pricing figé après publish (voir section Offer editor 2026-10).
+- Rachat = expire-then-insert (`active|paused`) ; idempotence `stripe_checkout_session_id` ; cron `expire_due_enrollments` sur `expires_at` only.
+- Portail : routes `enrollment_product_id` ; edge session dashboard/coached ; `v_coached_products` security_invoker + revoke anon ; Discover retiré.
+
+### Commissions (spec d’origine — encore vraie)
+
+- Trigger = bouton Activate / Annuler sur lead converted (pas auto au statut). Soft-lock attributions après Activate.
+- Base = % / fixe pack brut ; equal installments = étalement du % total. Deux pools (acquisition puis delivery). Defaults % invite + BU. 1 coach / pack. Visibilité own / BU / all.
+- Détail slots / schedules / sale_id → sections 2026-10 ci-dessus.
+
+---
+
+## Baseline pré-pause (Q1)
+
+- Vertical = CRM + vente + delivery coaching (pas LMS seul) ; 3 surfaces.
+- Stack = Next App Router + Supabase RLS + React Query + Stripe Connect ; services `lib/services`.
+- Offres : archive Stripe-aware, pas delete. Produits : delete draft non lié seulement ; archive bloquée si sur offre.
+
+---
+
+### À décider (ne pas pivoter sans accord)
+
+- [ ] Positionnement “tous coachs” vs recentrer (ex. sport) ?
+- [ ] Surface à simplifier en priorité pour MVP relancé ?
+- [ ] Must vs cut backlog (hors coaching / commissions / sales / marketing Resend déjà tranchés)
+- [x] ESP = Resend Broadcast, compte plateforme (2026-10-12)

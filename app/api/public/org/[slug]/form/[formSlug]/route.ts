@@ -209,6 +209,7 @@ export async function POST(
         ambassador_link_id: ambassadorLinkId,
         business_unit_id: businessUnitId,
         is_duplicate: isDuplicate,
+        marketing_opt_in: true,
         created_by_member_id: null,
       })
       .select("id")
@@ -216,6 +217,7 @@ export async function POST(
     if (leadError) throw leadError
 
     const leadId = Number(leadRow.id)
+
     if (mergedValues.length > 0) {
       const rows = mergedValues.map((item) => ({
         lead_id: leadId,

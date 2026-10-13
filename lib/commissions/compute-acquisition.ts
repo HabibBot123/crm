@@ -48,7 +48,7 @@ export type AcquisitionPreviewResult = {
 const SLOT_LABELS: Record<string, string> = {
   sales: "Sales",
   ambassador: "Ambassador",
-  head: "Head",
+  head: "BU Owner",
 }
 
 export function buildAcquisitionCommissionPreview(input: {

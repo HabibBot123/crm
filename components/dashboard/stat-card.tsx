@@ -7,6 +7,7 @@ interface StatCardProps {
   title: string
   value: string
   change?: number
+  changeLabel?: string
   borderColor?: BorderColor
 }
 
@@ -17,7 +18,13 @@ const borderColorClasses: Record<BorderColor, string> = {
   accent:  "border-l-chart-2",
 }
 
-export function StatCard({ title, value, change, borderColor = "primary" }: StatCardProps) {
+export function StatCard({
+  title,
+  value,
+  change,
+  changeLabel = "vs prior 30d",
+  borderColor = "primary",
+}: StatCardProps) {
   return (
     <div
       className={cn(
@@ -34,7 +41,7 @@ export function StatCard({ title, value, change, borderColor = "primary" }: Stat
       {typeof change === "number" && (
         <div className="mt-2 flex items-center gap-1.5">
           <TrendBadge value={change} />
-          <span className="text-xs text-muted-foreground">vs last month</span>
+          <span className="text-xs text-muted-foreground">{changeLabel}</span>
         </div>
       )}
     </div>

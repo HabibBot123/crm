@@ -7,8 +7,9 @@ import { ArrowLeft, BookOpen, MessageCircle, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
+import { StoreBioEditor } from "@/components/storefront/store-bio-editor"
+import { toRichTextHtml } from "@/lib/branding/sanitize-bio-html"
 import {
   Select,
   SelectContent,
@@ -43,7 +44,6 @@ export default function NewOfferPage() {
   const [selectedProductIds, setSelectedProductIds] = useState<number[]>([])
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [keyFeatures, setKeyFeatures] = useState<string[]>([""])
   const [price, setPrice] = useState("")
   const [currency, setCurrency] = useState("eur")
   const [interval, setInterval] = useState<"month" | "year">("month")
@@ -114,17 +114,12 @@ export default function NewOfferPage() {
         return
       }
     }
-    const normalizedKeyFeatures = keyFeatures
-      .map((f) => f.trim())
-      .filter((f) => f.length > 0)
-      .slice(0, 5)
-
     createMutation.mutate(
       {
         organization_id: currentOrganization!.id,
         title: title.trim(),
-        description: description.trim() || null,
-        key_features: normalizedKeyFeatures.length > 0 ? normalizedKeyFeatures : null,
+        description: toRichTextHtml(description),
+        key_features: null,
         billing_type: billingType,
         price: Math.round(parseFloat(price) * 100),
         currency,
@@ -302,58 +297,13 @@ export default function NewOfferPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Description (optional)</Label>
-            <Textarea
-              id="description"
+            <Label>Description (optional)</Label>
+            <StoreBioEditor
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="What's included in this offer?"
-              rows={3}
+              onChange={setDescription}
+              maxChars={2000}
+              contentClassName="min-h-[160px] max-h-[280px]"
             />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <Label>Key features (max 5)</Label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  setKeyFeatures((prev) => (prev.length >= 5 ? prev : [...prev, ""]))
-                }
-                disabled={keyFeatures.length >= 5}
-              >
-                Add feature
-              </Button>
-            </div>
-            <div className="space-y-2">
-              {keyFeatures.map((feature, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <Input
-                    value={feature}
-                    onChange={(e) =>
-                      setKeyFeatures((prev) =>
-                        prev.map((v, i) => (i === idx ? e.target.value : v))
-                      )
-                    }
-                    placeholder={`Feature ${idx + 1}`}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      setKeyFeatures((prev) =>
-                        prev.length === 1 ? [""] : prev.filter((_, i) => i !== idx)
-                      )
-                    }
-                  >
-                    Remove
-                  </Button>
-                </div>
-              ))}
-            </div>
           </div>
 
           <div className="space-y-2">

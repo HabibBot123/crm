@@ -13,9 +13,10 @@ Détecté depuis `package.json` + conventions repo (état pré-pause).
 | Forms / validation | react-hook-form + **Zod** |
 | Auth + DB + Storage | **Supabase** (`@supabase/ssr`, `@supabase/supabase-js`) + RLS |
 | Paiements | **Stripe** + **Stripe Connect** |
-| Email | **Resend** |
+| Email | **Resend** (transactionnel + Broadcast marketing ; compte plateforme multi-tenant) |
 | Upload media | **tus-js-client** (resumable) |
 | Package manager | **pnpm** |
+| Rich text (store bio) | **TipTap** + `sanitize-html` : gras / italique / liens / listes |
 
 ## Conventions repo (à respecter)
 

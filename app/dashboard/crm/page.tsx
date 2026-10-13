@@ -43,7 +43,7 @@ import { useOrganizationLeadStatuses } from "@/hooks/use-organization-lead-statu
 import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
 import type { LeadStatus } from "@/schemas/crm.schema"
 
-const pageSize = 10
+const pageSize = 25
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString("en-US", {
@@ -273,7 +273,7 @@ export default function CrmPage() {
           <Link href="/dashboard/crm/forms">Forms</Link>
         </Button>
         {canAddLead ? (
-          <Button className="gap-2" onClick={() => setAddOpen(true)}>
+          <Button onClick={() => setAddOpen(true)}>
             <Plus className="h-4 w-4" />
             Add lead
           </Button>

@@ -47,7 +47,7 @@ const billingTypeBadgeClass: Record<string, string> = {
   installment: "border-chart-5/20 bg-chart-5/10 text-chart-5",
 }
 
-const perPage = 10
+const perPage = 25
 
 function formatPrice(offer: OfferListItem): string {
   const basePrice = formatAmountFromCents(offer.price, offer.currency) ?? ""

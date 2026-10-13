@@ -1,617 +1,250 @@
 # Session log
 
-Entrées courtes (3–6 lignes). Plus récent en haut.
+Entrées courtes, plus récent en haut. Décisions durables → `docs/04` ; schéma → `docs/06`.  
+Règle : 1 entrée = 1 thème livré (pas chaque polish UI).
 
 ---
 
-## 2026-10-10 — APP_OVERVIEW sync as-built
+## 2026-10-13 — Campaigns : cap + indexes sync
 
-- `APP_OVERVIEW.md` réécrit : CRM inbound, sales, analytics (P&L/Cash), commissions, BU, permissions, coaching ops, store minimal, sold_at.
-- Aligné sur `docs/03`–`06` + nav dashboard ; `docs/` reste source de vérité décisions/DB.
+- Cap `campaigns.manage` (admin) : nav, APIs, RLS. Indexes partial pending/opted-in/synced sur `campaign_contacts`. → `docs/04`, `06`.
 
-## 2026-10-10 — Analytics filters: segment + FilterRefine
+## 2026-10-13 — Campaigns : segments (filtre AST)
 
-- Presets 7d / 30d / Month / Year en segmented muted (comme P&L|Cash).
-- Custom range + BU dans `AnalyticsFiltersPopover` (`FilterRefine`).
+- `campaign_segments` + builder AND/OR/NOT (status, form fields, client/offer/product, dates lead/enrollment). Sync audience réconcilie Resend. → `docs/04`.
 
-## 2026-10-10 — Forecast coms: vraie due_at
+## 2026-10-13 — Design system : KPIs = Overview, pas StatCard
 
-- Plus de rollup overdue sur le 1er jour ; pending sur leur `due_at` (y compris dans la fenêtre history).
+- Directive UX : KPIs plats dans `SectionCard` (Overview). `StatCard` déprécié. PageHeader actions = `children`. → `.cursor/rules/design-system-ux.mdc`.
 
-## 2026-10-10 — Analytics: drop Pack mix UI
+## 2026-10-13 — Campaigns : page Sync audience
 
-- Pack mix retiré de `/dashboard/analytics` ; chart commissions à côté du CA.
-- Analytics produits / packs = plus tard.
+- Soft-sync retiré. Page Campaigns (Pipeline, sous Forms) + Sync audience. Quota plus tard. → `docs/04`.
 
-## 2026-10-10 — Commission chart miroir (preset)
+## 2026-10-13 — Marketing : sync contacts Resend (étape 3)
 
-- Forecast = fenêtre miroir du preset (7d→+7j, month→mois suivant, year→+3 mois).
-- Zones Paid | Forecast séparées ; RPC `p_preset` + `commission_series.bucket/zone`.
+- Service upsert Contact + topic org ; sync à la demande (pas write-path). → `docs/04`.
 
-## 2026-10-10 — Analytics P&L / Cash + forecast coms
+## 2026-10-13 — Marketing : case form obligatoire
 
-- Toggle P&L vs Cash (coms accrues vs `paid_at`) ; CA toujours `sold_at`.
-- RPC `crm_sales_analytics` : `commissions_paid_cents`, `commission_series`.
+- Case consent form : décochée par défaut, submit bloqué tant que non cochée. → `docs/04`.
 
-## 2026-10-10 — Seed demo Coaching Calisthenics
+## 2026-10-13 — Marketing : pas de toggle CRM
 
-- Fake data réaliste (`*@seed.calisthenics.test`) : 21 deals fév→oct, pipeline leads, coms activées, share link clicks.
-- Script : `scripts/seed-calisthenics-analytics.sql` (idempotent).
+- Toggle “Can receive campaigns” retiré. Lead manuel + enrollment → opt-in true. Form public garde la case. → `docs/04`.
 
-## 2026-10-09 — Analytics UX v2
+## 2026-10-13 — Marketing : triggers sync + seed topic
 
-- Courbe plus basse + pie packs (hover qty/avg) ; team Closers/Setters/Owners vs période -1 ; deltas KPIs + BU.
+- Seed `campaign_topics` Marketing à l’INSERT org. Triggers lead/enrollment → `campaign_contacts`. `attachResendCampaignTopic` au create sending domain. Upserts app retirés. → `docs/04`, `docs/06`.
 
-## 2026-10-09 — Analytics UX décision
+## 2026-10-13 — Controls UX densifiés (style Resend)
 
-- Hero Revenue + margin/coms % ; courbe jour/mois (trous à 0) ; top closers/packs en barres ; pipeline sans zéros ; BU si ≥2.
+- Button / Input / Select / Tabs / InputGroup / SearchSelect : `h-8`, `rounded-xl`, padding/gap Resend. Override test Add lead retiré. → `docs/04`, design-system-ux.
 
-## 2026-10-09 — Analytics Sales/CRM page
+## 2026-10-13 — Marketing : consent + campaign_contacts (étape 2)
 
-- Page `/dashboard/analytics` + nav (`sales.view`).
-- RPC `crm_sales_analytics` (INVOKER, jsonb) : KPIs, série CA (`sold_at`), members owner/closer/setter, packs, BUs, funnel.
-- Service + hook + Zod ; filtres période (7d/30d/month) + BU.
+- Form case décochée + copy org. Tables `campaign_contacts` / `campaign_topics`. Toggle CRM. Clients enrollment → opt-in true temporaire. → `docs/04`.
 
-## 2026-10-09 — organization_sales.sold_at
+## 2026-10-12 — Marketing : sending domain (étape 1)
 
-- Colonne `sold_at` + vue ; date UI sur Record sale CRM + enrollment manuel.
-- Analytics : CA sur `sold_at` ; Owner & Closer/Setter = leads + conv + CA.
+- Settings → Email : ajout domaine Resend, table DNS copy, verify/refresh/remove. Table `organization_sending_domains` + API. Cap `org.settings`.
 
-## 2026-10-09 — Analytics Sales/CRM spec
+## 2026-10-12 — Marketing email : Resend Broadcast (décisions)
 
-- Page `/dashboard/analytics` ; cap `sales.view` ; BU scope ; pas pour sales/staff alone.
-- CA = `sold_at` ; € rapportés = CA deal ; coms = coût. Packs best sellers V1. Marketing = plus tard.
+- ESP = Resend (Broadcast + transactionnel). Compte plateforme (pas BYOK). Audience leads + clients. Templates React Email. Pas d’Automations Resend ; séquences = phase 2 (Inngest/Trigger…). → `docs/04`, backlog `docs/03`.
 
-## 2026-10-09 — Role member → staff
+## 2026-10-12 — Offer editor : Overview TipTap + Pricing
 
-- DB + seed + check constraints : `member` → `staff`.
-- UI Team / Permissions / sidebar labels : Staff.
+- Nav latérale type Settings (Overview / Pricing / Settings). Panneaux découpés. Desc TipTap + preview sous details. Base pricing lock si active. Key features retirés. → `docs/04`.
 
-## 2026-10-09 — Two pools coms (Head residual ≠ Coach)
+## 2026-10-12 — Store editor : TipTap + preview live
 
-- Figé : residual BU owner après Sales/Ambassador seulement ; coach hors residual (marge org).
-- Pas de recalc Head à l’assign. Copy Settings clarifié (excl. Coach).
+- `/dashboard/branding` : TipTap bio (bold/italic/link/lists) + preview `StorefrontView` avec offers actives. Bio HTML sanitizé.
 
-## 2026-10-09 — Schedule delayMonths for equal installments
+## 2026-10-12 — Store public : design refresh
 
-- `dueDatesForSchedule` : equal parts respectent `delayMonths` (1ère due).
-- UI : One payment | Equal installments + stepper mois toujours.
-- Legacy `equal_deferred` → `equal_front_loaded` + delay 1 au read.
+- Boutons Stan → page buy (logo org, partenariat CoachStack discret, détail) → Continue → Stripe. Pas de timer auto.
 
-## 2026-10-09 — Settings commissions UI
+## 2026-10-12 — Store page : TipTap + preview vraie page
 
-- Plan : When (radio) + table unique Payouts (Trigger CRM/Coaching).
-- Schedule labels = échéancier d’une com (Equal installments), pas split entre rôles.
-- Exemple chiffré retiré (bruit UI).
+- Décidé : store Stan-simple ; bio TipTap light (bold/italic/links) ; editor split avec preview = `/org/[slug]` réelle (offers incluses). Pas de builder. → `docs/04`.
 
-## 2026-10-09 — BU → Settings
+## 2026-10-11 — Payouts BU Owner : détail calcul
 
-- Business units sortis de Forms ; Settings `section=business-units` ; copy simplifiée.
+- Colonne **See details** (HoverCard) sur tab BU Owners : Revenue − coûts team/coach → base → × % → settlement.
 
-## 2026-10-09 — Expire job = expires_at only
+## 2026-10-11 — Overview org/bu : leads + forms
 
-- `expire_due_enrollments` : plus de skip `stripe_subscription_id` ; abos lifetime restent `expires_at` null.
+- Vue org/bu : recent leads + top forms (30j) en plus de sales / products.
+- SQL à rejouer : `scripts/dashboard-overview.sql`.
 
-## 2026-10-09 — Manual enrollment email lookup
+## 2026-10-10 — Overview : vue Business unit
 
-- Dialog : lookup **org-only** via `buyer_email` ; name + enrollments vivants.
+- Switch Member \| Organization \| Business unit. Org = même cap qu’Analytics (`analytics.view`) ; BU = statut BU owner.
+- Cap `overview.view_org` retirée (SQL à appliquer : `dashboard-overview.sql` + `remove-overview-view-org.sql`).
+- RPC `bu` scope owned BUs ; Share links = top 5 par clicks ; status lead = label/couleur.
 
-## 2026-10-09 — Coaching display name
+## 2026-10-10 — Overview member panels + coaching created_at
 
-- `v_coaching_packs.user_full_name` : profile → `buyer_name` → `buyer_email`.
+- `coaching_assignments.created_at` + trigger re-assign ; seuil “new coaching” = 3j.
+- Vue Member : recent leads ; cards Share links / Coaching si data ; plus de shortcuts.
 
-## 2026-10-09 — Coaching UI align Sales
+## 2026-10-10 — Overview Home member / org
 
-- Table packs + FilterRefine (coach + enrollment status) ; sessions sheet align SaleDetail.
-- Vue `v_coaching_packs` (historique, pas de filtre expiry) ; portail reste `v_coached_products`.
+- Cap `overview.view_org` (admin + bu_owner) ; switch Member \| Organization (défaut Member).
+- RPC `dashboard_overview` jsonb 30j ; scope BU en vue org ; Top products conservé.
 
-## 2026-10-09 — Rachat expire-then-insert + cron expired
+## 2026-10-10 — Sidebar : regroupement métier
 
-- Unique enrollments vivant only (`active|paused`) ; expire puis insert (manuel + Stripe).
-- Cron `expire_due_enrollments` (skip Stripe subs).
+- Nav : Home (Overview + Analytics) → Pipeline (CRM, Forms, Sales, Payouts) → Delivery → Catalog → Organization. Caps inchangées.
 
-## 2026-10-09 — Coaching change/remove coach
+## 2026-10-10 — Devise org (décision, build plus tard)
 
-- Change / Remove si 0 session + 0 delivery paid ; remove delete pending coms.
-- RLS : `coaching.assign` insert/delete delivery coms (pending).
+- 1 devise / org ; tout l’encaissement + reporting dans cette devise ; reject cross-currency. Pas de FX v1. — `docs/04`, `docs/03`.
 
-## 2026-10-09 — Commissions → client label via enrollment_in_scope
+## 2026-10-10 — Funnel Marketing : couleurs + Lost
 
-- `enrollment_in_scope` : + `commissions.view_all` / `view_own` (plus de helper DEFINER).
-- `v_commissions` : lead d’abord, sinon JOIN enrollment (nom / buyer_email).
+- Funnel : Clicks orange, Leads bleu, Converted vert, Lost rouge.
+- RPC `crm_marketing_analytics` : KPI `lost` (`status = lost`).
 
-## 2026-10-09 — Assign coach modal + preview
+## 2026-10-10 — Analytics Marketing v1 (décision + build)
 
-- Bouton Assign → modal : coach + preview com + override %/fixe (pack only).
-- Delivery : sale required (no offer fallback) ; sans sale = warning, assign sans com.
+- Switch Sales | Marketing sur `/dashboard/analytics`.
+- Lead marketing = form / share link ; KPIs + tables links / ambassadors / forms. Clicks = lifetime.
+- UI : deltas vs période préc. ; funnel ; revenue by share link (pas channels).
 
-## 2026-10-09 — Delivery coms = sale only
+## 2026-10-10 — CRM leads : tri par `created_at`
 
-- `syncDeliveryCommissionOnAssign` : plus de fallback `offers.price` ; sans sale → 0 com.
+- `crm_leads_page` : `ORDER BY created_at DESC, id DESC` (plus `status_at`).
 
-## 2026-10-09 — Coaching assign = SearchSelect
+## 2026-10-10 — Analytics org : détail BU Owner P&L/Cash
 
-- Assign coach sur packs : Popover+Search custom → `SearchSelect` (même UX que CRM owner).
+- Vue org : lignes Team commissions + BU Owner settlements (accrued / paid).
+- RPC expose `head_*` / `team_*` aussi en mode org.
 
-## 2026-10-09 — Clients search + FilterRefine
+## 2026-10-10 — Residual BU Owner : − delivery coach (`created_at`)
 
-- Barre search pleine largeur + filtre (status active/expired, total spent, first joined).
-- Filtres branchés sur `v_organization_clients` via `fetchClientsPage`.
+- `of_residual` = CA − team acquisition (`sold_at`) − delivery (`created_at` / assign), BU via offre du pack.
+- RPC `settle_bu_owner_month` MAJ ; re-backfill pending fév–sept 2026 (15 rows). Docs `04`/`06`.
 
-## 2026-10-08 — Commissions overdue UX
+## 2026-10-10 — BU Owner settlement (implémentation)
 
-- Overdue dérivé de `due_at` (filtre + badge) ; pas de cron/statut DB.
-- By member : Pay overdue + Pay all (`overdue_ids` dans RPC).
+- App : schemas/service/hooks settlements ; Settings BU (basis/delay/%) ; Payouts tabs Team/BU Owners ; plan `head` retiré UI ; Activate team-only.
+- Analytics RPC : coûts BU Owner = `bu_owner_settlements` ; script `crm-sales-analytics-viewer-modes.sql`.
+- Backfill : offers org1 → BU ; `settle_bu_owner_month` fév–sept 2026 (15 rows). Cron auto encore todo.
 
-## 2026-10-08 — Commissions page polish
+## 2026-10-10 — BU Owner = settlement périodique (décision)
 
-- Drop enum `validated` (+ cols) ; unpay `paid→pending` ; audit `paid_at`/`paid_by`.
-- Page coms = paid/unpay seulement ; Annuler CRM = **DELETE** pending (puis réactiver recrée).
-- Table + By member (RPC) ; overdue = pending + due passé.
+- Config **par BU** ; monthly calendar ; base revenue|residual (team accrued) ; `due_at` = 1er mois suivant + delay_months (défaut 0).
+- Payouts : pending/paid/overdue comme coms. Analytics org P&L + coûts Head ; vue BU Owner = coûts team détaillés.
+- Table dédiée ; backlog `docs/03` ; wipe mock OK. Supersède Stripe auto + Activate BU Owner.
 
-## 2026-10-08 — Commissions UX decisions
+## 2026-10-10 — Naming UI : Head → BU Owner
 
-- Pas de side panel ; drop `validated` ; unpay + audit `paid_by` ; PDF payout plus tard.
-- Résumé par member + pay all → RPC INVOKER (pas vue seule).
+- Label produit unique **BU Owner** (analytics, coms, Settings). Code `head` / `bu_owner` inchangé.
 
-## 2026-10-08 — Lead Owners (BU + owner)
+## 2026-10-10 — Head com Stripe auto
 
-- Side panel : section **Owners** (BU + owner) dans une carte grise.
-- Édition admin / `crm.leads.edit` (BU) + `crm.assign_sales` (owner) ; null BU OK.
-- Lock dès `commissions_activated_at` ; trigger same-org sur `leads.business_unit_id`.
+- `ensureHeadCommissionForSale` sur checkout + invoice.paid ; acquisition sans lead (`beneficiary_member_id`).
+- Activate skip Head si déjà sur la sale. Settings BU : copy “How Heads earn”.
+- DB : contrainte pool + `commission_in_scope` + `v_commissions` + analytics Head Stripe.
 
-## 2026-10-08 — Cap view lead commissions
+## 2026-10-10 — Head com via offre (code)
 
-- Nouvelle capa `crm.view_lead_commissions` : affiche/masque le bloc Commissions + attributions dans le détail lead.
-- Defaults : admin ✓, bu_owner ✓, autres — ; seed + backfill matrix.
-- UI side panel gated sur `can("crm.view_lead_commissions")` (team mode).
+- Activate/preview : Head upsert depuis `offers.business_unit_id` ; `commissions.business_unit_id` = BU offre.
+- Sale only / create / link posent `leads.target_offer_id`. Sans offre → Activate refuse. Sans BU offre → pas de Head.
 
-## 2026-10-08 — Lead sheet layout
+## 2026-10-10 — Analytics preset Quarter
 
-- Ordre : header + status/Update → Answers → Owner → Commissions → Activity.
-- Pay roles éditables (edit/remove) tant que commissions non activées.
-- Bloc sale/activate clarifié (étapes 1/2, labels séparés).
+- Preset `quarter` : QTD (grain month) + forecast trimestre suivant ; UI + RPC `crm_sales_analytics`.
+- Source SQL : `scripts/crm-sales-analytics-viewer-modes.sql`.
 
-## 2026-10-08 — Lead Owner (rename + mail)
+## 2026-10-10 — Fix Head analytics CA = 0
 
-- DB : `leads.assigned_sales_id` → `owner_id` ; view/RPC/RLS helpers alignés.
-- Produit : Owner = ops (mail à l’assign avec détail + form answers) ; pas d’auto-closer.
-- Cap `crm.assign_sales` assigne l’owner ; pay roles restent `lead_attributions`.
+- Cause : RLS `sales_row_in_scope` ne voyait que `offers.business_unit_id` (souvent null).
+- Fix : scope BU aussi via lead lié à la sale/enrollment ; gate + `analytics.view`.
 
-## 2026-10-08 — Commissions FilterRefine
+## 2026-10-10 — Analytics: cap + modes org/head
 
-- Page commissions : bouton filtre dans la search (comme CRM/Sales) ; chips amovibles.
-- Filtres status, role, amount (€), due date ; `FilterRefine` gagne le type `date-range`.
-- `fetchCommissions` : statuses / attributionTypes / amount cents / due_at range.
+- Cap `analytics.view` (≠ sales.view) ; défauts admin + bu_owner ; pas de vue perso.
+- Mode Head : CA BU, coms Head + Team, pas de marge (BU owner auto). Org = filtre BU, pas de toggle Head.
+- RPC `p_viewer_mode` ; matrix seed/backfill.
 
-## 2026-10-08 — CRM filters RPC + champs filtrables
+## 2026-10-10 — Docs cleanup (session + decisions)
 
-- RPC crm_leads_page (EXISTS field values / members) ; plus de resolve IDs côté app.
-- crm_fields.filterable max 4 (select/multi/boolean) ; toggle Fields + FilterRefine.
+- `05-session-log` condensé (~618 → ~80).
+- `04-decisions` condensé (~519 → ~160) : merge thèmes, drop supersédé, matrix + règles métier gardées.
 
-## 2026-10-08 — Implémentation statuses org + forms
+## 2026-10-10 — Analytics Sales/CRM (ship)
 
-- Table organization_lead_statuses + seed trigger ; leads.status text + FK ; remap data test.
-- Hub Statuses ; badges/filters dynamiques ; forms sans orm_type + initial_status + redirect/message.
+- Page `/dashboard/analytics` (`sales.view`) ; RPC `crm_sales_analytics` ; CA sur `sold_at`.
+- Toggle P&L (coms accrues) vs Cash (`paid_at`) ; chart coms miroir (Paid + Due/`due_at`).
+- Presets segmentés 7d/30d/Month/Quarter/Year + FilterRefine (custom/BU) ; pack mix UI retirée (plus tard).
+- Seed demo : `scripts/seed-calisthenics-analytics.sql`.
+- `APP_OVERVIEW.md` resync as-built (CRM / sales / coms / analytics / permissions).
 
-## 2026-10-08 — Décision : statuses org + forms
+## 2026-10-09 — Coaching ops + enrollments + coms plan
 
-- Status CRM org-level ≤10 ; système lockés `new` / `lost` / `converted` (seed = ces 3).
-- Delete interdit si système ou si utilisé ; data test à adapter (pas de couche transition).
-- Forms : drop `form_type` ; status d’arrivée ; message + redirect cumulables — `docs/04`.
+- Coaching : table `v_coaching_packs` + FilterRefine ; assign modal (preview/override) ; change/remove si 0 session + 0 paid ; delivery coms = sale only.
+- Rachat expire-then-insert ; cron `expire_due_enrollments` sur `expires_at` only ; lookup enrollment manuel org-only.
+- Residual Head = après Sales/Ambassador (coach hors residual) ; Settings coms UI (When + Payouts) ; equal installments + `delayMonths`.
+- BU sortis de Forms → Settings ; rôle `member` → `staff` ; Clients FilterRefine.
+- Colonne `organization_sales.sold_at` (UI Record sale / enrollment).
 
-## 2026-10-08 — CRM FilterRefine
+## 2026-10-08 — CRM pipeline + commissions page
 
-- Page CRM : search full-width + `CrmFiltersPopover` (status / origin / assigned sales).
-- Chips amovibles ; multi-select aligné sur `CrmLeadsFilters` (`.in`).
+- Lead Owner (`owner_id`, mail assign) ≠ pay roles ; panel Owners (BU+owner) lock si coms activées ; cap `crm.view_lead_commissions`.
+- Statuses org (`organization_lead_statuses`, ≤10, système new/lost/converted) ; forms sans `form_type` + `initial_status`.
+- RPC `crm_leads_page` + champs filtrables ≤4 ; `FilterRefine` partagé ; TableScroll dashboard.
+- Commissions : drop `validated` ; table + by-member (RPC) ; overdue = `due_at` ; unpay + audit `paid_by` ; cancel = DELETE pending.
 
-## 2026-10-08 — Tables : scroll horizontal confiné
+## 2026-10-07 — Sales + Activate + Stripe cash
 
-- Layout dashboard : `min-w-0` + `overflow-x-hidden` sur la zone contenu.
-- `TableScroll` + `SectionCard` `min-w-0` ; CRM / Sales / Clients / Coms / Offers / Forms.
+- Record sale (Create / Link / Sale only) → Activate ; page `/dashboard/sales` + sheet détail ; coms via `organization_sale_id`.
+- Drop `manual_sales` ; `commission_plan` org ; acquisition of_base/residual + schedules ; delivery coach à l’assign.
+- Stripe : `checkout.completed` + `invoice.paid` → `organization_sales` ; `base_amount` / on_deal|on_payment.
+- Vues `v_organization_sales` / `v_commissions` ; Zod rows → `/schemas`.
+- Backlog figé : outbound CRM events + ESP externe API-first (`docs/04`).
 
-## 2026-10-08 — FilterRefine réutilisable
+## 2026-10-04 → 10-05 — Permissions org + solo/team
 
-- `components/dashboard/filter-refine.tsx` : Popover desktop / Sheet mobile.
-- Field types : `checkbox`, `search-select` (multi), `range` (min/max).
-- Sales branché via thin wrapper `sales-filters-popover.tsx`.
+- Matrix `organization_role_permissions` + `has_org_capability` / scope `org|bu|own` ; UX `can()` ; RLS + helpers `*_in_scope` ; nav gated + No access.
+- Pseudo-rôle `bu_owner` configurable ; `offers.business_unit_id` ; API `assertOrgCapability`.
+- `organizations.mode` solo|team ; TeamPlanGate ; solo auto-assign coach (trigger).
+- Fix `dashboard_overview` unassigned = status + expiry alignés portail.
+- Todo : transfer ownership (`docs/03`).
 
-## 2026-10-07 — Sales search + filters
+## 2026-10-01 — Identité + enrollment manuel
 
-- Page Sales : search buyer/lead/offer + filtres payment / source / offer.
-- Vue `v_organization_sales` : colonnes `offer_id`, `payment_kind`.
-
-## 2026-10-07 — Zod row schemas → /schemas
-
-- Migré hors `lib/services/` : sales, lead-sales, commission-compute, crm form/ambassador rows.
-- Fichiers : `schemas/sales.schema.ts`, `lead-sales.schema.ts`, `commission-compute.schema.ts` + ajouts `crm.schema.ts`.
-
-## 2026-10-07 — Sale detail sheet (CRM-style)
-
-- Sheet aligné LeadSidePanel : sections Sale / Client / Lead / Commissions.
-- Fetch related via `fetchSaleSheetRelated` ; liens “Open in …” seulement si entité trouvée.
-- `findClientByEmail` + filter `organizationSaleId` sur `fetchCommissions`.
-
-## 2026-10-07 — Sales page UX
-
-- Table: commissions en € only, drop enrollment, colonne Payment (Subscription / Direct payment / Installment plan + detail).
-- Row → `SaleDetailSheet` ; liens Clients / CRM / Commissions avec `?search=` email buyer.
-- Clients, CRM, Commissions lisent `search` depuis l’URL. Footer `SectionCard` densifié (`px-4 py-2`).
-
-## 2026-10-07 — Outbound CRM events (à builder)
-
-- Décision : **mettre en place l’envoi d’events** (webhooks org) comme fondation Zapier/Make/ESP.
-- Events v1 cibles : `lead.created`, `lead.updated`, `call.booked`, `client.converted`.
-- Connecteur ESP natif = phase suivante ; events d’abord.
-- Noté `04-decisions` + feature `03` todo.
-
-## 2026-10-07 — Marketing ESP via API (archi)
-
-- Brief EDGE : form → CRM → welcome → nurture persona → campagne hebdo → exit marketing si call booked.
-- Décision : **ESP externe API-first** ; CoachStack orchestre attributs/events. Pas DIY IP/spam/domaine sur Resend.
-- ESP exact (Brevo / Customer.io / MailerLite…) encore à trancher sur prix + pause nurture + exit events.
-- Noté dans `04-decisions` + feature `03` revisit.
-
-## 2026-10-07 — v_organization_sales + v_commissions
-
-- `v_organization_sales` : offer/lead + sum coms ; fetch Sales = 1 query paginée.
-- `v_commissions` : lead/member + attribution_type ; list/search paginé.
-
-## 2026-10-07 — Fix CRM sale link display
-
-- `v_crm_leads` manquait `organization_sale_id` → Zod default null ; panel CRM ne voyait pas la sale.
-- Page Sales : lookup lead aussi via `organization_sale_id` (sale-only).
-
-## 2026-10-07 — base_amount + on_deal / on_payment
-
-- Sales : `base_amount_cents`, `installment_index/count` (installments).
-- Plan org : `acquisitionBasis` on_deal | on_payment ; Activate base ≠ cash.
-- Webhook + Settings + page Sales labels.
-
-## 2026-10-07 — Stripe sales guarantee (1+2)
-
-- `checkout.completed` écrit `organization_sales` (paid + amount_total).
-- `invoice.paid` attach/upsert invoice ; pas de double 1er paiement.
-- Metadata sub toujours posée ; docs/04 figé.
-
-## 2026-10-07 — Commissions ↔ sale_id + sale-only
-
-- Figé + impl : `commissions.organization_sale_id` + `leads.organization_sale_id`.
-- Record sale : Create / Link / **Sale only** ; Activate exige sale (prix = sale).
-- Enrollment optionnel (delivery) ; coms = argent via sale.
-
-## 2026-10-07 — Delivery coach + Settings link
-
-- Bouton Settings sur page Commissions → `/dashboard/settings?section=commissions`.
-- Assign coach : crée coms `pool=delivery` (`beneficiary_member_id`) ; skip solo ; remplace pending à re-assign.
-- `attribution_id` / `lead_id` nullable pour delivery.
-
-## 2026-10-07 — Settings commission plan
-
-- Colonne `organizations.commission_plan` ; Settings → Commissions (Head calc + schedules + coach).
-- Preview/Activate lisent le plan org (plus seulement les defaults code).
-
-## 2026-10-07 — Record sale + page Sales (build)
-
-- API `record-sale` : create (enrollment+`organization_sales`) ou link enrollment → lead.
-- Panel lead : Record sale → Review & activate ; Activate exige `enrollment_id`.
-- Page `/dashboard/sales` + nav (`sales.view`).
-
-## 2026-10-07 — Record sale + page Sales (décision)
-
-- Figé : Record sale (créer/lier enrollment+sale) puis Activate ; page Sales dashboard.
-- Create = enrollment+sale **one-shot** depuis le lead ; Link existing = option. Pas d’obligation Clients d’abord.
-- Webhook Stripe **ne** lie **pas** le lead CRM (enrollment seul) — raccord aujourd’hui manuel.
-
-## 2026-10-07 — Drop `manual_sales`
-
-- Drop colonne `commissions.manual_sale_id` + table `manual_sales` + check enrollment|manual.
-- Activate ne crée plus de vente parallèle ; gap produit noté (CRM vs `organization_sales`) dans `docs/04`.
-
-## 2026-10-07 — Preview Activate + défauts immédiats
-
-- Défauts plan : sales / ambassador / head / coach = **1× immédiat** (`single_delayed` +0).
-- `previewLeadCommissions` + dialog Review & activate (lignes, due, marge org).
-- Activate réutilise `buildAcquisitionCommissionPreview` ; `due_at` déjà en DB.
-
-## 2026-10-07 — Commissions residual + schedules (spec)
-
-- Mentor client = **coach** (delivery). Head = BU owner, défaut `of_residual`.
-- Acquisition activate : of_base puis residual ; échéanciers org-global ; `due_at` à ajouter.
-- Coach coms = assign + M+3 (wave delivery). Pas de ligne “reste owner”.
-
-## 2026-10-05 — Transfer ownership backlog
-
-- Noté `todo` : transfer org ownership (pas via change role) — `docs/03-features`.
-
-## 2026-10-05 — Nav + page access by capability
-
-- Sidebar/mobile : items filtrés via `lib/permissions/dashboard-nav.ts` (catalog, CRM, clients, coaching, forms, commissions, store, team).
-- Pages sans cap → `NoAccessState` (offers/products/content/branding/commissions/forms) ; plus de read-only bouton par bouton catalogue.
-
-## 2026-10-05 — CRM view_own + cancel commissions fix
-
-- Cap `crm.leads.view_own` (defaults: tous) vs `crm.leads.view` (admin/BU only).
-- Cancel/activate commissions : UI + service + RLS (`activate_commissions`) ; plus via `update_status`.
-
-## 2026-10-04 — API capability gates (admin bypass)
-
-- Helper `assertOrgCapability` → RPC `has_org_capability`.
-- Branché : enroll manuel, clients GET, team invite, upload logo, product cover ; team service mutations (invite/roles/revoke).
-
-## 2026-10-04 — Permissions step 7 (scope filters)
-
-- Helpers `lead_in_scope` / `ambassador_link_in_scope` / `enrollment_in_scope` / `sales_row_in_scope` / `commission_in_scope`.
-- RLS : `org` | `bu` | `own` sur leads (+ children), share links, enrollments/clients, sales, commissions ; coaching assign = packs assignés.
-- Own lead = assigned / created_by / attributions / mon share link. App links UI : filtre `bu` via `ownedBusinessUnitIds`.
-
-## 2026-10-04 — Permissions step 6 (RLS capabilities)
-
-- Policies dashboard branchées sur `has_org_capability` (catalogue write, CRM, forms/links, coaching, commissions, BU, team, org.settings, clients/sales read).
-- Helper `can_update_crm_lead` pour UPDATE leads multi-caps. Enrollments SELECT = `clients.view` ∨ `coaching.view`.
-- Scope ligne BU/own = encore step 7. Storefront / coached policies inchangées.
-
-## 2026-10-04 — Permissions step 5 (UX can())
-
-- Pages branchées sur `useOrgCapabilities().can` : team, coaching, clients, CRM, links, commissions, products/offers.
-- Rôle invite `coach` ajouté UI + API. RLS/scope data = steps 6–7.
-
-## 2026-10-04 — BU owner defaults élargis
-
-- `bu_owner` : + invite, catalog, clients enroll, coaching.* (packs offre→BU).
-- Orgs existantes updatées ; seed sync pour nouvelles orgs.
-
-## 2026-10-04 — Offer ↔ Business unit
-
-- `offers.business_unit_id` + trigger same-org ; UI create/edit offer.
-- Scope clients BU via offer (pas enrollment). `bu_owner.clients.view` default on.
-
-## 2026-10-04 — BU owner permissions configurables
-
-- Pseudo-rôle matrix `bu_owner` (DB + colonne Settings, label “BU scope only”).
-- `has_org_capability` / app `can()` lisent la table (plus de hardcode).
-- Attention : filtre **row-level** scope BU encore à brancher (étapes 6–7) — today cap OK, isolation BU partielle.
-
-## 2026-10-04 — Permissions step 4 (Settings UI)
-
-- Settings → Permissions (owner only) : matrix rôles × sous-actions, toggle → update row + invalidate.
-- Steps 5–7 encore : brancher UX pages, RLS, filtres scope.
-
-## 2026-10-04 — Permissions steps 1–3
-
-- DB matrix + helpers (`has_org_capability` unifié).
-- App : `lib/permissions/capabilities.ts`, service `org-permissions`, hook `useOrgCapabilities` → `can()` / `scope` / `isBuOwner` (React Query, 1×/org).
-- Rôle TS `coach` ajouté ; UI Settings / wire pages = steps suivants.
-
-## 2026-10-04 — Permissions steps 1–2 (DB)
-
-- Table `organization_role_permissions` + seed/trigger/backfill (4 orgs × 145 rows).
-- Helpers : `has_org_capability` (matrix + owner + BU grants), `org_permission_scope`, `is_bu_owner*`, `current_org_member_*` (RLS only).
-
-## 2026-10-04 — Permissions org (décision)
-
-- Matrix = **sous-actions** (`crm.leads.update_status|edit|delete`, `forms.links.*_own|manage_others`, `coaching.sessions.*`…).
-- Rôle `coach` ; scope `org|bu|own` ; BU owner = admin-like BU (liste dans `04`).
-- Defaults seed figés ; impl todo.
-
-## 2026-10-04 — Solo auto-assign coach (DB trigger)
-
-- Trigger AFTER INSERT `enrollment_products` : si org solo + produit coaching → `coaching_assignments` = member owner.
-- Backfill packs solo déjà sans assign. Choix DB (pas app) pour couvrir manuel + Stripe.
-
-## 2026-10-04 — Dashboard coaching assign vs page vide
-
-- Cause : 2 enrollments coaching org 2 encore `active` mais `expires_at` passé → exclus de `v_coached_products`.
-- `dashboard_overview.unassigned_coaching_count` ne filtrait ni status ni expiry → fausse notif.
-- Fix RPC : count + active_* alignés sur status + `expires_at > now()`.
-
-## 2026-10-04 — Org mode solo / team
-
-- DB : `organizations.mode` ; existantes → `team` ; create-org → `solo`.
-- Capabilities `useOrgCapabilities().mode` ; gate `TeamPlanGate` (Upgrade stub) sur Team / Commissions / BU.
-- Solo : hide CRM closer/setter/ambassador/sales assign + lead Team & pay + coaching assign.
-
-## 2026-10-04 — CRM lead sheet UX
-
-- Sheet lead : header = contact ; sections Pipeline / Team & pay / Details / Activity.
-- Attributions en badge rôle + % ; plus de résumé Ambassadors redondant.
-- Commissions panel compact (`embedded`) dans Team & pay.
-
-## 2026-10-03 — Domaine final `coachstack.co`
-
-- Figé : produit = `coachstack.co` ; coached = `app.coachstack.co`.
-- Docs `04` / `01` / `03` mis à jour ; infra DNS/Vercel/cookies toujours todo.
-
-## 2026-10-01 — Manual enrollment + `organization_sales.source`
-
-- DB : `organization_sales.source` (`stripe`\|`manual`, default stripe). Webhook invoice pose `source=stripe`.
-- API `POST .../enrollments/manual` + service : enrollment sans Stripe + sale `manual`/`one_time` ; `expires_at` depuis offre ; supersede prior même offer+buyer.
-- UX : `/dashboard/clients` → Add enrollment (email, offer, montant).
-- Roadmap notée : subs manuels + link Stripe txn ; drop `manual_sales` ; job status expired sur `expires_at`.
-
-## 2026-10-01 — Drop `public.users` + FK → `profiles`
-
-- Drop vue morte `organization_client_enrollments` (plus appelée ; clients = `v_organization_clients` / `buyer_email`).
-- FK `organizations.owner_id` + `organization_members.user_id` repointées vers `profiles(user_id)` (préflight 0 orphelin).
-- Drop table `public.users`. Pas de fichier `.sql` repo ; migration MCP `drop_public_users_repoint_fks_to_profiles`.
-- Docs `06` mis à jour. Gap sécu restant : REVOKE `link_guest_purchases_to_user` (anon/authenticated).
-
-## 2026-10-01 — Audit identité email (users vs profiles)
-
-- Décision enrollment/portail : garder contrat `enrollment_products` + agrégation UI (pas figé ADR à la demande Habib).
-- Emails : `auth.users` (compte) ; `buyer_email` / `leads.email` / `organization_members.email` (métier). `profiles` sans email.
-- Gap noté : `link_guest_purchases_to_user` exécutable anon/authenticated.
-
-## 2026-07-27 — CRM closer/setter + auto commission rates
-
-- Colonnes CRM Closer / Setter (noms + % si défini) ; Ambassadors affichent aussi le %.
-- Side panel attribution : % auto depuis defaults member à la sélection (éditable).
-- Submit form `?ref=` : attribution ambassador créée avec `% ambassador` du member si défini.
-
-## 2026-07-27 — Member commission defaults per role type
-
-- DB : `organization_members` → `% sales / ambassador / coach` (legacy single rate migré vers sales).
-- Activation acquisition : fill null rates via type d’attribution (closer/setter→sales, ambassador→ambassador).
-- Team : invite 3 %, dialog « Change role & commissions » + bouton Edit commission defaults.
+- Drop `public.users` ; FK → `profiles` ; drop vue morte `organization_client_enrollments`.
+- Emails : compte = `auth.users` ; métier = `buyer_email` / leads / members. Gap : REVOKE `link_guest_purchases_to_user`.
+- Enrollment manuel + `organization_sales.source` (`stripe`|`manual`) ; UI Clients → Add enrollment.
 
 ## 2026-07-27 — Commissions wave 1 (acquisition)
 
-- DB : defaults member/BU, BU owner, lock lead, manual_sales, commission_documents stub, enrollment_id nullable.
-- Activate/Cancel sur lead converted ; soft-lock attributions ; page `/dashboard/crm/commissions`.
-- Delivery coach = wave suivante.
+- Activate/Cancel sur lead converted ; page commissions ; defaults % member/BU ; closer/setter colonnes.
+- Delivery coach = wave suivante. Spec détaillée → `docs/04`.
 
-## 2026-07-27 — Spec commissions figée
+## 2026-07-23 — CRM inbound + offre/accès + docs DB
 
-- Trigger : bouton Activer/Annuler sur lead `converted` (pas auto au statut seul).
-- Base = % brut pack ; installments = étalement du % ; on-platform link email/manuel ; off-platform = `manual_sale`.
-- Pools acquisition (+BU) puis delivery (coach à l’assign ; solo = pas de com coach).
-- Defaults % à l’invite + par BU ; droits member / BU owner / admin ; v1 suivi A, DB prête pour factures B.
-- Détail : `docs/04-decisions.md`.
+- Hub Forms (Forms/Fields/Share links) ; BU first-class ; share links tout membre + label canal ; doublon = badge ; form public honeypot/rate limit.
+- Offre = composition + `access_duration_months` / `sessions_count` ; rachat = expire puis INSERT (+ `stripe_checkout_session_id`).
+- Portail coached : routes `enrollment_product_id` ; Discover retiré ; edge session dashboard/coached.
+- Créé `docs/06-database.md` ; purge `supabase/migrations` locales trompeuses.
+- Backlog : messagerie Unipile (add-on siège).
 
-## 2026-07-24 — Messagerie Unipile (backlog)
+## 2026-07-21 — Storefront + checkout + RLS
 
-- Feature notée `todo later` dans `03` : email/WhatsApp via Unipile, user connecte ses comptes.
-- Pricing ciblé : add-on par siège/connexion (pas crédits) ; aligné coût Unipile.
+- Branding = store minimal (logo/bio/1 couleur/offers) ; interstitial buy → Checkout Session (pas Payment Link brut).
+- RLS orgs related-only + helpers anti-récursion ; offers manage membres ; lesson progress own-row.
+- Notes webhooks Stripe / ngrok → `docs/01`.
 
-## 2026-07-23 — Form post-submit soft redirect
+## 2026-07-19 — Coaching v1 + Stripe soft-gate
 
-- Thank-you + lien + redirect ~3.5s (pas de jump immédiat).
-- `redirect_url` UI + enforce service : seulement `form_type=default`.
-
-## 2026-07-23 — BU copy + colonne CRM conditionnelle
-
-- Panel BU : explication (branches, share links, splits futurs ; skip si solo).
-- Table CRM : colonne Business unit seulement si l’org a ≥1 BU active.
-
-## 2026-07-23 — CRM IA hub Forms
-
-- Hub `/dashboard/crm/forms` : Forms, Fields, BU, Share links.
-- CRM pipeline garde raccourcis Fields / BU ; redirects settings + ambassador.
-- Sidebar + mobile : entrée Forms séparée.
-
-## 2026-07-23 — CRM share links / BU / hidden / doublon
-
-- DB : `business_units`, form `visibility` + `success_message`, link defaults/BU, lead `is_duplicate`.
-- Public form : clicks GET+ref, honeypot + rate limit, prefill hidden, thank-you configurable.
-- Share links : tout membre + label canal + BU + hidden defaults ; CRM doublon = row rouge + badge.
-
-## 2026-07-23 — Spec CRM forms / share / BU
-
-- Tout membre org peut créer un lien (label canal + tracking member).
-- Doublon email = nouveau lead ; UI = ligne rouge clair + badge (pas de colonne).
-- Thank-you configurable ; clicks + anti-spam oui ; hidden fields gardés.
-- BU first-class avant commissions ; pas de split engine sur champs CRM.
-
-## 2026-07-23 — Rachat = nouveau contrat
-
-- Webhook checkout : expire anciens active/paused (même offer+buyer) puis INSERT.
-- Colonne `stripe_checkout_session_id` (unique) pour idempotence.
-- Docs `04` / `06` à jour.
-
-## 2026-07-23 — Coached portal #4–#8 / #10
-
-- Routes programmes = `enrollment_product_id` (plus de dédup / lien par `product_id`).
-- Copy : Organizations + Programs ; coach = personne assignée ; Discover retiré.
-- Dual-rôle soft : CTAs dashboard + “Open coach workspace” profil.
-- Page coaching pack : hors shadcn Card (bordures plates).
-
-## 2026-07-23 — Access hardening #1+#2
-
-- Edge : session requise `/dashboard/*` et `/coached/*` (hors login/signup/landing).
-- `v_coached_products` : `security_invoker` + revoke `anon` SELECT.
-- #3/#9 rôles plus tard ; #4–8/#10 backlog figé dans `04-decisions`.
-- #5 : UI “Waiting for client to sign up” déjà en place.
-
-## 2026-07-23 — Offre = composition + accès + séances
-
-- Composition éditable si 0 vente ; sinon nouvelle offre + archive.
-- `access_duration_months` + `sessions_count` sur `offers` ; plus sur produit coaching (UI).
-- Webhook expiry depuis l’offre ; `v_coached_products` filtre expires_at.
-- Checkout refuse offre sans produits actifs.
-
-## 2026-07-23 — docs/06-database.md + purge migrations locales
-
-- Nouveau `docs/06-database.md` : tables, vues, RPC, triggers (live MCP).
-- Supprimé `supabase/migrations/*.sql` (incomplets / trompeurs) ; README pointe vers `docs/06-database.md`.
-- AGENTS + project-memory mis à jour.
-
-## 2026-07-21 — Docs Stripe webhooks + ngrok
-
-- Dev : `ngrok http 3000` → endpoint `/api/webhooks/stripe-connect`.
-- Prod : remplacer URL ngrok + secret `STRIPE_CONNECT_WEBHOOK_SECRET` (voir `01-tech-stack.md`).
-
-## 2026-07-21 — Checkout interstitial shipped
-
-- `/org/.../buy/...` : partnership screen → auto Stripe (~2.5s) + CTA.
-- `create-checkout` : email optionnel (Stripe collecte).
-- Return : success → `/order-success` ; cancel → même buy link (pas d’URL externe).
-
-## 2026-07-21 — External checkout = interstitial → Stripe Session
-
-- Pas de Payment Link brut pour sites externes.
-- Lien CoachStack → interstitial EN → Checkout Session.
-- Key features offre = non nécessaires.
-- Return URLs figées (success CoachStack / cancel = retry buy).
-
-## 2026-07-21 — Storefront UI shipped
-
-- Dashboard `/dashboard/branding` → “Store page” (logo, bio, 1 couleur, copy link).
-- Public `/org/[slug]` + preview : liste offers + Buy (plus hero/FAQ/stats…).
-- API public : toutes les offers actives (ignore `visible_offer_ids`).
-- Nav sidebar : label “Store page”.
-
-## 2026-07-21 — Branding = storefront simple
-
-- Décision : Stan/Gumroad/Linktree-like (pas mini-site).
-- Vente multi-canal (buy links) ; delivery chez CoachStack.
-- Keep/cut figés dans `04-decisions.md`.
-
-## 2026-07-21 — Fix RLS recursion organizations
-
-- Cause : policy orgs lisait `organization_members`, policy owner members relisait `organizations`.
-- Fix : helpers `is_org_owner/member/enrolled` SECURITY DEFINER + policies mises à jour.
-
-## 2026-07-21 — RLS harden + offers members
-
-- Orgs SELECT : owner | membre | enrolled (views OK, plus de leak global).
-- Offers / offer_products / variants : manage par membre org (comme products).
-- `course_lesson_progress` : RLS own-row ; fix fetch sur `enrollment_product_id`.
-- Roadmap : matrix rôles catalogue.
-
-## 2026-07-19 — Coaching v1 figé (org-first)
-
-- Gardé : packs + assign coach + KPI unassigned + `enrollment_products`.
-- Config produit coaching = détails commerciaux du pack (pas scheduling).
-- Séances = tracking secondaire ; booking / payouts = plus tard.
-- UI : copy produit + page coaching recentrée sur assignation.
-
-## 2026-07-19 — Fix create product slug
-
-- Cause : `createProduct` insertait `slug: null` alors que `products` n’a pas de colonne `slug` (PGRST204).
-- Fix : retiré `slug` de l’insert.
-
-## 2026-07-19 — Bug create-org multi-membership
-
-- Cause : `/create-organization` redirige vers dashboard si `organizations.length > 0` (ex. sales déjà membre d’une org).
-- Fix : autoriser création d’une org supplémentaire (aligné Account / org switcher).
-
-## 2026-07-19 — Stripe soft-gate
-
-- Retiré hard-block Stripe sur products/offers (draft OK sans Connect).
-- Stripe obligatoire à publish offer / generate price / checkout live.
-- Banner + redirect sur offer draft si Stripe non connecté.
-- Suite : continuer le découpage features (vision keep/cut).
-
-## 2026-07-15 — Nettoyage rules
-
-- Supprimé rules inutiles : `lessons.mdc` (vide), `pm-project.mdc`, `project-dev.mdc`, `gemini-design-mcp.mdc`.
-- Conservé : `project-memory.mdc`, `general-rules.mdc`, `design-system-ux.mdc`.
-- Nettoyé refs mortes dans `AGENTS.md` / `general-rules` / `project-memory`.
+- Coaching = packs + assign (pas booking) ; Stripe requis seulement publish/sell.
+- Fixes : create-org multi-membership ; create product sans colonne `slug`.
 
 ## 2026-07-15 — Setup mémoire projet
 
-- Créé `AGENTS.md`, `docs/00–05`, `.cursor/rules/project-memory.mdc`.
-- Injecté le contexte CoachStack depuis overview Habib + scan repo (Next 16, Supabase, Stripe, React Query).
-- Status produit : **pause reprise** ; vision à discuter avant refonte.
-- Suite : session vision/product (ICP, coupe/simplifie, priorité) → remplir `00-overview` + `04-decisions` + éventuelles lignes `03-features`.
-- Ne pas lancer de gros chantier code tant que vision non accordée.
+- `AGENTS.md`, `docs/00–05`, rules memory/general/design-system ; purge rules mortes.
+- Reprise post-pause : vision avant gros pivots.

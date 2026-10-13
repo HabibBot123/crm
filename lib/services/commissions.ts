@@ -14,7 +14,6 @@ import {
 } from "@/schemas/crm.schema"
 import {
   attributionRowSchema,
-  businessUnitRowSchema,
   leadForCommissionSchema,
   memberDefaultsSchema,
   type AttributionRow,
@@ -237,41 +236,35 @@ async function assertCanActivateCommissions(
   }
 }
 
-async function upsertBuAttribution(
+/**
+ * BU Owner payout is periodic settlement (not deal Activate / Stripe).
+ * Clear legacy business_unit attributions on Activate persist.
+ */
+async function clearLegacyHeadAttributions(
   supabase: SupabaseClient,
-  lead: LeadForCommission
+  leadId: number,
+  persist: boolean
 ): Promise<void> {
-  if (lead.business_unit_id == null) return
-  const { data: buRow, error: buError } = await supabase
-    .from("business_units")
-    .select("id, owner_member_id, default_commission_rate, default_commission_fixed")
-    .eq("id", lead.business_unit_id)
-    .single()
-  if (buError) throw buError
-  const bu = businessUnitRowSchema.parse(buRow)
-  if (bu.owner_member_id == null) return
-
-  const { error: buAttrError } = await supabase.from("lead_attributions").upsert(
-    {
-      lead_id: lead.id,
-      member_id: bu.owner_member_id,
-      attribution_type: "business_unit",
-      commission_rate: bu.default_commission_rate,
-      commission_fixed: bu.default_commission_fixed,
-    },
-    { onConflict: "lead_id,member_id,attribution_type" }
-  )
-  if (buAttrError) throw buAttrError
+  if (!persist) return
+  const { error } = await supabase
+    .from("lead_attributions")
+    .delete()
+    .eq("lead_id", leadId)
+    .eq("attribution_type", "business_unit")
+  if (error) throw error
 }
 
 async function loadAttributionsWithDefaults(
   supabase: SupabaseClient,
   lead: LeadForCommission,
-  options: { persist: boolean }
-): Promise<{ attributions: AttributionRow[]; memberNames: Map<number, string | null> }> {
-  if (options.persist) {
-    await upsertBuAttribution(supabase, lead)
-  }
+  options: { persist: boolean; offerId: number | null }
+): Promise<{
+  attributions: AttributionRow[]
+  memberNames: Map<number, string | null>
+  headBusinessUnitId: number | null
+}> {
+  void options.offerId
+  await clearLegacyHeadAttributions(supabase, lead.id, options.persist)
 
   const { data: attributionRows, error: attrError } = await supabase
     .from("lead_attributions")
@@ -279,31 +272,13 @@ async function loadAttributionsWithDefaults(
     .eq("lead_id", lead.id)
   if (attrError) throw attrError
 
-  const attributions = z.array(attributionRowSchema).parse(attributionRows ?? [])
+  const attributions = z
+    .array(attributionRowSchema)
+    .parse(attributionRows ?? [])
+    .filter((row) => row.attribution_type !== "business_unit")
 
-  if (!options.persist && lead.business_unit_id != null) {
-    const hasBu = attributions.some((a) => a.attribution_type === "business_unit")
-    if (!hasBu) {
-      const { data: buRow, error: buError } = await supabase
-        .from("business_units")
-        .select("id, owner_member_id, default_commission_rate, default_commission_fixed")
-        .eq("id", lead.business_unit_id)
-        .single()
-      if (buError) throw buError
-      const bu = businessUnitRowSchema.parse(buRow)
-      if (bu.owner_member_id != null) {
-        attributions.push({
-          id: -1,
-          member_id: bu.owner_member_id,
-          attribution_type: "business_unit",
-          commission_rate: bu.default_commission_rate,
-          commission_fixed: bu.default_commission_fixed,
-        })
-      }
-    }
-  }
-
-  return fillAttributionDefaults(supabase, attributions, options)
+  const filled = await fillAttributionDefaults(supabase, attributions, options)
+  return { ...filled, headBusinessUnitId: null }
 }
 
 async function fillAttributionDefaults(
@@ -312,7 +287,7 @@ async function fillAttributionDefaults(
   options: { persist: boolean }
 ): Promise<{ attributions: AttributionRow[]; memberNames: Map<number, string | null> }> {
   if (attributions.length === 0) {
-    throw new Error("Add at least one attribution (sales / ambassador / BU) before activating.")
+    throw new Error("Add at least one attribution (sales / ambassador) before activating.")
   }
 
   for (const attribution of attributions) {
@@ -516,9 +491,23 @@ export async function maybeCreateOnPaymentCommissionsForSale(
   if (!leadRow) return { createdCount: 0 }
 
   const lead = leadForCommissionSchema.parse(leadRow)
-  const { attributions } = await loadAttributionsWithDefaults(supabase, lead, {
-    persist: false,
-  })
+
+  let offerId: number | null = lead.target_offer_id
+  if (enrollmentId != null) {
+    const { data: enrollment } = await supabase
+      .from("enrollments")
+      .select("offer_id")
+      .eq("id", enrollmentId)
+      .maybeSingle()
+    const resolvedOfferId = readNumber(asRecord(enrollment), "offer_id")
+    if (resolvedOfferId != null) offerId = resolvedOfferId
+  }
+
+  const { attributions, headBusinessUnitId } = await loadAttributionsWithDefaults(
+    supabase,
+    lead,
+    { persist: false, offerId }
+  )
 
   const preview = buildAcquisitionCommissionPreview({
     amountGrossCents: priceCents,
@@ -545,7 +534,7 @@ export async function maybeCreateOnPaymentCommissionsForSale(
         pool: "acquisition",
         installment_index: installment.index,
         installment_count: partsCount,
-        business_unit_id: lead.business_unit_id,
+        business_unit_id: headBusinessUnitId,
         due_at: installment.dueAt,
       })
     }
@@ -575,16 +564,23 @@ export async function previewLeadCommissions(
   }
 
   const deal = await resolveDealFromSale(supabase, lead, input)
-  const { attributions, memberNames } = await loadAttributionsWithDefaults(supabase, lead, {
+  if (deal.offerId == null) {
+    throw new Error("Link this sale to an offer before activating commissions.")
+  }
+  const loaded = await loadAttributionsWithDefaults(supabase, lead, {
     persist: false,
+    offerId: deal.offerId,
   })
+  if (loaded.attributions.length === 0) {
+    throw new Error("Add at least one attribution (sales / ambassador) before activating.")
+  }
   const orgPlan = await fetchOrgCommissionPlan(supabase, lead.organization_id)
 
   const preview = buildAcquisitionCommissionPreview({
     amountGrossCents: deal.amountGrossCents,
     installmentCount: deal.installmentCount,
-    attributions,
-    memberNames,
+    attributions: loaded.attributions,
+    memberNames: loaded.memberNames,
     orgPlan,
   })
 
@@ -611,21 +607,32 @@ export async function activateLeadCommissions(
   }
 
   const deal = await resolveDealFromSale(supabase, lead, input)
+  if (deal.offerId == null) {
+    throw new Error("Link this sale to an offer before activating commissions.")
+  }
 
-  const { attributions } = await loadAttributionsWithDefaults(supabase, lead, { persist: true })
+  const loaded = await loadAttributionsWithDefaults(supabase, lead, {
+    persist: true,
+    offerId: deal.offerId,
+  })
+
+  if (loaded.attributions.length === 0) {
+    throw new Error("Add at least one attribution (sales / ambassador) before activating.")
+  }
+
   const orgPlan = await fetchOrgCommissionPlan(supabase, lead.organization_id)
 
   const preview = buildAcquisitionCommissionPreview({
     amountGrossCents: deal.amountGrossCents,
     installmentCount: deal.installmentCount,
-    attributions,
+    attributions: loaded.attributions,
     orgPlan,
   })
 
   const commissionInserts: Array<Record<string, unknown>> = []
   for (const line of preview.lines) {
     if (line.attributionId < 0) {
-      throw new Error("Missing Head (BU) attribution. Retry activate.")
+      throw new Error("Missing attribution. Retry activate.")
     }
     const partsCount = line.installments.length
     const amountParts = splitAmountAcrossInstallments(deal.amountGrossCents, partsCount)
@@ -642,7 +649,7 @@ export async function activateLeadCommissions(
         pool: "acquisition",
         installment_index: installment.index,
         installment_count: partsCount,
-        business_unit_id: lead.business_unit_id,
+        business_unit_id: null,
         due_at: installment.dueAt,
       })
     }
@@ -656,7 +663,6 @@ export async function activateLeadCommissions(
   if (insertError) throw insertError
 
   const saleSource = lead.sale_source ?? input.sale_source
-
   const { error: lockError } = await supabase
     .from("leads")
     .update({
@@ -750,7 +756,7 @@ export async function fetchCommissions(
   }
 ): Promise<CommissionsPage> {
   const page = Math.max(1, options?.page ?? 1)
-  const pageSize = Math.min(100, Math.max(1, options?.pageSize ?? 10))
+  const pageSize = Math.min(100, Math.max(1, options?.pageSize ?? 25))
   const from = (page - 1) * pageSize
   const to = from + pageSize - 1
   const search = options?.search?.trim() ?? ""

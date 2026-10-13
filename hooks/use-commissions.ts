@@ -36,9 +36,7 @@ export function useCommissions(
     statuses?: CommissionStatus[]
     memberId?: number
     search?: string
-    attributionTypes?: Array<
-      "closer" | "setter" | "ambassador" | "business_unit" | "coach"
-    >
+    attributionTypes?: Array<"closer" | "setter" | "ambassador" | "coach">
     amountMinCents?: number
     amountMaxCents?: number
     dueFrom?: string
@@ -156,6 +154,9 @@ function invalidateCommissionQueries(
     queryClient.invalidateQueries({ queryKey: ["commissions", organizationId] }),
     queryClient.invalidateQueries({ queryKey: ["commissions-summary", organizationId] }),
     queryClient.invalidateQueries({ queryKey: ["commissions-due-total", organizationId] }),
+    queryClient.invalidateQueries({
+      queryKey: ["crm-sales-analytics", organizationId],
+    }),
   ])
 }
 

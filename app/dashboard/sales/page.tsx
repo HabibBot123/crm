@@ -30,7 +30,7 @@ import { paymentTypeInfo } from "@/lib/sales/payment-labels"
 import { formatAmountFromCents } from "@/lib/utils"
 import type { SalePaymentKind, SaleSourceFilter } from "@/schemas/sales.schema"
 
-const pageSize = 15
+const pageSize = 25
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString("en-US", {

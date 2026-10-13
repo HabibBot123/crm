@@ -6,7 +6,7 @@ alwaysApply: true
 
 This file defines the **prescriptive** UX rules for the entire app (styles, typography, layout, states, and component patterns).
 
-Goal: maintain a “dense, organized, power-user friendly” consistency (inspired by Linear / Airtable).
+Goal: maintain a “dense, organized, power-user friendly” consistency (inspired by Linear / Airtable / Resend controls). Prefer patterns already used on Overview, CRM, Settings, Analytics over inventing new ones.
 
 ---
 
@@ -36,7 +36,7 @@ Dark mode:
 
 - `.dark` redefines the same tokens (goal: contrast and readability, not just inversion).
 
-Charts / graphs:
+charts / graphs:
 
 - `--chart-1` to `--chart-5` are dedicated colors for visualizations.
 
@@ -50,7 +50,30 @@ Fonts used:
 - Display: via the `font-display` utility
   - The `font-display` utility is defined in `app/globals.css` and uses `--font-geist`
 
-Reminder: in practice, follow the typography hierarchy described in section 6.
+Reminder: in practice, follow the typography hierarchy described in section 8.
+
+---
+
+## 2b. Controls (Button / Input / Select / Tabs)
+
+Dense controls inspired by Resend. Change the shared UI components, not page-level classes.
+
+| Token | Value |
+|---|---|
+| Height | `h-8` (default). Landing / marketing CTAs may use `size="lg"` (`h-10`) |
+| Radius | `rounded-xl` |
+| Padding | `px-3` ; with leading icon prefer `pl-2.5` ; select chevron `pr-2.5` |
+| Gap icon/label | `gap-1` |
+| Type | `text-sm` ; primary CTA `font-semibold` ; select trigger `font-normal` |
+| Focus | `ring-2` + `ring-ring` |
+
+Variants (Button):
+- `default` : primary CTA (border + `font-semibold`)
+- `outline` : secondary / filter / combobox trigger
+- `ghost` / `secondary` / `link` : unchanged roles
+- Tabs : no muted track ; triggers are `h-8 rounded-xl` pills, active = `bg-accent`
+
+Files: `components/ui/button.tsx`, `input.tsx`, `select.tsx`, `tabs.tsx`, `input-group.tsx`, `search-select.tsx`.
 
 ---
 
@@ -59,10 +82,21 @@ Reminder: in practice, follow the typography hierarchy described in section 6.
 | Context | Pattern |
 |---|---|
 | Page container | `<div className="space-y-4 p-6 lg:p-8">` |
-| Page title | Always `PageHeader` (`title` + optional `subtitle` + optional `action`) |
-| Content sections (data, lists) | `SectionCard` (flat, thin border, no shadow) |
+| Page title | Always `PageHeader` (`title` + optional `subtitle` + optional `back`). Actions = `children` (not an `action` prop). |
+| Content sections (data, lists, metrics) | `SectionCard` (flat, thin border, no shadow) |
 | Settings / account pages | 2-column layout: left nav (`w-48 shrink-0`) + right content inside `SectionCard` |
-| KPI metrics strip | `StatCard` in `grid sm:grid-cols-2 lg:grid-cols-4` |
+| Metric strips | Flat label + value inside one `SectionCard` (`grid gap-6 …`). No `StatCard`, no nested metric cards. Mirror Overview. |
+
+### Nested surfaces (avoid white-on-white)
+
+When stacking bordered blocks inside a panel, dialog, or builder (CRM side panel sections, segment condition rows, etc.):
+
+- Outer shell: `border border-border` on `bg-background` / `bg-card` (or no fill)
+- Inner rows / nested groups: `rounded-lg border border-border bg-muted/50 p-2|p-3`
+- Do **not** nest multiple `bg-background` / `bg-card` boxes. That reads as “stack on stack”
+- Controls inside muted rows stay on their default control surface (outline / input tokens)
+
+Reference: CRM lead side panel blocks ; Campaigns segment condition rows.
 
 ---
 
@@ -105,7 +139,7 @@ Use when data is structured in columns.
 
 - Zero-data: always `EmptyState`
 - Loading:
-  - list: `LoadingRows`
+  - list: `LoadingRows` (`count` prop, not `rows`)
   - grid: `LoadingGrid`
 - Do not render `null` conditionally without a placeholder.
 
@@ -113,17 +147,18 @@ Use when data is structured in columns.
 
 ## 7. Badges & Status
 
-- Role/status indicators: always `StatusBadge`
-- Do not use inline `Badge` with hardcoded colors scattered across pages
-- Color mapping (if needed) should stay local to the page (e.g. a `roleColors` object), not inside shared components
+- Generic role/status indicators: `StatusBadge` with a local `configs` map when colors differ by page
+- CRM lead pipeline status: `LeadStatusBadge` (org status catalogue)
+- Do not scatter hardcoded `Badge` color classes for status semantics across pages
 
 ---
 
 ## 8. Typography hierarchy (concrete rules)
 
-- Page titles: `font-display text-2xl font-bold tracking-tight` (Geist)
-- Section titles: `text-sm font-semibold text-foreground` (Inter)
+- Page titles: `font-display text-2xl font-bold tracking-tight` (Geist) — via `PageHeader`
+- Section titles: `text-sm font-semibold text-foreground` (Inter) — via `SectionCard` `title` or equivalent
 - Labels / column headers: `text-xs font-semibold uppercase tracking-wider text-muted-foreground`
+- Large numbers (metrics): `font-display text-2xl font-bold tracking-tight tabular-nums`
 - Body: `text-sm text-foreground`
 - Muted: `text-sm text-muted-foreground`
 
@@ -149,4 +184,3 @@ When adding brand-driven UI, ensure:
 - Prefer no subtitle/helper unless it prevents a real mistake.
 
 ---
-  
