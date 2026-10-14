@@ -5,6 +5,103 @@ Règle : 1 entrée = 1 thème livré (pas chaque polish UI).
 
 ---
 
+## 2026-10-15 — Sending domain : tracking open/click par défaut
+
+- Create domaine Resend : `openTracking` / `clickTracking` + subdomain `links`. DNS Tracking dans la table existante. Pas de backfill. → `docs/04`.
+
+## 2026-10-15 — Unsub funnel : query `c` + event recipient
+
+- Lien broadcast : `…/unsubscribe?t={{{contact.cs_unsub_N}}}&c={campaignId}`. Confirm écrit `campaign_email_events` / `unsubscribed_at` sur ce recipient seulement (pas de fallback). → `docs/04`.
+
+## 2026-10-15 — Merge tags Resend : préfixe `contact.`
+
+- Broadcast avait `{{{cs_fn_1|there}}}` / `{{{cs_unsub_1}}}` → fallback / vide. Syntaxe Resend = `{{{contact.<key>|…}}}`. Fix inject + unsub URL. → `docs/04`.
+
+## 2026-10-14 — Sync audience via Inngest + properties org
+
+- Properties Resend `cs_fn_{orgId}` / `cs_ln_{orgId}` (+ `cs_unsub_`). Trigger lead aussi sur first/last name. Webhook Supabase `campaign_contacts` → Inngest. Colonnes `provider_properties_synced_at` / `provider_sync_error`. Quota **par org** = todo avant launch. Checklist prod (repoint Inngest + trigger SQL + Resend/Stripe) dans `docs/01`. Dev = Sync Inngest sur ngrok OK. → `docs/01` / `03` / `04` / `06`.
+
+## 2026-10-14 — Opt-out CoachStack `/unsubscribe`
+
+- Lien campagne = page confirm CoachStack (plus Resend unsub URL). Token HMAC + prop Resend `cs_unsub_{orgId}`. Confirm → opt-out org + topic. → `docs/04`.
+
+## 2026-10-14 — Campaigns : How it works
+
+- Dialog 4 étapes (Audience → Library → Campaign → Delivery) via `?` à côté du titre + empty state. `PageHeader.titleAside`.
+
+## 2026-10-14 — Audience tab : liste contacts
+
+- Vue `v_campaign_audience_contacts` (pas RPC : colonnes V1 fixes). Table First/Last/Email/Origin/Consent/Sync + search/filters/pagination. → `docs/06` / `03`.
+
+## 2026-10-14 — Leads first_name / last_name
+
+- Colonnes + backfill + trigger `full_name`. Inputs CRM + form public. Sync campagne Resend sur first/last. Lectures restent sur `full_name`. → `docs/04` / `06`. Re-sync audience pour pousser les noms Resend.
+
+## 2026-10-14 — Sheet recipient : HTML Resend lazy
+
+- Ouverture sheet → `GET …/recipients/:id/sent-email` → `resend.emails.get(provider_recipient_id)`. Affiche HTML/texte seulement si Resend renvoie un body. Pas de fallback snapshot local.
+
+## 2026-10-14 — Hub Campaigns switcher + rename hook
+
+- `use-marketing-campaigns` → `use-campaigns`. Switcher Campaigns / Templates / Audience en haut (style Analytics) + icônes. Click : edit tant que pas `sent`, sinon delivery view.
+
+## 2026-10-14 — Campaigns hooks → services
+
+- Segments / templates / campaigns CRUD lecture + audience stats via services (plus fetch API). API gardée : send/cancel/test/sync + deletes Resend. Backfill delivery retiré.
+
+## 2026-10-14 — Étape 6 : stats + hub (build)
+
+- Tables `campaign_recipients` / `campaign_email_events` + RPC `campaign_delivery_stats`. Webhook `POST /api/webhooks/resend`. Materialize recipients au send. Hub tabs + détail post-send + sheet events. Configurer `RESEND_WEBHOOK_SECRET` + endpoint Resend (ngrok). → `docs/04` / `06` / `01`.
+
+## 2026-10-14 — Étape 6 : contrat stats (webhooks + tables)
+
+- Stockage interne via webhooks Resend (pas poll UI). `campaign_recipients` (funnel timestamps + last_status) + `campaign_email_events` (audit/sheet). Stats RPC funnel. Hub tabs Campaigns | Templates(+segments) | Audience. → `docs/04` / `06` / `03`.
+
+## 2026-10-13 — Next : stats campagne + UI hub (Étape 6)
+
+- Send réel OK. Prochaine séance : stats globales + par email (Resend), hub résumé → détail contacts → sheet CRM-like, revoir UI page Campaigns. Contrat → `docs/04` Étape 6 / `docs/03`.
+
+## 2026-10-13 — Campaign Recipients : segment + colonnes conditions
+
+- Segment editable aussi sur Recipients (reste sur Details). Preview table : colonnes dérivées des conditions du filtre (status, origin, form fields, offers…). Save en header.
+
+## 2026-10-13 — Campaign pages (body override + recipients)
+
+- Pages `/campaigns/new` + `/campaigns/[id]` (plus de dialog). Body copié du template, éditable. Recipients preview. Test + Send now / Schedule. Colonnes `body_html`/`body_json` sur `campaigns`. → `docs/04` / `06`.
+
+## 2026-10-13 — Templates email : baseline figée
+
+- TipTap maison livré (pas Maily). Font size inline (plus de H1–H3). Subject : insert vars (Braces). Form : 1 card Name/Subject/Body + Preview ; Save bas.
+- **Map fichiers + contrats** → `docs/04` Étape 5 « Éditeur template » (pour reprises).
+
+## 2026-10-13 — Campaign Button / BubbleMenu / chips / lists
+
+- Button node + BubbleMenus + chips If empty + toolbar mousedown. Détail → `docs/04`.
+
+## 2026-10-13 — Templates : pages dédiées
+
+- Create/edit : `/dashboard/campaigns/templates/new` + `[templateId]`. Liste sur Campaigns.
+
+## 2026-10-13 — Resend SDK upgrade
+
+- `resend` 6.9.4 → **6.32.1** (plugin = latest, min ≥ 6.14). Cancel / delete scheduled : `broadcasts.remove` (stop + delete). `cancel` = garder un draft Resend ; pas notre cas.
+
+## 2026-10-13 — Étape 5 Campaigns : build V1
+
+- Tables `campaign_email_templates` + `campaigns`. APIs CRUD + send/schedule/cancel/test. UI Templates + Campaigns. Editor `@react-email/editor` + variables. Sync names first/last au Resend. → `docs/04`, `06`.
+
+## 2026-10-13 — Étape 5 Campaigns : contrat V1 figé
+
+- Naming Campaign (pas Broadcast UI). Templates + `@react-email/editor`. Schedule/cancel, from/reply-to, preview, test send, variables Resend, confirm N, garanties send, unsub only (pas footer légal). → `docs/04`.
+
+## 2026-10-13 — Pause session Marketing
+
+- Suite = **Étape 5 Campaigns** (contrat `docs/04`). Sync UI inchangé jusqu’au Send. Fix TS : `NoAccessState` title + drop `visibility` topic Resend.
+
+## 2026-10-13 — Campaigns : sync UI reporté au Broadcast
+
+- Pas d’auto-sync à l’arrivée page. Jargon / bouton Sync à revoir quand Send Broadcast matérialise le sync. → `docs/04`.
+
 ## 2026-10-13 — Campaigns : cap + indexes sync
 
 - Cap `campaigns.manage` (admin) : nav, APIs, RLS. Indexes partial pending/opted-in/synced sur `campaign_contacts`. → `docs/04`, `06`.

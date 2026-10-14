@@ -185,11 +185,20 @@ export async function createLead(
     .ilike("email", emailNormalized)
   if (dupError) throw dupError
 
+  const lastName = payload.last_name?.trim() || null
+
   const { data, error } = await supabase
     .from("leads")
     .insert({
-      ...payload,
+      organization_id: payload.organization_id,
+      first_name: payload.first_name.trim(),
+      last_name: lastName,
       email: emailNormalized,
+      phone: payload.phone ?? null,
+      origin: payload.origin,
+      created_by_member_id: payload.created_by_member_id,
+      owner_id: payload.owner_id ?? null,
+      target_offer_id: payload.target_offer_id ?? null,
       is_duplicate: (existingCount ?? 0) > 0,
       marketing_opt_in: true,
     })

@@ -571,7 +571,8 @@ export default function CrmPage() {
         onSubmit={async (input) => {
           try {
             const lead = await createLead.mutateAsync({
-              full_name: input.fullName,
+              first_name: input.firstName,
+              last_name: input.lastName || null,
               email: input.email,
               phone: input.phone || null,
               origin: "manual",

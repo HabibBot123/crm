@@ -174,7 +174,8 @@ export const leadSchema = z.object({
 
 export const createLeadSchema = z.object({
   organization_id: z.number(),
-  full_name: z.string().min(1),
+  first_name: z.string().trim().min(1),
+  last_name: z.string().trim().optional().nullable(),
   email: z.string().email(),
   phone: z.string().optional().nullable(),
   origin: leadOriginSchema.default("manual"),
@@ -306,7 +307,8 @@ export const createFormSchema = z.object({
 })
 
 export const submitPublicFormSchema = z.object({
-  full_name: z.string().trim().min(1),
+  first_name: z.string().trim().min(1),
+  last_name: z.string().trim().optional().nullable(),
   email: z.string().trim().email(),
   phone: z.string().trim().optional().nullable(),
   /** Honeypot — must be empty. */

@@ -1,10 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { z } from "zod"
 import { getResendClient } from "@/lib/resend"
+import { fetchOrganizationLeadStatuses } from "@/lib/services/organization-lead-statuses"
+import { crmFieldOptionSchema } from "@/schemas/crm.schema"
 import {
   campaignSegmentFilterGroupSchema,
   campaignSegmentSchema,
   createCampaignSegmentSchema,
   emptyCampaignSegmentFilter,
+  flattenCampaignSegmentFilter,
   isEmptySegmentFilter,
   updateCampaignSegmentSchema,
   type CampaignSegment,
@@ -13,6 +17,92 @@ import {
   type CreateCampaignSegmentInput,
   type UpdateCampaignSegmentInput,
 } from "@/schemas/campaign-segment.schema"
+
+export type CampaignSegmentPreviewColumn = {
+  key: string
+  label: string
+}
+
+export type CampaignSegmentPreviewContact = {
+  email: string
+  synced: boolean
+  fields: Record<string, string>
+}
+
+type PreviewColumnSpec =
+  | { key: string; kind: Exclude<CampaignSegmentCondition["type"], "form_field"> }
+  | { key: string; kind: "form_field"; field_def_id: number }
+
+const PREVIEW_CONDITION_LABELS: Record<
+  Exclude<CampaignSegmentCondition["type"], "form_field">,
+  string
+> = {
+  lead_status: "Lead status",
+  lead_origin: "Lead origin",
+  is_client: "Is client",
+  offer: "Offer",
+  product: "Product",
+  business_unit: "Business unit",
+  lead_created_at: "Lead created",
+  enrollment_created_at: "Enrollment date",
+}
+
+function collectPreviewColumnSpecs(
+  filter: CampaignSegmentFilterGroup
+): PreviewColumnSpec[] {
+  const specs: PreviewColumnSpec[] = []
+  const seen = new Set<string>()
+
+  for (const node of flattenCampaignSegmentFilter(filter).conditions) {
+    if (!("type" in node)) continue
+    if (node.type === "form_field") {
+      const key = `form_field:${node.field_def_id}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      specs.push({
+        key,
+        kind: "form_field",
+        field_def_id: node.field_def_id,
+      })
+      continue
+    }
+    if (seen.has(node.type)) continue
+    seen.add(node.type)
+    specs.push({ key: node.type, kind: node.type })
+  }
+
+  return specs
+}
+
+const LEAD_ORIGIN_LABELS: Record<string, string> = {
+  form: "Form",
+  manual: "Manual",
+}
+
+function formatPreviewDate(iso: string | null | undefined): string {
+  if (!iso) return ""
+  const day = iso.slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : ""
+}
+
+function joinUniqueLabels(values: string[]): string {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].join(
+    ", "
+  )
+}
+
+function mapFieldOptionValue(
+  raw: string,
+  options: Map<string, string> | undefined
+): string {
+  if (!options || options.size === 0) return raw
+  return raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => options.get(part) ?? part)
+    .join(", ")
+}
 
 type ContactRow = {
   id: number
@@ -109,8 +199,11 @@ function fieldValuesMatch(
   if (op === "exists") return raw != null && raw.trim().length > 0
   if (op === "not_exists") return raw == null || raw.trim().length === 0
   if (raw == null) return op === "not_in"
-  const parts = raw.split(",").map((part) => part.trim()).filter(Boolean)
-  const wanted = values ?? []
+  const parts = raw
+    .split(",")
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean)
+  const wanted = (values ?? []).map((value) => value.trim().toLowerCase())
   const hit = wanted.some((value) => parts.includes(value))
   return op === "in" ? hit : !hit
 }
@@ -377,6 +470,18 @@ export async function deleteCampaignSegment(
   const existing = await fetchCampaignSegment(supabase, organizationId, segmentId)
   if (!existing) return
 
+  const { count, error: usageError } = await supabase
+    .from("campaigns")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", organizationId)
+    .eq("segment_id", segmentId)
+  if (usageError) throw new Error(usageError.message)
+  if ((count ?? 0) > 0) {
+    throw new Error(
+      "This segment is used by a campaign. Remove or change those campaigns first."
+    )
+  }
+
   if (existing.resend_segment_id) {
     const resend = getResendClient()
     if (resend) {
@@ -392,7 +497,14 @@ export async function deleteCampaignSegment(
     .delete()
     .eq("organization_id", organizationId)
     .eq("id", segmentId)
-  if (error) throw error
+  if (error) {
+    if (error.code === "23503") {
+      throw new Error(
+        "This segment is used by a campaign. Remove or change those campaigns first."
+      )
+    }
+    throw error
+  }
 }
 
 export async function resolveCampaignSegmentContacts(
@@ -424,21 +536,239 @@ export async function resolveCampaignSegmentContacts(
   return contacts.filter((contact) => evaluateNode(contact, parsedFilter, ctx))
 }
 
+const AUDIENCE_PREVIEW_LIMIT = 50
+
+type PreviewLabelMaps = {
+  fieldLabels: Map<number, string>
+  fieldOptions: Map<number, Map<string, string>>
+  statusLabels: Map<string, string>
+  offerNames: Map<number, string>
+  productNames: Map<number, string>
+  unitNames: Map<number, string>
+}
+
+async function loadPreviewLabelMaps(
+  supabase: SupabaseClient,
+  organizationId: number,
+  specs: PreviewColumnSpec[]
+): Promise<PreviewLabelMaps> {
+  const fieldIds = specs
+    .filter(
+      (spec): spec is Extract<PreviewColumnSpec, { kind: "form_field" }> =>
+        spec.kind === "form_field"
+    )
+    .map((spec) => spec.field_def_id)
+  const needStatuses = specs.some((spec) => spec.kind === "lead_status")
+  const needOffers = specs.some((spec) => spec.kind === "offer")
+  const needProducts = specs.some((spec) => spec.kind === "product")
+  const needUnits = specs.some((spec) => spec.kind === "business_unit")
+
+  const fieldLabels = new Map<number, string>()
+  const fieldOptions = new Map<number, Map<string, string>>()
+  if (fieldIds.length > 0) {
+    const { data, error } = await supabase
+      .from("crm_fields")
+      .select("id, label, options")
+      .eq("organization_id", organizationId)
+      .in("id", fieldIds)
+    if (error) throw error
+    for (const row of data ?? []) {
+      const id = Number(row.id)
+      fieldLabels.set(id, String(row.label))
+      const parsedOptions = z.array(crmFieldOptionSchema).safeParse(row.options)
+      if (!parsedOptions.success) continue
+      const options = new Map(
+        parsedOptions.data.map((option) => [option.value, option.label])
+      )
+      if (options.size > 0) fieldOptions.set(id, options)
+    }
+  }
+
+  const statusLabels = new Map<string, string>()
+  if (needStatuses) {
+    const statuses = await fetchOrganizationLeadStatuses(supabase, organizationId)
+    for (const status of statuses) {
+      statusLabels.set(status.key, status.label)
+    }
+  }
+
+  const offerNames = new Map<number, string>()
+  if (needOffers) {
+    const { data, error } = await supabase
+      .from("offers")
+      .select("id, title")
+      .eq("organization_id", organizationId)
+    if (error) throw error
+    for (const row of data ?? []) {
+      offerNames.set(Number(row.id), String(row.title))
+    }
+  }
+
+  const productNames = new Map<number, string>()
+  if (needProducts) {
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, title")
+      .eq("organization_id", organizationId)
+    if (error) throw error
+    for (const row of data ?? []) {
+      productNames.set(Number(row.id), String(row.title))
+    }
+  }
+
+  const unitNames = new Map<number, string>()
+  if (needUnits) {
+    const { data, error } = await supabase
+      .from("business_units")
+      .select("id, name")
+      .eq("organization_id", organizationId)
+    if (error) throw error
+    for (const row of data ?? []) {
+      unitNames.set(Number(row.id), String(row.name))
+    }
+  }
+
+  return {
+    fieldLabels,
+    fieldOptions,
+    statusLabels,
+    offerNames,
+    productNames,
+    unitNames,
+  }
+}
+
+function buildPreviewContactFields(
+  contact: ContactRow,
+  specs: PreviewColumnSpec[],
+  ctx: ResolveContext,
+  labels: PreviewLabelMaps
+): Record<string, string> {
+  const lead = contact.lead_id != null ? ctx.leadsById.get(contact.lead_id) : undefined
+  const enrollments = ctx.enrollmentsByEmail.get(contact.email) ?? []
+  const activeEnrollments = enrollments.filter(
+    (row) => row.status === "active" || row.status === "paused"
+  )
+  const fields: Record<string, string> = {}
+
+  for (const spec of specs) {
+    switch (spec.kind) {
+      case "lead_status":
+        fields[spec.key] = lead?.status
+          ? (labels.statusLabels.get(lead.status) ?? "")
+          : ""
+        break
+      case "lead_origin":
+        fields[spec.key] = lead?.origin
+          ? (LEAD_ORIGIN_LABELS[lead.origin] ?? "")
+          : ""
+        break
+      case "business_unit":
+        fields[spec.key] =
+          lead?.business_unit_id != null
+            ? (labels.unitNames.get(lead.business_unit_id) ?? "")
+            : ""
+        break
+      case "lead_created_at":
+        fields[spec.key] = formatPreviewDate(lead?.created_at)
+        break
+      case "is_client": {
+        const isClient =
+          activeEnrollments.length > 0 || contact.enrollment_id != null
+        fields[spec.key] = isClient ? "Yes" : "No"
+        break
+      }
+      case "offer":
+        fields[spec.key] = joinUniqueLabels(
+          enrollments
+            .map((row) => labels.offerNames.get(row.offer_id) ?? "")
+            .filter(Boolean)
+        )
+        break
+      case "product":
+        fields[spec.key] = joinUniqueLabels(
+          enrollments.flatMap((row) =>
+            (ctx.productsByEnrollment.get(row.id) ?? []).map(
+              (productId) => labels.productNames.get(productId) ?? ""
+            )
+          )
+        )
+        break
+      case "enrollment_created_at":
+        fields[spec.key] = joinUniqueLabels(
+          enrollments.map((row) => formatPreviewDate(row.created_at))
+        )
+        break
+      case "form_field": {
+        const values =
+          contact.lead_id != null
+            ? (ctx.fieldValuesByLead.get(contact.lead_id) ?? [])
+            : []
+        const raw =
+          values.find((row) => row.field_def_id === spec.field_def_id)?.value ??
+          ""
+        fields[spec.key] = mapFieldOptionValue(
+          raw,
+          labels.fieldOptions.get(spec.field_def_id)
+        )
+        break
+      }
+    }
+  }
+
+  return fields
+}
+
 export async function previewCampaignSegment(
   supabase: SupabaseClient,
   organizationId: number,
   filter: CampaignSegmentFilterGroup
-): Promise<{ total: number; synced: number; pending: number }> {
+): Promise<{
+  total: number
+  synced: number
+  pending: number
+  columns: CampaignSegmentPreviewColumn[]
+  contacts: CampaignSegmentPreviewContact[]
+}> {
+  const parsedFilter = campaignSegmentFilterGroupSchema.parse(filter)
   const matched = await resolveCampaignSegmentContacts(
     supabase,
     organizationId,
-    filter
+    parsedFilter
   )
   const synced = matched.filter((contact) => contact.resend_contact_id != null).length
+  const previewSlice = matched.slice(0, AUDIENCE_PREVIEW_LIMIT)
+  const specs = collectPreviewColumnSpecs(parsedFilter)
+  const labelMaps = await loadPreviewLabelMaps(supabase, organizationId, specs)
+  const columns: CampaignSegmentPreviewColumn[] = specs.map((spec) => {
+    if (spec.kind === "form_field") {
+      return {
+        key: spec.key,
+        label:
+          labelMaps.fieldLabels.get(spec.field_def_id) ??
+          `Field ${spec.field_def_id}`,
+      }
+    }
+    return { key: spec.key, label: PREVIEW_CONDITION_LABELS[spec.kind] }
+  })
+
+  const ctx =
+    previewSlice.length > 0 && specs.length > 0
+      ? await loadResolveContext(supabase, organizationId, previewSlice)
+      : null
+
   return {
     total: matched.length,
     synced,
     pending: matched.length - synced,
+    columns,
+    contacts: previewSlice.map((contact) => ({
+      email: contact.email,
+      synced: contact.resend_contact_id != null,
+      fields: ctx
+        ? buildPreviewContactFields(contact, specs, ctx, labelMaps)
+        : {},
+    })),
   }
 }
 

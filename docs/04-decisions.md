@@ -5,6 +5,13 @@ Format : date · quoi · pourquoi (court) · conséquences.
 
 ---
 
+## 2026-10-14 — Leads first_name / last_name
+
+- Colonnes `leads.first_name` (required) + `leads.last_name` (nullable). `full_name` **dérivé** via trigger (pas d’édition directe).
+- Backfill one-shot depuis `full_name` (1er token / reste). Lectures CRM / listes / analytics : toujours `full_name`.
+- Écriture : Add lead + formulaire public = First / Last. Campaign Resend sync lit `first_name` / `last_name` (plus de split heuristique sur leads).
+- Script : `scripts/leads-first-last-name.sql`.
+
 ## 2026-10 — Controls UX (Resend-like density)
 
 - Dashboard controls share one atom: **`h-8` + `rounded-xl` + `px-3` + `gap-1` + `text-sm` + focus `ring-2`**.
@@ -190,7 +197,7 @@ Groupes (source `lib/permissions/dashboard-nav.ts`, sidebar + mobile) :
 - **Pas** Resend Automations. Séquences (welcome pack J1/J3, nurture conditionnel) = **phase 2**, orchestrées chez nous (Inngest / Trigger.dev ou équivalent) + envoi transactionnel Resend.
 - **V1 scope** : domaine custom org (DNS guidé) · consent/topics/unsub · sync contacts · campagnes Broadcast · templates React Email · webhooks bounce/complaint/unsub. Séquences auto = plus tard.
 - Domaine envoi org : sous-domaine recommandé (`mail.` / `send.`) pour isoler la réputation.
-- **Étape 1 (2026-10-12)** : Settings → **Email** ; table `organization_sending_domains` ; API create / verify / refresh / remove via Resend Domains (compte plateforme). Cap `org.settings`.
+- **Étape 1 (2026-10-12, évol. 2026-10-15)** : Settings → **Email** ; table `organization_sending_domains` ; API create / verify / refresh / remove via Resend Domains (compte plateforme). Cap `org.settings`. Create : `openTracking` + `clickTracking` + `trackingSubdomain: "links"` (CNAME Tracking dans la table DNS). Pas de backfill domaines déjà créés.
 - **Étape 2 consent (2026-10-13)** :
   - Form public : case **décochée** mais **obligatoire** pour soumettre + copy `I agree that {orgName} may keep my contact details to get in touch with me.` → lead form toujours opt-in true.
   - Tables `campaign_contacts` (unique org+email lower) + `campaign_topics` (1× Marketing / org).
@@ -198,8 +205,15 @@ Groupes (source `lib/permissions/dashboard-nav.ts`, sidebar + mobile) :
   - Clients (enrollment) + lead **manuel** CRM : `marketing_opt_in = true` auto. Pas de toggle CRM.
   - Interim mock : **tous** leads + `campaign_contacts` opt-in true (default DB + backfill 2026-10-13).
   - Topic local seedé à la création org ; `resend_topic_id` attaché à l’enregistrement du sending domain (`attachResendCampaignTopic`).
-  - Sync audience locale = **triggers DB** (`leads` / `enrollments` → `campaign_contacts`).
-  - **Étape 3 sync Resend (2026-10-13)** : sync **à la demande** via Pipeline → **Campaigns** → **Sync audience** (pas de soft-sync à chaque lead). Service upsert Contact + topic org ; `resend_contact_id`. Sync auto au Send Broadcast = plus tard. Quota contacts = à décider en fin de V1. Compte plateforme = 1 contact Resend / email ; isolation = topics par org.
+  - Sync audience locale = **triggers DB** (`leads` / `enrollments` → `campaign_contacts`). Lead trigger inclut **`first_name` / `last_name`** ; enrollment inclut **`buyer_name`** (invalide `provider_properties_synced_at`).
+  - **Étape 3 sync Resend (2026-10-13, évol. 2026-10-14)** :
+    - **Worker = Inngest**. Trigger SQL / Database Webhook sur `campaign_contacts` → `POST /api/webhooks/supabase/campaign-contacts` → event `campaign/contact.sync` → `syncCampaignContactToResend`. Pas d’emit depuis les services CRM.
+    - Properties Resend **scopées org** : `cs_fn_{orgId}`, `cs_ln_{orgId}`, `cs_unsub_{orgId}` (pas les champs natifs `firstName`/`lastName` : multi-org last-write-wins). Au broadcast : rewrite `{{{FIRST_NAME|…}}}` → `{{{contact.cs_fn_N|…}}}` (préfixe `contact.` requis par Resend).
+    - Colonnes : `provider_properties_synced_at`, `provider_sync_error` (soft-fail quota Resend plateforme ; **pas d’UI** V1).
+    - Dirty catch-up au Send (contacts segment non sync / invalidés). Sync audience manuel conservé.
+    - **Quota contacts par org (produit CoachStack) = todo avant sortie app** (`docs/03`). Indépendant du plafond Resend compte plateforme.
+    - Compte plateforme = 1 contact Resend / email ; isolation = topics + properties préfixées par org.
+    - **Prod launch** : re-sync Inngest sur URL prod + **repoint** trigger webhook Supabase (URL hardcodée) + Resend/Stripe webhooks. Détail checklist → `docs/01` section Inngest. Dev local = Sync Inngest sur **ngrok** (app/env Dev préférable).
   - **Étape 4 segments (2026-10-13)** :
     - Table `campaign_segments` : `filter_json` (AST AND/OR/NOT) = vérité CoachStack ; Resend segment = sac.
     - Conditions v1 : `lead_status`, `lead_origin`, `form_field`, `is_client`, `offer`, `product`, `business_unit`, `lead_created_at` (entrée CRM), `enrollment_created_at` (inscription client).
@@ -208,6 +222,85 @@ Groupes (source `lib/permissions/dashboard-nav.ts`, sidebar + mobile) :
     - Cap **`campaigns.manage`** (admin défaut) : nav Campaigns, APIs sync/segments, RLS contacts/segments. Domaine Resend reste `org.settings`.
     - Indexes sync : partial `(organization_id, id) WHERE marketing_opt_in AND resend_contact_id IS NULL` + opted-in / synced.
     - Preview count en local sans Resend.
+  - **Sync UI (2026-10-13)** : pas d’auto-refresh page pour l’instant. Bouton / copy “sync” à revoir au flow **Campaign** (cible : sync au Send). Garder Sync audience tel quel jusqu’à là.
+  - **Multi-org / 1 compte Resend** : 1 email = 1 contact plateforme. Filtres / opt-in = CoachStack par org ; segments Resend = sacs par org ; topics Marketing par org. **Jamais** `unsubscribed` global. Noms / attrs perso = **properties `cs_*_{orgId}`** (plus first/last natifs).
+  - **Étape 5 Campaigns** (contrat V1, 2026-10-13, **partial build**) :
+
+    **Naming** : UI = **Campaign** / **Email template**. Resend Broadcast = transport invisible.
+
+    **Modèle** :
+    - `campaign_email_templates` : name, subject défaut, body éditeur (TipTap JSON + HTML rendu), org-scoped, RLS `campaigns.manage`.
+    - `campaigns` : name, `segment_id`, `template_id`, subject (override ok), `preview_text`, `from_name`, `from_email`, `reply_to`, status `draft` \| `scheduled` \| `sending` \| `sent` \| `canceled`, `scheduled_at`, `sent_at`, `resend_broadcast_id`, **snapshot** HTML/subject au send, RLS `campaigns.manage`.
+
+    **Éditeur template (TipTap maison, figé 2026-10-13)** :
+    - Pas Maily / Maildeno / EmailBuilder.js / Unlayer / React Email visual editor V1.
+    - Stockage : `body_html` (tokens Resend) + `body_json` (doc TipTap). Subject = string + tokens.
+    - **Toolbar** : variables (Braces), bullet / numbered list, align L/C/R, image URL popover, Button CTA.
+    - **BubbleMenu texte** : B / I / U, **font size** S–2XL (`FontSize` → `font-size` inline), link popover, color. Pas de H1/H2/H3 (Tailwind reset + email = préférer taille inline).
+    - **BubbleMenu bouton** : label, radius, size, align, href, couleurs. HTML inline dans le node → Preview = email.
+    - **Chips variables** : NodeView ; clic → « If empty » ; export `{{{KEY|fallback}}}` via `toCampaignEmailHtml`.
+    - **Subject** : InputGroup + Braces (First / Last / Email seulement ; pas Unsubscribe). Insert token au curseur.
+    - **Form UI** : 1 `SectionCard` (Name / Subject / Body + Preview) ; Cancel / Save en bas. Pages dédiées (pas dialog).
+    - Actions TipTap toolbar : `onAction` au **mousedown** (sinon sélection perdue).
+
+    **Map fichiers (reprise améliorations)** :
+
+    | Rôle | Fichier |
+    |------|---------|
+    | Pages create / edit | `app/dashboard/campaigns/templates/new/page.tsx`, `…/templates/[templateId]/page.tsx` |
+    | Form Name / Subject / Body / Preview / Save | `components/dashboard/campaigns/template-editor-form.tsx` |
+    | Éditeur TipTap (toolbar + BubbleMenus) | `components/dashboard/campaigns/campaign-email-editor.tsx` |
+    | Chip variable + `toCampaignEmailHtml` | `components/dashboard/campaigns/campaign-variable-chip.tsx` |
+    | Node bouton CTA | `components/dashboard/campaigns/campaign-button.tsx` |
+    | Zod + `CAMPAIGN_EMAIL_VARIABLES` + tokens | `schemas/campaign-email-template.schema.ts` |
+    | Service CRUD templates | `lib/services/campaign-email-templates.ts` |
+    | Hooks RQ | `hooks/use-campaign-email-templates.ts` |
+    | API REST | `app/api/organizations/[orgId]/campaign-email-templates/…` |
+    | Schema SQL | `scripts/campaigns-and-templates.sql` (+ `docs/06` table `campaign_email_templates`) |
+    | Liste templates + campagnes (hub) | `app/dashboard/campaigns/page.tsx` |
+    | Pages campagne create / edit | `app/dashboard/campaigns/new/page.tsx`, `…/campaigns/[campaignId]/page.tsx` |
+    | Form campagne (body override, recipients, test, send/schedule) | `components/dashboard/campaigns/campaign-editor-form.tsx` |
+    | Send / snapshot body | `lib/services/marketing-campaigns.ts` |
+
+    **Campagne (page dédiée, 2026-10-13)** : plus de dialog. Template choisi → copie subject + body ; override libre (`campaigns.body_html` / `body_json`). Preview destinataires = segment resolve (50 premiers + counts). Test + Send now / Schedule sur la page edit (après Save implicite).
+
+    Ignorer : `lib/campaigns/maildeno.ts` (essai abandonné).
+
+    **Variables** (triple mustache Resend) :
+    - Stockés éditeur : `{{{FIRST_NAME|there}}}` · `{{{LAST_NAME|}}}` · `{{{EMAIL|}}}` · `{{{UNSUBSCRIBE_URL}}}` (**obligatoire**).
+    - Au broadcast : `FIRST_NAME`/`LAST_NAME` → `contact.cs_fn_{org}` / `contact.cs_ln_{org}` ; `EMAIL` → `contact.email` ; unsub → `…?t={{{contact.cs_unsub_{org}}}}&c={campaignId}`.
+    - **Opt-out CoachStack (2026-10-14, évol. 2026-10-15)** : propriété `cs_unsub_{orgId}` = token HMAC ; lien broadcast ajoute `c={campaignId}` (attribution). Confirm → opt-out org + topic `opt_out` ; si `c` matche un `campaign_recipients` → event `unsubscribed` + `unsubscribed_at` (pas de fallback last-campaign). Secret : `UNSUBSCRIBE_SECRET`.
+    - Subject : same sauf Unsubscribe.
+
+    **Envoi** :
+    - From = domaine org verified (`Name <local@domain>`) ; reply-to optionnel.
+    - Preheader = `preview_text`.
+    - **Send now** + **Schedule** (`scheduledAt` Resend) + **Cancel** scheduled (`broadcasts.remove` : stop + delete ; SDK `resend` ≥ 6.32).
+    - **Send test** : 1 email transactionnel à une adresse saisie (rendu réel, variables avec fallbacks / données mock).
+    - **Preview** UI : rendu HTML + count contacts segment (local).
+    - **Confirm** avant send/schedule : “Send to ~N contacts”.
+    - **Garanties send** : domaine verified ; segment non vide ; sync pending + reconcile segment ; template/body avec unsub ; pas de double-send (idempotence / status gate).
+
+    **Flow send** : sync audience → reconcile segment → create Resend broadcast (html snapshot + topic Marketing + segmentId) → send ou schedule.
+
+    **Send vérifié** (2026-10-13) : envoi réel OK (Habib).
+
+    **Étape 6 : stats campagne + UI hub** (décidé 2026-10-14) :
+
+    - **Stockage interne** (pas de poll Resend en path UI) : CoachStack = vérité stats ; Resend = transport + webhooks.
+    - **`campaign_recipients`** : 1 row / `(campaign_id, email)` ; `organization_id`, `campaign_contact_id` soft, `provider_recipient_id` (Resend `email_id`), timestamps **first** funnel (`sent_at`, `delivered_at`, `opened_at`, `clicked_at`, `bounced_at`, `complained_at`, `unsubscribed_at`), `last_status` + `last_status_at` pour la liste.
+    - **`campaign_email_events`** : append-only, FK → recipient ; audit + timeline sheet ; idempotence `provider_event_id` (Svix `svix-id`).
+    - **Stats KPI** = **funnel** dérivé des timestamps recipients (RPC) : sent / delivered / opened / clicked / bounced… (un clicked compte aussi en opened). Pas de compteurs incrémentés sur `campaigns`.
+    - **Au Send / Schedule** : matérialiser les recipients depuis le resolve segment (`last_status = queued`). Webhooks enrichissent.
+    - **Webhook** : `POST /api/webhooks/resend` ; verify signature ; match `broadcast_id` → `campaigns.resend_broadcast_id` ; events `email.*`.
+    - **Hub UI** : tabs **Campaigns** | **Library** (segments + templates) | **Audience** (sync + KPIs + liste contacts).
+    - **Audience liste V1** : vue `v_campaign_audience_contacts` (colonnes fixes : first/last, email, origin, consent, sync). Pas de RPC type CRM (`crm_leads_page`) tant que pas de champs dynamiques.
+    - **Campaigns tab** : résumé stats funnel par campagne `sent`. Clic → détail post-send (draft/scheduled → edit).
+    - **Détail post-send** : KPIs plats + rates · table recipients (email, name, last status, updated) · clic → **sheet** timeline events (pattern Resend EMAIL EVENTS / CRM side panel).
+    - Script SQL : `scripts/campaign-recipients-events.sql`.
+    - Lecture hub/détail : hooks → **services** (pas d’API). API routes réservées aux ops Resend (send / cancel / test / sync / delete segment ou campagne scheduled).
+
+    **Hors V1 (reste)** : **quota contacts par org (avant launch)**, A/B, duplicate, branding auto logo shell, Resend Templates API, séquences auto, top links cliqués, export CSV, UI sync error.
 
 ---
 

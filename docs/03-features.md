@@ -66,10 +66,12 @@ Statuts :
 | Messagerie prospect (email / WhatsApp) | todo later | Via Unipile (user connecte ses comptes). Inbox + historique sur lead. Billing : **add-on par siège / connexion**, pas crédits (coût Unipile = compte connecté). WhatsApp officiel Meta / crédits = éventuelle phase 2. |
 | Outbound CRM events (webhooks) | todo | Fondation integrations : émettre events (`lead.created`, `lead.updated`, `call.booked`, `client.converted`…) vers URL org → Zapier / Make / ESP. À mettre en place — `docs/04`. |
 | Marketing : domaine custom org (DNS) | partial | Settings → Email ; create/verify/refresh/remove via Resend Domains API ; table `organization_sending_domains` — `docs/04` |
-| Marketing : sync contacts → Resend | partial | Page Campaigns `/dashboard/campaigns` (cap `campaigns.manage`) : Sync audience + stats + segments ; indexes pending sync — `docs/04` |
+| Marketing : sync contacts → Resend | partial | Webhook DB `campaign_contacts` → Inngest → properties org-scopées Resend ; Sync audience manuel encore là ; dirty catch-up au Send — `docs/04` |
+| Marketing : quota contacts **par org** | todo | **Avant sortie app** : plafond produit CoachStack (indépendant du quota Resend plateforme). Bloquer opt-in / sync au-delà. Pas d’UI limite V1 sync. — `docs/04` |
 | Marketing : segments CRM → Resend | partial | `campaign_segments.filter_json` (AND/OR/NOT) ; resolve local ; membership mise à jour au Sync audience — `docs/04` |
-| Marketing : campagnes Broadcast | todo | Draft / schedule / send ; templates React Email ; topics + unsub ; webhooks bounce/complaint |
-| Marketing : consent / topics | partial | Form case obligatoire + `leads.marketing_opt_in` + `campaign_contacts` / `campaign_topics` ; lead manuel + enrollment = opt-in true ; sync triggers ; topic Resend à l’ajout domaine — `docs/04` |
+| Marketing : campagnes (Campaign + templates) | partial | Templates + Campaigns pages dédiées. Edit / test / send OK. Hub tabs Campaigns | Templates (+ segments) | Audience. Suite Étape 6 UI stats — `docs/04`. |
+| Marketing : stats campagne / emails | partial | Tables + webhook + RPC + hub tabs + détail/sheet livrés. Brancher `RESEND_WEBHOOK_SECRET` + endpoint Resend pour events live. `docs/04` Étape 6. |
+| Marketing : consent / topics | partial | Form case + `marketing_opt_in` ; opt-out via `/unsubscribe` (confirm) → topic `opt_out` ; sync triggers ; topic Resend à l’ajout domaine — `docs/04` |
 | Marketing : séquences auto (welcome pack, nurture) | todo later | Phase 2 ; orchestration CoachStack (Inngest/Trigger…), **pas** Resend Automations — `docs/04` |
 
 ## Public & vente

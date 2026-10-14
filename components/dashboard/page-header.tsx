@@ -7,11 +7,20 @@ interface PageHeaderProps {
   title: string
   subtitle?: string
   back?: string
+  /** Optional control beside the title (e.g. help). */
+  titleAside?: ReactNode
   children?: ReactNode
   className?: string
 }
 
-export function PageHeader({ title, subtitle, back, children, className }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  subtitle,
+  back,
+  titleAside,
+  children,
+  className,
+}: PageHeaderProps) {
   return (
     <div
       className={cn(
@@ -29,7 +38,12 @@ export function PageHeader({ title, subtitle, back, children, className }: PageH
           </Link>
         )}
         <div className="min-w-0">
-          <h1 className="font-display text-2xl font-bold text-foreground">{title}</h1>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <h1 className="font-display text-2xl font-bold text-foreground">
+              {title}
+            </h1>
+            {titleAside}
+          </div>
           {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
         </div>
       </div>

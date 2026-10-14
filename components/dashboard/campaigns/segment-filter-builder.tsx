@@ -22,7 +22,6 @@ type NamedOption = { id: number; name: string }
 type FieldOption = {
   id: number
   label: string
-  filterable: boolean
   options: Array<{ value: string; label: string }> | null
 }
 
@@ -82,7 +81,6 @@ export function SegmentFilterBuilder({
   units: NamedOption[]
 }) {
   const group = flattenCampaignSegmentFilter(value)
-  const filterableFields = fields.filter((field) => field.filterable)
   const conditions = group.conditions.filter(isCondition)
 
   function commit(next: CampaignSegmentFilterGroup) {
@@ -119,7 +117,7 @@ export function SegmentFilterBuilder({
               key={`${index}-${condition.type}`}
               condition={condition}
               statuses={statuses}
-              filterableFields={filterableFields}
+              fields={fields}
               offers={offers}
               products={products}
               units={units}
@@ -161,7 +159,7 @@ export function SegmentFilterBuilder({
 function ConditionRow({
   condition,
   statuses,
-  filterableFields,
+  fields,
   offers,
   products,
   units,
@@ -170,7 +168,7 @@ function ConditionRow({
 }: {
   condition: CampaignSegmentCondition
   statuses: StatusOption[]
-  filterableFields: FieldOption[]
+  fields: FieldOption[]
   offers: NamedOption[]
   products: NamedOption[]
   units: NamedOption[]
@@ -268,7 +266,7 @@ function ConditionRow({
             className="w-[12rem] shrink-0"
             placeholder="Field"
             searchPlaceholder="Search fields…"
-            options={filterableFields.map((field) => ({
+            options={fields.map((field) => ({
               value: String(field.id),
               label: field.label,
             }))}
@@ -312,7 +310,7 @@ function ConditionRow({
               className="min-w-[12rem] flex-1"
               placeholder="Select values"
               options={
-                filterableFields
+                fields
                   .find((field) => field.id === condition.field_def_id)
                   ?.options?.map((option) => ({
                     value: option.value,

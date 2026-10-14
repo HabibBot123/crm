@@ -75,6 +75,14 @@ export async function proxy(request: NextRequest) {
     return NextResponse.rewrite(url)
   }
 
+  // Provider / worker callbacks: no session refresh (must stay fast + public)
+  if (
+    pathname.startsWith("/api/webhooks/") ||
+    pathname.startsWith("/api/inngest")
+  ) {
+    return NextResponse.next()
+  }
+
   // Default: keep existing Supabase session middleware for the app
   return await updateSession(request)
 }

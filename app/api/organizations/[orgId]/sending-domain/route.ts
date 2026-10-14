@@ -106,8 +106,9 @@ export async function POST(request: Request, context: RouteContext) {
     name: parsed.data.domain_name,
     region,
     customReturnPath: "bounce",
-    openTracking: false,
-    clickTracking: false,
+    openTracking: true,
+    clickTracking: true,
+    trackingSubdomain: "links",
   })
 
   if (resendError || !created) {

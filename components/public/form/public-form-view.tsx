@@ -47,7 +47,8 @@ export function PublicFormView({
   const onPrimary = brandOnSurface(primaryColor)
 
   const logoUrl = typeof branding.logo_url === "string" ? branding.logo_url : null
-  const [fullName, setFullName] = useState("")
+  const [firstName, setFirstName] = useState("")
+  const [lastName, setLastName] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
   const [marketingOptIn, setMarketingOptIn] = useState(false)
@@ -71,8 +72,8 @@ export function PublicFormView({
     event.preventDefault()
     setError(null)
 
-    if (!fullName.trim() || !email.trim()) {
-      setError("Full name and email are required.")
+    if (!firstName.trim() || !email.trim()) {
+      setError("First name and email are required.")
       return
     }
 
@@ -92,7 +93,8 @@ export function PublicFormView({
     setIsSubmitting(true)
     try {
       const body = {
-        full_name: fullName.trim(),
+        first_name: firstName.trim(),
+        last_name: lastName.trim() || null,
         email: email.trim(),
         phone: phone.trim() || null,
         website: "",
@@ -202,9 +204,24 @@ export function PublicFormView({
             <label htmlFor="website">Website</label>
             <input id="website" name="website" type="text" tabIndex={-1} autoComplete="off" />
           </div>
-          <div className="space-y-1.5">
-            <Label>Full name</Label>
-            <Input value={fullName} onChange={(event) => setFullName(event.target.value)} required />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>First name</Label>
+              <Input
+                value={firstName}
+                onChange={(event) => setFirstName(event.target.value)}
+                required
+                autoComplete="given-name"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Last name</Label>
+              <Input
+                value={lastName}
+                onChange={(event) => setLastName(event.target.value)}
+                autoComplete="family-name"
+              />
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label>Email</Label>

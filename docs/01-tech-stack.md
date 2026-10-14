@@ -14,9 +14,11 @@ Détecté depuis `package.json` + conventions repo (état pré-pause).
 | Auth + DB + Storage | **Supabase** (`@supabase/ssr`, `@supabase/supabase-js`) + RLS |
 | Paiements | **Stripe** + **Stripe Connect** |
 | Email | **Resend** (transactionnel + Broadcast marketing ; compte plateforme multi-tenant) |
+| Jobs / workers | **Inngest** (sync contacts campagnes ; séquences marketing phase 2) |
 | Upload media | **tus-js-client** (resumable) |
 | Package manager | **pnpm** |
 | Rich text (store bio) | **TipTap** + `sanitize-html` : gras / italique / liens / listes |
+| Rich text (templates campagnes) | **TipTap** maison (`@tiptap/*` : StarterKit, BubbleMenu, TextStyle/Color/FontSize, Image, Link, TextAlign) + nodes custom chips / Button. Map → `docs/04` Étape 5 |
 
 ## Conventions repo (à respecter)
 
@@ -40,6 +42,51 @@ Détecté depuis `package.json` + conventions repo (état pré-pause).
 ## Secrets
 
 Jamais dans les docs. Utiliser `.env.local` (cf. `.env.local.example`).
+
+## Resend webhooks (campagnes)
+
+Endpoint app : `POST /api/webhooks/resend`  
+Secret : `RESEND_WEBHOOK_SECRET` (`whsec_…` au create webhook).  
+Opt-out CoachStack : `UNSUBSCRIBE_SECRET` (HMAC `/unsubscribe` ; fallback `RESEND_API_KEY`).  
+Events : `email.sent` / `delivered` / `opened` / `clicked` / `bounced` / `complained` / `delivery_delayed` / `failed` / `suppressed` (+ unsub via topic si dispo).  
+Match campagne : `data.broadcast_id` → `campaigns.resend_broadcast_id`. Dev = même tunnel ngrok que Stripe.
+
+## Inngest + sync audience provider
+
+### Flow (figé 2026-10-14)
+
+1. Trigger DB `leads` / `enrollments` → upsert `campaign_contacts` (invalide `provider_properties_synced_at`).
+2. Trigger SQL `campaign_contacts_provider_sync_webhook` (`supabase_functions.http_request`) → `POST /api/webhooks/supabase/campaign-contacts`.
+3. Route Next (auth Bearer) → `inngest.send("campaign/contact.sync")` (réponse 200 rapide via `after()`).
+4. Inngest invoque `/api/inngest` → `syncCampaignContactToResend` (properties Resend `cs_fn_` / `cs_ln_` / `cs_unsub_` + mark synced).
+5. Au Send campagne : dirty catch-up segment + rewrite merge tags org-scopés.
+
+`proxy.ts` : `/api/webhooks/*` et `/api/inngest` **bypass** `updateSession` (callbacks publics / rapides).
+
+### Env
+
+| Var | Rôle |
+|-----|------|
+| `INNGEST_EVENT_KEY` | `inngest.send` → Cloud |
+| `INNGEST_SIGNING_KEY` | Cloud → vérifie `/api/inngest` |
+| `SUPABASE_CAMPAIGN_CONTACTS_WEBHOOK_SECRET` | Header `Authorization: Bearer …` du webhook DB |
+
+### Local vs prod (Inngest)
+
+- **Oui** : en local tu peux pointer Inngest Cloud vers une URL **non-prod** (ngrok). Dashboard Inngest → Sync app → `https://<ngrok>/api/inngest`.
+- Keys : préférer un **app / env Inngest “Development”** (keys séparées) plutôt que les keys prod, pour ne pas mélanger runs.
+- Ne **pas** mettre `INNGEST_DEV=1` si tu utilises Cloud + ngrok (sinon SDK vise le Dev Server local).
+- Alternative pure local : `npx inngest-cli@latest dev` (sans Cloud) ; le webhook Supabase cloud doit quand même atteindre Next via ngrok.
+
+### Checklist **lancement prod** (webhooks à repointer)
+
+Quand l’URL publique change (ngrok → `coachstack.co` / Vercel) :
+
+1. **Inngest** : Sync app → `https://<domaine-prod>/api/inngest` + keys prod dans env Vercel.
+2. **Supabase** : recréer / update le trigger `campaign_contacts_provider_sync_webhook` (URL actuelle est hardcodée dans le trigger SQL) → `https://<domaine-prod>/api/webhooks/supabase/campaign-contacts` + même secret (ou secret prod dédié).
+3. **Resend** webhook delivery → URL prod `/api/webhooks/resend` + `RESEND_WEBHOOK_SECRET` prod.
+4. **Stripe Connect** webhook → URL prod `/api/webhooks/stripe-connect` + secret prod.
+5. `NEXT_PUBLIC_APP_URL` / unsub links = domaine prod.
 
 ## Stripe Connect webhooks (dev vs prod)
 

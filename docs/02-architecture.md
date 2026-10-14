@@ -12,6 +12,7 @@ Référence détaillée routes / entités : `APP_OVERVIEW.md`.
 /org/[slug]               → page publique brandée + /buy/[offerId]
 /coached-* + /coached/*   → portail client
 API webhooks Stripe       → app/api/webhooks/stripe-connect
+API webhooks Resend       → app/api/webhooks/resend (campagnes delivery)
                             (dev: ngrok → voir docs/01-tech-stack.md ; prod: URL réelle)
 ```
 
@@ -25,7 +26,8 @@ API webhooks Stripe       → app/api/webhooks/stripe-connect
 | Services Supabase / métier | `lib/services/` |
 | Schémas | `schemas/` |
 | Contrats DB (tables, vues, RPC, triggers) | **`docs/06-database.md`** (live Supabase ; pas les migrations locales) |
-| Templates email Supabase | `supabase/email-templates/` |
+| Templates email Supabase (auth) | `supabase/email-templates/` |
+| Templates campagnes marketing | TipTap maison : map dans `docs/04` Étape 5 (UI `components/dashboard/campaigns/*`, service `lib/services/campaign-email-templates.ts`) |
 
 ## Domaine (entités clés)
 

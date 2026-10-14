@@ -181,7 +181,7 @@ export function AddManualEnrollmentDialog({
       }}
     >
       <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
-        <DialogHeader className="shrink-0 space-y-1.5 border-b border-border px-6 py-4">
+        <DialogHeader className="shrink-0 space-y-1.5 px-6 pt-6 pb-0">
           <DialogTitle>Add enrollment</DialogTitle>
           <DialogDescription>
             Creates access and a manual sale.

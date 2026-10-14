@@ -201,7 +201,8 @@ export async function POST(
       .insert({
         organization_id: organization.id,
         form_id: form.id,
-        full_name: payload.full_name,
+        first_name: payload.first_name,
+        last_name: payload.last_name?.trim() || null,
         email: emailNormalized,
         phone: payload.phone ?? null,
         origin: "form",

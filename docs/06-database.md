@@ -28,8 +28,13 @@ Inventaire live (2026-07-23). Détail colonnes = à compléter progressivement.
 | `organizations` | Orgs coach ; branding JSON ; Stripe Connect. **`owner_id` → `profiles(user_id)`**. **`mode`** = `solo` \| `team`. **`commission_plan`** jsonb (overrides slots acquisition + coach ; null = defaults code) |
 | `organization_sending_domains` | Domaine d’envoi Resend par org (compte plateforme). 1 / org v1. `domain_name`, `resend_domain_id`, `status`, `region`, `dns_records` jsonb. RLS : member SELECT ; write = `org.settings`. Script : `scripts/organization-sending-domains.sql` |
 | `campaign_topics` | Topic marketing Resend par org (v1 : `Marketing` + `resend_topic_id`). Seed org INSERT ; `resend_topic_id` attaché à l’enregistrement domaine. RLS member read / write = `campaigns.manage` \| `org.settings`. |
-| `campaign_contacts` | Audience campagnes : unique `(organization_id, email)` lower ; `marketing_opt_in` ; `resend_contact_id` ; FK soft `lead_id` / `enrollment_id` ON DELETE SET NULL. Sync locale via triggers ; sync Resend via service (`docs/04`). Indexes partial pending/opted-in/synced. RLS = `campaigns.manage`. Scripts : `campaign-contacts-topics.sql`, `campaigns-manage-capability-indexes.sql` |
+| `campaign_contacts` | Audience campagnes : unique `(organization_id, email)` lower ; `marketing_opt_in` ; `resend_contact_id` ; **`provider_properties_synced_at`**, **`provider_sync_error`** ; FK soft `lead_id` / `enrollment_id` ON DELETE SET NULL. Sync locale via triggers ; sync Resend via Inngest (webhook DB). Indexes partial pending/opted-in/synced. RLS = `campaigns.manage`. Scripts : `campaign-contacts-topics.sql`, `campaigns-manage-capability-indexes.sql` |
 | `campaign_segments` | Segments campagnes : `name`, `filter_json` (AST), `resend_segment_id`, `last_synced_at`. RLS = `campaigns.manage`. Script : `scripts/campaign-segments.sql` |
+| `campaign_email_templates` | Templates email org : name, subject, `body_json` / `body_html`. RLS `campaigns.manage`. Script : `scripts/campaigns-and-templates.sql` |
+| `campaigns` | Campagnes email : segment, template, **body_html/body_json** (copie template, override ok), subject, from/reply-to, status draft/scheduled/sending/sent/canceled, snapshots, `resend_broadcast_id`. RLS `campaigns.manage`. |
+| `campaign_recipients` | 1 row / campagne × email. `campaign_id`, `organization_id`, soft `campaign_contact_id`, `provider_recipient_id` (Resend `email_id`), timestamps first funnel, `last_status` / `last_status_at`. Unique `(campaign_id, email)`. RLS `campaigns.manage`. Script : `scripts/campaign-recipients-events.sql`. |
+| `campaign_email_events` | Append-only audit / timeline sheet. FK `recipient_id` → `campaign_recipients`. `event_type`, `occurred_at`, `provider_event_id` (Svix idempotence), `meta` jsonb. RLS `campaigns.manage`. |
+| RPC `campaign_delivery_stats` | Funnel counts par campagne (ou org) dérivés des timestamps `campaign_recipients`. Cap `campaigns.manage`. |
 | `leads.marketing_opt_in` | Consent form/CRM (défaut false). Exposé via `v_crm_leads`. Trigger → `campaign_contacts`. |
 | `organization_role_permissions` | Matrix org × rôle (`admin`/`sales`/`ambassador`/`coach`/`staff`/**`bu_owner`**) × capacité. `bu_owner` = statut BU (pas invite), scope BU. Owner non stocké (= tout). Seed auto + RLS member read / owner write. |
 | `organization_sales` | Encaissements (Stripe / manuel). + **`sold_at`** (date métier CA) ; `created_at` = insert. + `base_amount_cents`, `installment_index`, `installment_count`. Uniques Stripe. **`source`** = `stripe` \| `manual` |
@@ -94,7 +99,7 @@ Flux guest → compte : checkout pose `buyer_email` (+ `user_id` si compte exist
 
 | Table | Rôle (court) |
 |-------|----------------|
-| `leads` / `lead_status` / `lead_field_values` / `lead_attributions` | Pipeline leads ; `leads.owner_id` → `organization_members` (ops owner, pas pay role) ; `leads.business_unit_id` nullable + trigger same-org ; `leads.status` = text key FK `(organization_id, status)` → `organization_lead_statuses` |
+| `leads` / `lead_status` / `lead_field_values` / `lead_attributions` | Pipeline leads ; **`first_name`** (required) + **`last_name`** (nullable) ; **`full_name`** dérivé (trigger `leads_set_full_name_from_parts`). Lectures CRM / vues restent sur `full_name`. Script : `scripts/leads-first-last-name.sql`. `owner_id` → `organization_members` ; `business_unit_id` nullable + trigger same-org ; `status` = text key FK → `organization_lead_statuses` |
 | `organization_lead_statuses` | Catalogue status org (≤10) ; seed `new`/`lost`/`converted` (trigger org insert) |
 | `crm_fields` / `crm_forms` / `crm_form_fields` | Formulaires ; `crm_forms.initial_status` ; `crm_fields.filterable` (max 4) ; **plus de `form_type`** |
 | `crm_ambassador_links` | Liens ambassadeur |
@@ -111,6 +116,7 @@ Flux guest → compte : checkout pose `buyer_email` (+ `user_id` si compte exist
 | `v_organization_members` | Membres enrichis (`om.email` + `profiles.full_name`) |
 | `active_students` | Étudiants actifs |
 | `v_crm_leads` / `v_crm_forms` / `v_crm_ambassador_link_stats` | CRM inbound ; `v_crm_leads` : `owner_id` / `owner_name` (+ `organization_sale_id`) |
+| `v_campaign_audience_contacts` | Liste Audience (colonnes fixes) : `campaign_contacts` + `origin` + `first_name`/`last_name`/`full_name` (lead sinon split `buyer_name`) + `synced`. `security_invoker=true` → RLS `campaign_contacts`. Script : `scripts/v-campaign-audience-contacts.sql`. Pas de RPC (champs CRM dynamiques = autre jour). |
 | `v_commissions` | Liste / search commissions ; `security_invoker` ; flux = `pending\|paid` (enum garde `canceled` legacy ; cancel CRM = DELETE pending). `lead_name` = lead → profile → `enrollments.buyer_name` ; `lead_email` = lead → `buyer_email`. |
 | `commissions_summary_by_member(...)` | Agrégat pending/overdue par bénéficiaire + `pending_ids` pour pay-all ; SECURITY INVOKER |
 | `crm_sales_analytics(org, from, to, bu_id?, preset?, viewer_mode?)` | Analytics Sales/CRM : modes `org`\|`head` ; KPIs (team coms + settlements BU Owner) + séries ; CA sur `sold_at` ; SECURITY INVOKER ; gate `analytics.view` |
@@ -153,8 +159,10 @@ Flux guest → compte : checkout pose `buyer_email` (+ `user_id` si compte exist
 | `enrollment_products_solo_auto_assign_coach_trigger` | `enrollment_products` | AFTER **INSERT** | Si org `mode=solo` + produit `coaching` → insert `coaching_assignments` vers le member owner (`ON CONFLICT DO NOTHING`). Couvre manuel + Stripe. |
 | `organizations_seed_role_permissions_trigger` | `organizations` | AFTER **INSERT** | Seed matrix `organization_role_permissions` (defaults docs/04). |
 | `organizations_seed_campaign_topic_trigger` | `organizations` | AFTER **INSERT** | Seed `campaign_topics` row `Marketing` (`resend_topic_id` null). |
-| `leads_sync_campaign_contact` | `leads` | AFTER INSERT / UPDATE `email`, `marketing_opt_in`, `organization_id` | Upsert `campaign_contacts` (opt-in = `leads.marketing_opt_in`). |
-| `enrollments_sync_campaign_contact` | `enrollments` | AFTER INSERT / UPDATE `buyer_email`, `organization_id` | Upsert `campaign_contacts` (opt-in true pour clients v1). |
+| `leads_set_full_name_from_parts` | `leads` | BEFORE INSERT / UPDATE OF `first_name`, `last_name` | `full_name = concat_ws(' ', first_name, last_name)`. |
+| `leads_sync_campaign_contact` | `leads` | AFTER INSERT / UPDATE `email`, `marketing_opt_in`, `organization_id`, **`first_name`**, **`last_name`** | Upsert `campaign_contacts` ; invalide `provider_properties_synced_at` (re-sync provider). |
+| `enrollments_sync_campaign_contact` | `enrollments` | AFTER INSERT / UPDATE `buyer_email`, `organization_id`, **`buyer_name`** | Upsert `campaign_contacts` (opt-in true) ; invalide synced_at provider. |
+| `campaign_contacts_provider_sync_webhook` | `campaign_contacts` | AFTER INSERT / UPDATE | `supabase_functions.http_request` → Next `/api/webhooks/supabase/campaign-contacts`. **URL hardcodée** (ngrok en dev) : **à repointer au launch prod** (`docs/01`). |
 | `*_updated_at` | orgs, members, profiles, users | UPDATE | `set_updated_at` |
 
 Pas de `pg_cron` / job d’auto-expiry enrollment constaté (2026-07-23).

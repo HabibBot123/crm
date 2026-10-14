@@ -2,7 +2,14 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { SearchSelect } from "@/components/ui/search-select"
 import type { SalesMemberOption } from "@/lib/services/crm"
@@ -20,27 +27,31 @@ export function AddLeadDialog({
   salesMembers: SalesMemberOption[]
   showOwnerAssignment?: boolean
   onSubmit: (input: {
-    fullName: string
+    firstName: string
+    lastName: string
     email: string
     phone: string
     ownerId: number | null
   }) => Promise<void>
   isPending?: boolean
 }) {
-  const [fullName, setFullName] = useState("")
+  const [firstName, setFirstName] = useState("")
+  const [lastName, setLastName] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
   const [owner, setOwner] = useState<string>("none")
 
   async function handleSubmit() {
     await onSubmit({
-      fullName: fullName.trim(),
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
       email: email.trim(),
       phone: phone.trim(),
       ownerId:
         showOwnerAssignment && owner !== "none" ? Number(owner) : null,
     })
-    setFullName("")
+    setFirstName("")
+    setLastName("")
     setEmail("")
     setPhone("")
     setOwner("none")
@@ -55,9 +66,29 @@ export function AddLeadDialog({
           <DialogDescription>Create a lead manually in CRM.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <Input placeholder="Full name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
-          <Input placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <Input placeholder="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input
+              placeholder="First name"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+            />
+            <Input
+              placeholder="Last name"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+            />
+          </div>
+          <Input
+            placeholder="Email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <Input
+            placeholder="Phone"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
           {showOwnerAssignment ? (
             <SearchSelect
               value={owner}
@@ -77,7 +108,10 @@ export function AddLeadDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={isPending || !fullName.trim() || !email.trim()}>
+          <Button
+            onClick={handleSubmit}
+            disabled={isPending || !firstName.trim() || !email.trim()}
+          >
             Create lead
           </Button>
         </DialogFooter>

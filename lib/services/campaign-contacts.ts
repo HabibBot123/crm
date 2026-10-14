@@ -1,14 +1,75 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
+import type { Resend } from "resend"
 import { getResendClient } from "@/lib/resend"
 import { reconcileAllCampaignSegments } from "@/lib/services/campaign-segments"
+import { ensureOrgContactProperties } from "@/lib/campaigns/contact-properties"
+import { createUnsubscribeToken } from "@/lib/campaigns/unsubscribe"
 import {
+  campaignAudienceContactSchema,
   campaignContactSchema,
   campaignTopicSchema,
+  type CampaignAudienceContact,
+  type CampaignAudienceOrigin,
   type CampaignContact,
   type CampaignTopic,
 } from "@/schemas/campaign.schema"
+import type { CampaignSegmentFilterGroup } from "@/schemas/campaign-segment.schema"
+import { escapeIlikeTerm } from "@/lib/campaigns/delivery-labels"
 
 const DEFAULT_TOPIC_NAME = "Marketing"
+
+/** Ensure Resend contact property `cs_unsub_{orgId}` exists (idempotent). */
+export async function ensureUnsubscribeContactProperty(
+  resend: Resend,
+  organizationId: number
+): Promise<string> {
+  const keys = await ensureOrgContactProperties(resend, organizationId)
+  return keys.unsubscribeKey
+}
+
+function classifyProviderSyncError(message: string): string {
+  const lower = message.toLowerCase()
+  if (
+    lower.includes("quota") ||
+    lower.includes("contact limit") ||
+    lower.includes("contacts limit")
+  ) {
+    return "contacts_quota_exceeded"
+  }
+  return message.slice(0, 240)
+}
+
+async function markProviderSyncError(
+  supabase: SupabaseClient,
+  contactId: number,
+  errorMessage: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("campaign_contacts")
+    .update({
+      provider_sync_error: classifyProviderSyncError(errorMessage),
+    })
+    .eq("id", contactId)
+  if (error) {
+    console.warn("markProviderSyncError failed:", error.message)
+  }
+}
+
+async function markProviderSyncSuccess(
+  supabase: SupabaseClient,
+  contactId: number,
+  resendContactId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("campaign_contacts")
+    .update({
+      resend_contact_id: resendContactId,
+      provider_properties_synced_at: new Date().toISOString(),
+      provider_sync_error: null,
+    })
+    .eq("id", contactId)
+  if (error) throw error
+}
 
 function mapTopic(row: Record<string, unknown>): CampaignTopic {
   return campaignTopicSchema.parse(row)
@@ -20,6 +81,58 @@ function mapContact(row: Record<string, unknown>): CampaignContact {
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
+}
+
+function splitDisplayName(fullName: string | null | undefined): {
+  firstName: string | undefined
+  lastName: string | undefined
+} {
+  if (fullName == null) return { firstName: undefined, lastName: undefined }
+  const trimmed = fullName.trim()
+  if (!trimmed) return { firstName: undefined, lastName: undefined }
+  const parts = trimmed.split(/\s+/).filter(Boolean)
+  if (parts.length === 1) return { firstName: parts[0], lastName: undefined }
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(" "),
+  }
+}
+
+async function resolveContactDisplayName(
+  supabase: SupabaseClient,
+  contact: CampaignContact
+): Promise<{ firstName: string | undefined; lastName: string | undefined }> {
+  if (contact.lead_id != null) {
+    const { data } = await supabase
+      .from("leads")
+      .select("first_name, last_name")
+      .eq("id", contact.lead_id)
+      .maybeSingle()
+    if (data) {
+      const firstName =
+        typeof data.first_name === "string" && data.first_name.trim()
+          ? data.first_name.trim()
+          : undefined
+      const lastName =
+        typeof data.last_name === "string" && data.last_name.trim()
+          ? data.last_name.trim()
+          : undefined
+      if (firstName || lastName) {
+        return { firstName, lastName }
+      }
+    }
+  }
+  if (contact.enrollment_id != null) {
+    const { data } = await supabase
+      .from("enrollments")
+      .select("buyer_name")
+      .eq("id", contact.enrollment_id)
+      .maybeSingle()
+    if (data && typeof data.buyer_name === "string") {
+      return splitDisplayName(data.buyer_name)
+    }
+  }
+  return { firstName: undefined, lastName: undefined }
 }
 
 /**
@@ -71,7 +184,6 @@ async function ensureResendTopicId(
     name: `Org ${topic.organization_id} ${DEFAULT_TOPIC_NAME}`,
     defaultSubscription: "opt_out",
     description: "Marketing campaigns",
-    visibility: "private",
   })
   if (resendError || !created) {
     console.warn(
@@ -95,9 +207,8 @@ async function ensureResendTopicId(
 }
 
 /**
- * Upsert Resend contact + org Marketing topic subscription.
- * Prefer service-role / admin supabase (writes `resend_contact_id`, may attach topic).
- * Server-only: uses RESEND_API_KEY.
+ * Upsert Resend contact + org-scoped properties + Marketing topic.
+ * Prefer service-role / admin supabase. Server-only: uses RESEND_API_KEY.
  */
 export async function syncCampaignContactToResend(
   supabase: SupabaseClient,
@@ -119,6 +230,10 @@ export async function syncCampaignContactToResend(
   if (!contactRow) return { resendContactId: null }
 
   const contact = mapContact(contactRow)
+  const { firstName, lastName } = await resolveContactDisplayName(
+    supabase,
+    contact
+  )
 
   const topic = await attachResendCampaignTopic(supabase, input.organizationId)
   if (!topic?.resend_topic_id) {
@@ -128,6 +243,20 @@ export async function syncCampaignContactToResend(
     return { resendContactId: contact.resend_contact_id }
   }
 
+  const propertyKeys = await ensureOrgContactProperties(
+    resend,
+    input.organizationId
+  )
+  const unsubscribeToken = createUnsubscribeToken({
+    organizationId: input.organizationId,
+    email,
+  })
+  const orgProperties: Record<string, string> = {
+    [propertyKeys.unsubscribeKey]: unsubscribeToken,
+    [propertyKeys.firstNameKey]: firstName ?? "",
+    [propertyKeys.lastNameKey]: lastName ?? "",
+  }
+
   const subscription = contact.marketing_opt_in ? "opt_in" : "opt_out"
   let resendContactId = contact.resend_contact_id
 
@@ -135,6 +264,7 @@ export async function syncCampaignContactToResend(
     const { data: created, error: createError } = await resend.contacts.create({
       email,
       unsubscribed: false,
+      properties: orgProperties,
       topics: [{ id: topic.resend_topic_id, subscription }],
     })
 
@@ -143,10 +273,10 @@ export async function syncCampaignContactToResend(
         email,
       })
       if (getError || !existing) {
-        console.warn(
-          "syncCampaignContactToResend create failed:",
-          createError?.message ?? getError?.message ?? "unknown"
-        )
+        const message =
+          createError?.message ?? getError?.message ?? "unknown create error"
+        console.warn("syncCampaignContactToResend create failed:", message)
+        await markProviderSyncError(supabase, contact.id, message)
         return { resendContactId: null }
       }
       resendContactId = existing.id
@@ -159,6 +289,18 @@ export async function syncCampaignContactToResend(
           "syncCampaignContactToResend topic update failed:",
           topicError.message
         )
+      }
+      const { error: propsError } = await resend.contacts.update({
+        id: resendContactId,
+        properties: orgProperties,
+      })
+      if (propsError) {
+        console.warn(
+          "syncCampaignContactToResend properties update failed:",
+          propsError.message
+        )
+        await markProviderSyncError(supabase, contact.id, propsError.message)
+        return { resendContactId }
       }
     } else {
       resendContactId = created.id
@@ -174,26 +316,178 @@ export async function syncCampaignContactToResend(
         topicError.message
       )
     }
+    const { error: propsError } = await resend.contacts.update({
+      id: resendContactId,
+      properties: orgProperties,
+    })
+    if (propsError) {
+      console.warn(
+        "syncCampaignContactToResend properties update failed:",
+        propsError.message
+      )
+      await markProviderSyncError(supabase, contact.id, propsError.message)
+      return { resendContactId }
+    }
   }
 
-  if (resendContactId && resendContactId !== contact.resend_contact_id) {
-    const { error: updateError } = await supabase
-      .from("campaign_contacts")
-      .update({
-        resend_contact_id: resendContactId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", contact.id)
-    if (updateError) throw updateError
+  if (resendContactId) {
+    await markProviderSyncSuccess(supabase, contact.id, resendContactId)
   }
 
   return { resendContactId }
+}
+
+/**
+ * Sync segment contacts that are missing provider id or have invalidated properties.
+ */
+export async function syncDirtySegmentContactsToResend(
+  supabase: SupabaseClient,
+  organizationId: number,
+  segmentFilterJson: CampaignSegmentFilterGroup,
+  options?: { limit?: number }
+): Promise<{ attempted: number; synced: number }> {
+  const contacts = await resolveCampaignSegmentContactsForSync(
+    supabase,
+    organizationId,
+    segmentFilterJson
+  )
+  const dirty = contacts.filter(
+    (contact) =>
+      contact.resend_contact_id == null ||
+      contact.provider_properties_synced_at == null
+  )
+  const limit = options?.limit ?? 200
+  const batch = dirty.slice(0, limit)
+  let synced = 0
+  for (const contact of batch) {
+    try {
+      const result = await syncCampaignContactToResend(supabase, {
+        organizationId,
+        email: contact.email,
+      })
+      if (result.resendContactId) synced += 1
+    } catch (error) {
+      console.warn("syncDirtySegmentContactsToResend item failed:", error)
+    }
+  }
+  return { attempted: batch.length, synced }
+}
+
+async function resolveCampaignSegmentContactsForSync(
+  supabase: SupabaseClient,
+  organizationId: number,
+  filterJson: CampaignSegmentFilterGroup
+): Promise<
+  Array<{
+    email: string
+    resend_contact_id: string | null
+    provider_properties_synced_at: string | null
+  }>
+> {
+  const { resolveCampaignSegmentContacts } = await import(
+    "@/lib/services/campaign-segments"
+  )
+  const contacts = await resolveCampaignSegmentContacts(
+    supabase,
+    organizationId,
+    filterJson
+  )
+  if (contacts.length === 0) return []
+
+  const ids = contacts.map((contact) => contact.id)
+  const { data, error } = await supabase
+    .from("campaign_contacts")
+    .select("id, email, resend_contact_id, provider_properties_synced_at")
+    .eq("organization_id", organizationId)
+    .in("id", ids)
+  if (error) throw error
+
+  return (data ?? []).map((row) => ({
+    email: typeof row.email === "string" ? row.email : "",
+    resend_contact_id:
+      typeof row.resend_contact_id === "string" ? row.resend_contact_id : null,
+    provider_properties_synced_at:
+      typeof row.provider_properties_synced_at === "string"
+        ? row.provider_properties_synced_at
+        : null,
+  }))
 }
 
 export type CampaignAudienceStats = {
   opted_in: number
   synced: number
   pending: number
+}
+
+export type FetchCampaignAudienceContactsPageParams = {
+  supabase: SupabaseClient
+  organizationId: number
+  page: number
+  pageSize: number
+  search?: string
+  origins?: CampaignAudienceOrigin[]
+  optIn?: boolean | null
+  synced?: boolean | null
+}
+
+export type CampaignAudienceContactsPage = {
+  items: CampaignAudienceContact[]
+  total: number
+}
+
+function mapAudienceContact(row: unknown): CampaignAudienceContact {
+  return campaignAudienceContactSchema.parse(row)
+}
+
+export async function fetchCampaignAudienceContactsPage(
+  params: FetchCampaignAudienceContactsPageParams
+): Promise<CampaignAudienceContactsPage> {
+  const {
+    supabase,
+    organizationId,
+    page,
+    pageSize,
+    search,
+    origins,
+    optIn,
+    synced,
+  } = params
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+
+  let query = supabase
+    .from("v_campaign_audience_contacts")
+    .select("*", { count: "exact" })
+    .eq("organization_id", organizationId)
+    .order("updated_at", { ascending: false })
+    .range(from, to)
+
+  const term = search?.trim()
+  if (term) {
+    const q = escapeIlikeTerm(term)
+    query = query.or(
+      `email.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%,full_name.ilike.%${q}%`
+    )
+  }
+  if (origins && origins.length > 0) {
+    query = query.in("origin", origins)
+  }
+  if (optIn === true || optIn === false) {
+    query = query.eq("marketing_opt_in", optIn)
+  }
+  if (synced === true) {
+    query = query.eq("synced", true)
+  } else if (synced === false) {
+    query = query.eq("synced", false)
+  }
+
+  const { data, error, count } = await query
+  if (error) throw new Error(error.message)
+
+  return {
+    items: (data ?? []).map(mapAudienceContact),
+    total: count ?? 0,
+  }
 }
 
 export async function fetchCampaignAudienceStats(
@@ -252,7 +546,7 @@ export async function syncOrgCampaignContactsToResend(
       .select("email")
       .eq("organization_id", organizationId)
       .eq("marketing_opt_in", true)
-      .is("resend_contact_id", null)
+      .or("resend_contact_id.is.null,provider_properties_synced_at.is.null")
       .order("id", { ascending: true })
       .limit(batchSize)
     if (error) throw error
