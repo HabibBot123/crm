@@ -147,7 +147,7 @@ export default function CrmFormEditorPage() {
         )}
       </PageHeader>
 
-      <div className="flex gap-8">
+      <div className="flex flex-col gap-4 md:flex-row md:gap-8">
         <NavList items={navItems} value={section} onChange={setSection} />
 
         <div className="min-w-0 flex-1">

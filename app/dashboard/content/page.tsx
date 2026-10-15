@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Upload, Play, FileText, Search, Grid, List, MoreHorizontal, Download, Trash2, FolderPlus, Folder, ChevronRight, X, Plus } from "lucide-react"
+import { Upload, FileText, Search, Grid, List, MoreHorizontal, Download, Trash2, FolderPlus, Folder, ChevronRight, X, Plus, Eye } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -29,11 +29,13 @@ import {
 import mime from "mime"
 import { CreateFolderDialog } from "@/components/dashboard/content/create-folder-dialog"
 import { ContentUploadSheet } from "@/components/dashboard/content/content-upload-sheet"
+import { ContentPreviewSheet } from "@/components/dashboard/content/content-preview-sheet"
 import { useContentUpload } from "@/hooks/content/use-content-upload"
 import { getStatusBadgeStyle } from "@/lib/content-status"
 import {
   ACCEPTED_UPLOAD,
   contentTypeIcon,
+  formatContentTypeLabel,
   getContentTypeColorClasses,
   getLogicalTypeFromMime,
   type LogicalContentType,
@@ -149,6 +151,7 @@ export default function ContentPage() {
   const [newFolderName, setNewFolderName] = useState("")
   const [newFolderParentId, setNewFolderParentId] = useState<string>("root")
   const [searchQuery, setSearchQuery] = useState("")
+  const [previewItem, setPreviewItem] = useState<ContentItem | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
   const { supabase } = useAuth()
@@ -358,6 +361,14 @@ export default function ContentPage() {
         formatFileSize={formatFileSize}
       />
 
+      <ContentPreviewSheet
+        item={previewItem}
+        open={previewItem != null}
+        onOpenChange={(open) => {
+          if (!open) setPreviewItem(null)
+        }}
+      />
+
       <div className="mt-6 flex items-center gap-3">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -396,7 +407,12 @@ export default function ContentPage() {
             <FolderCard key={folder.id} folder={folder} onOpen={() => setCurrentFolderId(folder.id)} />
           ))}
           {currentItems.map((item) => (
-            <ContentCard key={item.id} item={item} deleteItem={(id) => deleteItemMutation.mutate(id)} />
+            <ContentCard
+              key={item.id}
+              item={item}
+              onPreview={() => setPreviewItem(item)}
+              deleteItem={(id) => deleteItemMutation.mutate(id)}
+            />
           ))}
           {subfolders.length === 0 && currentItems.length === 0 && (
             <div
@@ -445,6 +461,7 @@ export default function ContentPage() {
               key={item.id}
               item={item}
               isLast={i === currentItems.length - 1}
+              onPreview={() => setPreviewItem(item)}
               deleteItem={(id) => deleteItemMutation.mutate(id)}
             />
           ))}
@@ -461,9 +478,11 @@ export default function ContentPage() {
 
 function ContentCard({
   item,
+  onPreview,
   deleteItem,
 }: {
   item: ContentItem
+  onPreview: () => void
   deleteItem: (id: number) => void
 }) {
   const logicalType = item.type as LogicalContentType
@@ -475,9 +494,11 @@ function ContentCard({
   const downloadUrl = item.type !== "video" ? item.bunny_storage_path : null
   return (
     <div className="group rounded-xl border border-border bg-card overflow-hidden">
-      <div
+      <button
+        type="button"
+        onClick={onPreview}
         className={cn(
-          "relative aspect-[4/3] flex items-center justify-center",
+          "relative aspect-[4/3] flex w-full items-center justify-center transition-colors hover:brightness-[0.97] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
           bgColor
         )}
       >
@@ -491,11 +512,11 @@ function ContentCard({
           {status.label}
         </Badge>
         <Icon className={cn("h-10 w-10", iconColor)} />
-      </div>
+      </button>
       <div className="p-4">
         <div className="flex items-center justify-between">
-          <Badge variant="secondary" className="text-xs capitalize">
-            {item.type}
+          <Badge variant="secondary" className="text-xs">
+            {formatContentTypeLabel(item.type)}
           </Badge>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -504,25 +525,34 @@ function ContentCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {downloadUrl && (
+              <DropdownMenuItem className="gap-2" onClick={onPreview}>
+                <Eye className="h-4 w-4" /> Preview
+              </DropdownMenuItem>
+              {downloadUrl ? (
                 <DropdownMenuItem
                   className="gap-2"
                   onClick={() => window.open(downloadUrl, "_blank")}
                 >
                   <Download className="h-4 w-4" /> Download
                 </DropdownMenuItem>
-              )}
+              ) : null}
               <DropdownMenuItem className="gap-2 text-destructive" onClick={() => deleteItem(item.id)}>
                 <Trash2 className="h-4 w-4" /> Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <p className="mt-2 text-sm font-medium text-foreground truncate">{item.name}</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {sizeStr}
-          {durationStr ? ` · ${durationStr}` : ""}
-        </p>
+        <button
+          type="button"
+          onClick={onPreview}
+          className="mt-2 block w-full text-left focus:outline-none"
+        >
+          <p className="text-sm font-medium text-foreground truncate">{item.name}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {sizeStr}
+            {durationStr ? ` · ${durationStr}` : ""}
+          </p>
+        </button>
       </div>
     </div>
   )
@@ -531,10 +561,12 @@ function ContentCard({
 function ContentRow({
   item,
   isLast,
+  onPreview,
   deleteItem,
 }: {
   item: ContentItem
   isLast: boolean
+  onPreview: () => void
   deleteItem: (id: number) => void
 }) {
   const logicalType = item.type as LogicalContentType
@@ -549,13 +581,24 @@ function ContentRow({
         !isLast && "border-b border-border"
       )}
     >
-      <div className={cn("flex h-10 w-10 items-center justify-center rounded-lg", bgColor)}>
+      <button
+        type="button"
+        onClick={onPreview}
+        className={cn(
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors hover:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          bgColor
+        )}
+      >
         <Icon className={cn("h-4 w-4", iconColor)} />
-      </div>
-      <div className="flex-1">
-        <p className="text-sm font-medium text-foreground">{item.name}</p>
+      </button>
+      <button
+        type="button"
+        onClick={onPreview}
+        className="min-w-0 flex-1 text-left focus:outline-none"
+      >
+        <p className="truncate text-sm font-medium text-foreground">{item.name}</p>
         <p className="text-xs text-muted-foreground">{formatDate(item.created_at)}</p>
-      </div>
+      </button>
       <div className="flex flex-col items-end gap-0.5 text-xs text-muted-foreground">
         <span>{formatFileSize(item.file_size)}</span>
         {item.duration != null && <span>{formatDuration(item.duration)}</span>}
@@ -569,8 +612,8 @@ function ContentRow({
       >
         {status.label}
       </Badge>
-      <Badge variant="secondary" className="text-xs capitalize">
-        {item.type}
+      <Badge variant="secondary" className="text-xs">
+        {formatContentTypeLabel(item.type)}
       </Badge>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -579,14 +622,17 @@ function ContentRow({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          {downloadUrl && (
+          <DropdownMenuItem className="gap-2" onClick={onPreview}>
+            <Eye className="h-4 w-4" /> Preview
+          </DropdownMenuItem>
+          {downloadUrl ? (
             <DropdownMenuItem
               className="gap-2"
               onClick={() => window.open(downloadUrl, "_blank")}
             >
               <Download className="h-4 w-4" /> Download
             </DropdownMenuItem>
-          )}
+          ) : null}
           <DropdownMenuItem className="gap-2 text-destructive" onClick={() => deleteItem(item.id)}>
             <Trash2 className="h-4 w-4" /> Delete
           </DropdownMenuItem>

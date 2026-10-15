@@ -25,7 +25,7 @@ export default function CrmFormsHubLayout({ children }: { children: React.ReactN
   return (
     <div className="space-y-4 p-6 lg:p-8">
       <PageHeader title="Forms" subtitle="Forms, fields, statuses, and share links." />
-      <div className="flex gap-8">
+      <div className="flex flex-col gap-4 md:flex-row md:gap-8">
         <CrmFormsHubNav />
         <div className="min-w-0 flex-1">{children}</div>
       </div>

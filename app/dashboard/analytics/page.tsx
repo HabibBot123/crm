@@ -1,7 +1,14 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Crown, Handshake, Phone, Scale, Wallet } from "lucide-react"
+import {
+  Crown,
+  Handshake,
+  Megaphone,
+  Phone,
+  Scale,
+  Wallet,
+} from "lucide-react"
 import {
   Area,
   AreaChart,
@@ -18,6 +25,12 @@ import { NoAccessState } from "@/components/dashboard/no-access-state"
 import { AnalyticsFiltersPopover } from "@/components/dashboard/analytics/analytics-filters-popover"
 import { MarketingAnalyticsPanel } from "@/components/dashboard/analytics/marketing-analytics-panel"
 import {
+  SortableKpiHeader,
+  nextKpiSort,
+  sortByKpiColumn,
+  type KpiSortState,
+} from "@/components/dashboard/analytics/sortable-kpi-header"
+import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
@@ -28,6 +41,7 @@ import { useOrgCapabilities } from "@/hooks/use-org-capabilities"
 import { useBusinessUnits } from "@/hooks/use-business-units"
 import {
   useCrmMarketingAnalytics,
+  useCrmMarketingCampaignAnalytics,
   useCrmSalesAnalytics,
 } from "@/hooks/use-analytics"
 import { useOrganizationLeadStatuses } from "@/hooks/use-organization-lead-statuses"
@@ -41,6 +55,18 @@ type Preset = "7d" | "30d" | "month" | "quarter" | "year"
 type RoleTab = AnalyticsRoleKind
 type FinanceMode = "pnl" | "cash"
 type AnalyticsSection = "sales" | "marketing"
+type MemberSortColumn =
+  | "leads"
+  | "converted"
+  | "conversion_rate"
+  | "revenue_cents"
+type BuSortColumn =
+  | "leads"
+  | "converted"
+  | "conversion_rate"
+  | "revenue_cents"
+  | "margin_cents"
+  | "share"
 
 function toYmd(date: Date): string {
   return date.toLocaleDateString("en-CA")
@@ -379,6 +405,7 @@ export default function AnalyticsPage() {
   } = useOrgCapabilities()
   const organizationId = currentOrganization?.id ?? null
   const canView = can("analytics.view")
+  const canViewCampaigns = can("campaigns.manage")
   const isNaturalHead = scope === "bu"
   const isHeadView = isNaturalHead
   const viewerMode = isHeadView ? "head" : "org"
@@ -391,6 +418,14 @@ export default function AnalyticsPage() {
   const [roleTab, setRoleTab] = useState<RoleTab>("closer")
   const [financeMode, setFinanceMode] = useState<FinanceMode>("pnl")
   const [section, setSection] = useState<AnalyticsSection>("sales")
+  const [memberSort, setMemberSort] = useState<KpiSortState<MemberSortColumn>>({
+    column: "revenue_cents",
+    direction: "desc",
+  })
+  const [buSort, setBuSort] = useState<KpiSortState<BuSortColumn>>({
+    column: "revenue_cents",
+    direction: "desc",
+  })
 
   const { units } = useBusinessUnits(organizationId)
   const { statuses: leadStatuses } = useOrganizationLeadStatuses(organizationId)
@@ -453,6 +488,22 @@ export default function AnalyticsPage() {
     enabled: canView && !capsLoading && section === "marketing",
   })
 
+  const {
+    data: marketingCampaignData,
+    previous: marketingCampaignPrevious,
+    isLoading: marketingCampaignLoading,
+  } = useCrmMarketingCampaignAnalytics(organizationId, {
+    from,
+    to,
+    previousFrom: prev.from,
+    previousTo: prev.to,
+    enabled:
+      canView &&
+      canViewCampaigns &&
+      !capsLoading &&
+      section === "marketing",
+  })
+
   const kpis = data?.kpis
   const prevKpis = previous?.kpis
 
@@ -470,9 +521,11 @@ export default function AnalyticsPage() {
         .filter((row) => row.role_kind === roleTab)
         .map((row) => [row.member_id, row])
     )
-    const current = data.members
-      .filter((row) => row.role_kind === roleTab)
-      .sort((a, b) => b.revenue_cents - a.revenue_cents || b.leads - a.leads)
+    const current = sortByKpiColumn(
+      data.members.filter((row) => row.role_kind === roleTab),
+      memberSort.column,
+      memberSort.direction
+    )
 
     return current.map((row) => {
       const prior = prevById.get(row.member_id)
@@ -484,7 +537,7 @@ export default function AnalyticsPage() {
         prev_conversion_rate: prior?.conversion_rate ?? 0,
       }
     })
-  }, [data, previous, roleTab])
+  }, [data, previous, roleTab, memberSort])
 
   const pipeline = useMemo(() => {
     if (!data) return []
@@ -494,6 +547,23 @@ export default function AnalyticsPage() {
   const pipelineMax = Math.max(...pipeline.map((row) => row.count), 1)
   const businessUnits = data?.business_units ?? []
   const showBusinessUnits = !isHeadView && businessUnits.length >= 2
+
+  const sortedBusinessUnits = useMemo(() => {
+    const totalRevenue = kpis?.revenue_cents ?? 0
+    const rows = businessUnits.map((row) => {
+      const costs =
+        financeMode === "cash"
+          ? row.commissions_paid_cents
+          : row.commissions_cents
+      return {
+        ...row,
+        conversion_rate: row.leads > 0 ? (row.converted / row.leads) * 100 : 0,
+        margin_cents: row.revenue_cents - costs,
+        share: shareOf(row.revenue_cents, totalRevenue),
+      }
+    })
+    return sortByKpiColumn(rows, buSort.column, buSort.direction)
+  }, [businessUnits, buSort, financeMode, kpis?.revenue_cents])
 
   const costsCents =
     financeMode === "cash"
@@ -583,21 +653,22 @@ export default function AnalyticsPage() {
           <div className="inline-flex items-center rounded-lg bg-muted p-0.5">
             {(
               [
-                ["sales", "Sales"],
-                ["marketing", "Marketing"],
+                ["sales", "Sales", Wallet],
+                ["marketing", "Marketing", Megaphone],
               ] as const
-            ).map(([key, label]) => (
+            ).map(([key, label, Icon]) => (
               <button
                 key={key}
                 type="button"
                 className={cn(
-                  "inline-flex h-8 items-center rounded-md px-2.5 text-sm font-medium transition-colors",
+                  "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors",
                   section === key
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 )}
                 onClick={() => setSection(key)}
               >
+                <Icon className="h-3.5 w-3.5 shrink-0" />
                 {label}
               </button>
             ))}
@@ -656,6 +727,10 @@ export default function AnalyticsPage() {
           data={marketingData}
           previous={marketingPrevious}
           isLoading={marketingLoading}
+          campaignData={marketingCampaignData}
+          campaignPrevious={marketingCampaignPrevious}
+          campaignLoading={marketingCampaignLoading}
+          canViewCampaigns={canViewCampaigns}
         />
       ) : isLoading ? (
         <SectionCard>
@@ -1048,38 +1123,73 @@ export default function AnalyticsPage() {
                   <thead>
                     <tr className="border-b border-border bg-muted/60">
                       <th className={thClass}>Unit</th>
-                      <th className={thRightPlainClass}>Leads</th>
-                      <th className={thRightPlainClass}>Converted</th>
-                      <th className={thRightPlainClass}>Conv %</th>
-                      <th className={thRightClass}>Revenue</th>
-                      <th className={thRightClass}>Margin</th>
-                      <th className={thRightPlainClass}>Share</th>
+                      <SortableKpiHeader
+                        label="Leads"
+                        column="leads"
+                        sort={buSort}
+                        onSort={(column) =>
+                          setBuSort((current) => nextKpiSort(current, column))
+                        }
+                        className={thRightPlainClass}
+                      />
+                      <SortableKpiHeader
+                        label="Converted"
+                        column="converted"
+                        sort={buSort}
+                        onSort={(column) =>
+                          setBuSort((current) => nextKpiSort(current, column))
+                        }
+                        className={thRightPlainClass}
+                      />
+                      <SortableKpiHeader
+                        label="Conv %"
+                        column="conversion_rate"
+                        sort={buSort}
+                        onSort={(column) =>
+                          setBuSort((current) => nextKpiSort(current, column))
+                        }
+                        className={thRightPlainClass}
+                      />
+                      <SortableKpiHeader
+                        label="Revenue"
+                        column="revenue_cents"
+                        sort={buSort}
+                        onSort={(column) =>
+                          setBuSort((current) => nextKpiSort(current, column))
+                        }
+                        className={thRightClass}
+                      />
+                      <SortableKpiHeader
+                        label="Margin"
+                        column="margin_cents"
+                        sort={buSort}
+                        onSort={(column) =>
+                          setBuSort((current) => nextKpiSort(current, column))
+                        }
+                        className={thRightClass}
+                      />
+                      <SortableKpiHeader
+                        label="Share"
+                        column="share"
+                        sort={buSort}
+                        onSort={(column) =>
+                          setBuSort((current) => nextKpiSort(current, column))
+                        }
+                        className={thRightPlainClass}
+                      />
                     </tr>
                   </thead>
                   <tbody>
-                    {businessUnits.map((row) => {
-                      const share = shareOf(
-                        row.revenue_cents,
-                        kpis?.revenue_cents ?? 0
-                      )
+                    {sortedBusinessUnits.map((row) => {
                       const prevBu = previous?.business_units.find(
                         (unit) => unit.business_unit_id === row.business_unit_id
                       )
-                      const buCosts =
-                        financeMode === "cash"
-                          ? row.commissions_paid_cents
-                          : row.commissions_cents
-                      const buMargin = row.revenue_cents - buCosts
                       const prevBuCosts =
                         financeMode === "cash"
                           ? (prevBu?.commissions_paid_cents ?? 0)
                           : (prevBu?.commissions_cents ?? 0)
                       const prevBuMargin =
                         (prevBu?.revenue_cents ?? 0) - prevBuCosts
-                      const convRate =
-                        row.leads > 0
-                          ? (row.converted / row.leads) * 100
-                          : 0
                       return (
                         <tr
                           key={row.business_unit_id}
@@ -1095,7 +1205,7 @@ export default function AnalyticsPage() {
                             {row.converted}
                           </td>
                           <td className="px-4 py-3 text-right tabular-nums text-foreground">
-                            {convRate.toFixed(0)}%
+                            {row.conversion_rate.toFixed(0)}%
                           </td>
                           <td className="px-4 py-3">
                             <ValueWithDelta
@@ -1107,7 +1217,7 @@ export default function AnalyticsPage() {
                           </td>
                           <td className="px-4 py-3">
                             <ValueWithDelta
-                              value={buMargin}
+                              value={row.margin_cents}
                               previous={prevBu ? prevBuMargin : undefined}
                               formatValue={formatMoney}
                               valueClassName="text-foreground"
@@ -1116,13 +1226,13 @@ export default function AnalyticsPage() {
                           <td className="px-4 py-3">
                             <div className="flex flex-col items-end gap-1">
                               <span className="tabular-nums text-foreground">
-                                {share.toFixed(0)}%
+                                {row.share.toFixed(0)}%
                               </span>
                               <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
                                 <div
                                   className="h-full rounded-full bg-primary"
                                   style={{
-                                    width: `${Math.min(Math.max(share, 0), 100)}%`,
+                                    width: `${Math.min(Math.max(row.share, 0), 100)}%`,
                                   }}
                                 />
                               </div>
@@ -1176,10 +1286,42 @@ export default function AnalyticsPage() {
                   <thead>
                     <tr className="border-b border-border bg-muted/60">
                       <th className={thClass}>Member</th>
-                      <th className={thRightClass}>Leads</th>
-                      <th className={thRightClass}>Converted</th>
-                      <th className={thRightClass}>Conv %</th>
-                      <th className={thRightClass}>Revenue</th>
+                      <SortableKpiHeader
+                        label="Leads"
+                        column="leads"
+                        sort={memberSort}
+                        onSort={(column) =>
+                          setMemberSort((current) => nextKpiSort(current, column))
+                        }
+                        className={thRightClass}
+                      />
+                      <SortableKpiHeader
+                        label="Converted"
+                        column="converted"
+                        sort={memberSort}
+                        onSort={(column) =>
+                          setMemberSort((current) => nextKpiSort(current, column))
+                        }
+                        className={thRightClass}
+                      />
+                      <SortableKpiHeader
+                        label="Conv %"
+                        column="conversion_rate"
+                        sort={memberSort}
+                        onSort={(column) =>
+                          setMemberSort((current) => nextKpiSort(current, column))
+                        }
+                        className={thRightClass}
+                      />
+                      <SortableKpiHeader
+                        label="Revenue"
+                        column="revenue_cents"
+                        sort={memberSort}
+                        onSort={(column) =>
+                          setMemberSort((current) => nextKpiSort(current, column))
+                        }
+                        className={thRightClass}
+                      />
                     </tr>
                   </thead>
                   <tbody>

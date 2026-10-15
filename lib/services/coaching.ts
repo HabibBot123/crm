@@ -31,6 +31,7 @@ export type CoachingEnrollmentProduct = {
   coach_full_name: string | null
   completion_total: number | null
   completion_completed: number | null
+  product_completed_at: string | null
   session_count: number
   paid_delivery_count: number
   coach_editable: boolean
@@ -105,6 +106,7 @@ type VCoachingPackRow = {
   coach_full_name: string | null
   completion_total: number | null
   completion_completed: number | null
+  product_completed_at: string | null
 }
 
 export type CoachingPackAssignmentFilter =
@@ -142,7 +144,7 @@ export async function fetchCoachingEnrollmentProductsForOrg(
   let query = supabase
     .from("v_coaching_packs")
     .select(
-      "user_id, organization_id, enrollment_id, enrollment_product_id, offer_title, started_at, expires_at, enrollment_status, product_id, product_title, product_type, user_full_name, user_mail, coach_full_name, completion_total, completion_completed",
+      "user_id, organization_id, enrollment_id, enrollment_product_id, offer_title, started_at, expires_at, enrollment_status, product_id, product_title, product_type, user_full_name, user_mail, coach_full_name, completion_total, completion_completed, product_completed_at",
       { count: "exact" }
     )
     .eq("organization_id", organizationId)
@@ -211,6 +213,7 @@ function rowToPack(r: VCoachingPackRow): CoachingEnrollmentProduct {
     coach_full_name: r.coach_full_name ?? null,
     completion_total: r.completion_total ?? null,
     completion_completed: r.completion_completed ?? null,
+    product_completed_at: r.product_completed_at ?? null,
     session_count: 0,
     paid_delivery_count: 0,
     coach_editable: true,
@@ -580,6 +583,44 @@ export async function createCoachingSession(
   }
   if (payload.coaching_assignment_id == null || payload.coaching_assignment_id <= 0) {
     throw new Error("A coach must be assigned to the pack to create a session.")
+  }
+
+  const { data: packQuota, error: packQuotaError } = await supabase
+    .from("v_coaching_packs")
+    .select(
+      "completion_total, completion_completed, product_completed_at"
+    )
+    .eq("enrollment_product_id", payload.enrollment_product_id)
+    .maybeSingle()
+  if (packQuotaError) throw packQuotaError
+
+  const quotaTotal =
+    typeof packQuota?.completion_total === "number"
+      ? packQuota.completion_total
+      : null
+  const quotaDone =
+    typeof packQuota?.completion_completed === "number"
+      ? packQuota.completion_completed
+      : 0
+  const productCompleted =
+    typeof packQuota?.product_completed_at === "string"
+
+  if (productCompleted) {
+    throw new Error("This coaching pack is completed. No more sessions can be added.")
+  }
+
+  const { count: existingCount, error: countError } = await supabase
+    .from("coaching_sessions")
+    .select("id", { count: "exact", head: true })
+    .eq("enrollment_product_id", payload.enrollment_product_id)
+  if (countError) throw countError
+
+  if (
+    quotaTotal != null &&
+    quotaTotal > 0 &&
+    ((existingCount ?? 0) >= quotaTotal || quotaDone >= quotaTotal)
+  ) {
+    throw new Error("All planned sessions for this pack have been used.")
   }
 
   let sessionNumber = payload.session_number ?? null

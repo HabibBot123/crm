@@ -5,6 +5,77 @@ Format : date · quoi · pourquoi (court) · conséquences.
 
 ---
 
+## 2026-10-15 — Community / coached Circle-like (direction)
+
+Pivot portail coached : **1 org sélectionnée** (Circle). Pas de catalogue flat cross-org.
+
+### Hosts (figé 2026-10-15)
+
+| Host | Surface |
+|------|---------|
+| `{slug}.coachstack.co` | **Store** publique (inchangé) |
+| `app.coachstack.co` | Hub coached : choisir une org |
+| `{slug}.app.coachstack.co` | **App membre** de cette org (commu + programmes) |
+| Dev (validé 2026-10-15) | Hub `app.lvh.me:3000` ; org `{slug}.app.lvh.me:3000` ; cookie Auth `Domain=.lvh.me`. Plain `localhost` = coach. |
+
+- DNS prod : wildcard `*.app.coachstack.co` + cookie domain `.coachstack.co` (à brancher côté code, miroir `.lvh.me`).
+- Paths membre : `/home`, `/courses`, `/courses/[id]`, `/coaching`, `/coaching/[id]`, `/s/…`, `/messages`, `/profile`. Org dans le host `{slug}.app.*` (pas dans le path).
+- Hub (`app.*`) : pas de tab Programs ; `/home` auto-entre dans la dernière org (`localStorage` `coachstack-last-coached-org-slug`), sinon 1 seule org, sinon picker. « All organizations » → `/home?pick=1`.
+- Auth : **`/login` + `/signup` host-aware** (`app.*` = membre / `localhost` = coach). Anciennes routes `/coached*` / `coached-login` / `coached-signup` **supprimées** (plus de redirect). Pas de cookie org `cs_coached_org_slug`.
+- Switcher → host. OAuth : Redirect URLs `http://app.lvh.me:3000/**`. Filet `/?code=` → `/auth/callback`.
+- Password reset : `redirectTo` = `/auth/callback?next=/login/reset-password` (pas direct sur reset-password) pour échanger le `code` PKCE.
+- Redirects proxy/auth : utiliser `Host` / `x-forwarded-host` (`requestPublicOrigin`), pas `request.url` (souvent `localhost` en local).
+- **Pas** de table `community_members` org-level V1 : `community_space_members` suffit ; org visible = enrollment vivant ∪ member d’un space.
+- **Directory (figé 2026-10-15)** :
+  - **`/members` (sidebar)** = annuaire **admin** org. Vue union (enrollments vivants ∪ `organization_members` ∪ `community_space_members`) + **origin**. Table + search/filters. Cap : **`community.manage`** ; nav **cachée** sinon.
+  - **`/s/…/members`** = peers space. Cards + search + pagination. Message → DM.
+  - Avatar : `profiles.avatar_url` via Bunny ; signup + `/profile` + dashboard account.
+  - Build order : avatar → cards space → table org.
+
+### Accès (membership ≠ enrollment)
+
+- **Community** : `is_community_org_member` = space member actif **ou** `organization_members` actif. Staff/coachs n’ont **pas** besoin d’une row space pour compter comme présents à l’org (DM, branding). Feeds/spaces peers restent space-scoped pour les clients ; caps `community.*` pour modération.
+- **Courses / Coaching** : enrollment-gated (`active`/`paused`) pour le client. Coach assigné voit aussi ses packs (assignment), sans être enrolled.
+- Expiré → plus le programme, commu OK si space member ou org member.
+- Consommation **dans** l’app org (`{slug}.app…`), pas catalogue global.
+
+### Modèle spaces
+
+- **1 org = N spaces**. Membership rules offer→space **org-configurable** (V1 live 2026-10-15).
+- **Rules V1** : à la création du space, liste d’offres + `remove_on_expire` par règle. **Aucune règle** = tous les enrollments vivants (`active`/`paused`). Sync auto (trigger enrollments) + RPC manuel. Add/remove manuel (clients avec compte ou membres org) ; remove = soft `left_at` (option A : sync peut re-ajouter si encore éligible).
+- **Staff** : accès via caps `community.*` / RLS, **pas** de rows membership auto pour toute la team. Creator = row `staff` admin sur le space.
+- **Feeds** : N / space ; `who_can_post` par feed. Seed : **Announcements** (admins) + **General** (all). Manage via `/s/[slug]/settings` (pas dialog). Shell PC : feeds listés sous le space actif dans la nav gauche.
+- Peers visibles ; DM all-to-all dans le space.
+- Caps : `community.manage` / `moderate` / `view_stats` (defaults admin/bu_owner/coach — seed 2026-10-15).
+
+### Tech DM (V1)
+
+- Postgres + **Supabase Realtime** + RLS. Pas Stream/Sendbird V1.
+
+### Posts delete (clarif 2026-10-15)
+
+- RLS + UI : auteur **ou** `is_community_space_staff` (space admin/mod **ou** org `community.manage` / `moderate`).
+
+### Courses vs Coaching (figé 2026-10-15)
+
+- Nav org : **Courses** + **Coaching** (plus de tab Programs). Details = `/courses/[id]` et `/coaching/[id]`.
+- **Courses** = products `course` (client enrollments).
+- **Coaching** = products `coaching` : packs **As client** ∪ packs **As coach** (assignment). Segments ; cacher si vide.
+- Detail pack = **onglets** dans le header (à gauche de + Session) : Sessions (bandeau + séances) | Chat (plein écran thread). Pas de split colonnes. Pas de thread pack dédié V1.
+- Quota delivery : **`enrollment_products.completed_at`** par ligne (séances coaching **ou** leçons course). Enrollment.status = accès commercial seulement. Plus d’add session au quota product. Edit séance : client **et** coach (si séance non completed).
+- Contact coach pour le client : **dénorm** `coach_user_id` / `coach_email` sur `coaching_assignments` (pas de SELECT client sur `organization_members`, qui porte les commissions).
+- Dashboard `/dashboard/coaching` = ops admin (assign org-wide) ; app membre = delivery.
+
+### Build order (le plus simple)
+
+1. Proxy `{slug}.app.*` + shell org-scoped + switcher (retirer `/coached/o/`)
+2. Programs org-only → **Courses + Coaching**
+3. Posts feed → UI delete staff → DM → `is_community_org_member` += org members
+4. Coaching membre UX (liste dual + detail séances bilatérales + chat embarqué)
+5. Rules offer→space → stats
+
+---
+
 ## 2026-10-14 — Leads first_name / last_name
 
 - Colonnes `leads.first_name` (required) + `leads.last_name` (nullable). `full_name` **dérivé** via trigger (pas d’édition directe).
@@ -55,10 +126,10 @@ Format : date · quoi · pourquoi (court) · conséquences.
 - **CA** = `organization_sales.sold_at`. **P&L** : coms accrues ; **Cash** : `paid_at`. Chart coms miroir (Paid + Due). Packs analytics = plus tard.
 - **Marketing analytics** (même page `/dashboard/analytics`, switch Sales | Marketing) :
   - Lead marketing = `origin = form` **ou** `ambassador_link_id` set.
-  - KPIs période : leads créés, converted (parmi eux), conv %, CA (`sold_at` des sales liées à ces leads).
-  - Tables : share links (clicks = **lifetime** ; leads/converted/CA = période), ambassadors, forms. Pas de table “channels” (doublon du label link).
-  - Chart : top share links by revenue ; tooltip = créateur + form.
-  - Même cap `analytics.view` + filtre BU ; clicks non datés → pas de série clicks période.
+  - **KPI partagés** (toujours visibles) : Revenue, Leads, Converted, Conv % (période inbound).
+  - Sous les KPI : lens **Inbound | Campaigns** (pas empilé dans le header Sales/Marketing).
+  - **Inbound** : funnel + tables share links (clicks = **lifetime** ; leads/converted/CA = période), ambassadors, forms. Chart top links by revenue. Cap `analytics.view` + filtre BU.
+  - **Campaigns** : campagnes `sent`/`sending` avec `sent_at` dans la période ; résumé (campaigns, recipients, opens/clicks/unsub + rates, bounces, CTO, complaints) + table riche (from/subject/date, delivered/failed/bounce/open/click/CTO/unsub/spam) ; stats via `campaign_delivery_stats` (uniques = 1er event). Pas soft/hard bounce, replies, Apple MPP, total opens/clicks. Cap `campaigns.manage`. Pas de filtre BU.
 - Colonne **`sold_at`** NOT NULL ; vue + expires_at enrollment manuel ancrés dessus.
 
 ### Lead Owner ≠ pay · statuses · filters
@@ -125,7 +196,7 @@ Séparé des coms sales/ambassador/coach (event-driven). BU Owner = P&L de la BU
 - Enforcement : UX `can()` + RLS `has_org_capability` + helpers `*_in_scope`. Owner-only hors matrix : `org.billing`, `org.permissions`.
 
 **Sous-actions (clés matrix)**  
-Team: `team.invite|manage_roles|revoke` · Catalog: `catalog.manage` · Clients/sales: `clients.view|enroll_manual`, `sales.view`, `analytics.view` · CRM: `crm.leads.view_own|view|update_status|edit|delete`, `crm.assign_sales`, `crm.manage_attributions`, `crm.activate_commissions`, `crm.view_lead_commissions` · Forms: `forms.view|manage`, `forms.links.view_own|create_own|delete_own|manage_others` · Coaching: `coaching.view|assign`, `coaching.sessions.create|complete` · Coms/BU: `commissions.view_own|view_all|mark_paid`, `bu.manage` · Campaigns: `campaigns.manage` (général V1 : page + sync + segments) · Org: `org.settings` (domaine email reste ici).
+Team: `team.invite|manage_roles|revoke` · Catalog: `catalog.manage` · Clients/sales: `clients.view|enroll_manual`, `sales.view`, `analytics.view` · CRM: `crm.leads.view_own|view|update_status|edit|delete`, `crm.assign_sales`, `crm.manage_attributions`, `crm.activate_commissions`, `crm.view_lead_commissions` · Forms: `forms.view|manage`, `forms.links.view_own|create_own|delete_own|manage_others` · Coaching: `coaching.view|assign`, `coaching.sessions.create|complete` · Coms/BU: `commissions.view_own|view_all|mark_paid`, `bu.manage` · Campaigns: `campaigns.manage` · Community: `community.manage|moderate|view_stats` · Org: `org.settings` (domaine email reste ici).
 
 **Defaults seed**
 
@@ -142,8 +213,10 @@ Team: `team.invite|manage_roles|revoke` · Catalog: `catalog.manage` · Clients/
 | `coaching.assign` | ✓ | — | — | — | — |
 | `commissions.view_own` | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `commissions.view_all` / `mark_paid` | ✓ | — | — | — | — |
+| `community.manage` | ✓ | — | — | — | — |
+| `community.moderate` / `view_stats` | ✓ | — | — | ✓ | — |
 
-**BU owner defaults** : invite, catalog, clients, sales.view, **analytics.view**, CRM ops (dont view_coms + attributions), forms/links, coaching packs offre→BU, commissions view/mark paid. Scope via `offers.business_unit_id`.
+**BU owner defaults** : invite, catalog, clients, sales.view, **analytics.view**, CRM ops (dont view_coms + attributions), forms/links, coaching packs offre→BU, commissions view/mark paid, **community.***. Scope via `offers.business_unit_id`.
 
 Règles structurelles : CRM manage full = admin/BU ; sales/analytics défaut = admin + bu_owner ; coaching assign = admin (+ packs assignés pour view/sessions).
 
@@ -173,7 +246,7 @@ Règles structurelles : CRM manage full = admin/BU ; sales/analytics défaut = a
 Groupes (source `lib/permissions/dashboard-nav.ts`, sidebar + mobile) :
 - **Home** : Overview, Analytics
 - **Pipeline** : CRM, Forms, Campaigns (`campaigns.manage`), Sales, Payouts
-- **Delivery** : Clients, Coaching
+- **Delivery** : Clients, Coaching, Community
 - **Catalog** : Offers, Products, Content, Store page
 - **Organization** : Team, Settings
 
@@ -349,3 +422,5 @@ Groupes (source `lib/permissions/dashboard-nav.ts`, sidebar + mobile) :
 - [ ] Surface à simplifier en priorité pour MVP relancé ?
 - [ ] Must vs cut backlog (hors coaching / commissions / sales / marketing Resend déjà tranchés)
 - [x] ESP = Resend Broadcast, compte plateforme (2026-10-12)
+- [x] Community Circle-like direction (multi-spaces, multi-feeds, DM peers, Supabase Realtime) — 2026-10-15
+- [x] Community : enter/exit = org-configurable rules ; caps `community.*` ; seed feeds Annonces + Général — 2026-10-15

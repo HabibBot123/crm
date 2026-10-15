@@ -11,19 +11,20 @@
 
 **CoachStack** = CRM vertical + plateforme de delivery pour coachs / organisations de coaching (éducation, business, life, fitness, executive, etc.).
 
-Trois surfaces :
+Quatre surfaces :
 
 1. **Back-office coach** — orgs, produits (cours / coaching), offres, clients, sessions, contenu, équipe, paiements.
 2. **Pages marketing publiques** — pages brandées par organisation pour présenter / vendre des offres.
-3. **Espace coached (portail client)** — programmes achetés, coaches, progression.
+3. **App membre** — `{slug}.app.coachstack.co` : Circle-like (`/home`, `/courses`, `/coaching`, `/s/…`). Hub = choix d’org. Voir `docs/04`.
+4. Store reste `{slug}.coachstack.co` (séparé de l’app membre).
 
 ## Who it is for
 
 | Rôle | Besoin |
 |------|--------|
-| Coach / org owner | Gérer catalogue, ventes, clients, équipe, Stripe Connect, branding |
-| Team member / coach assigné | Recevoir des packs étudiants (org multi-coach) |
-| Coached (client final) | Acheter, accéder aux programmes, voir coachs, suivre progrès |
+| Coach / org owner | Gérer catalogue, ventes, clients, équipe, Stripe Connect, branding ; **manage spaces / feeds / stats suivi** |
+| Team member / coach assigné | Packs étudiants + **présence dans les spaces** (même shell, caps delivery) |
+| Coached (client final) | Entrer dans ses **spaces**, feed/commu/DM, accéder au contenu acheté, profil (photo) |
 
 ## ICP v1 (tranché)
 
@@ -41,6 +42,7 @@ CRM + commerce + delivery **spécialisé coaching**, pas un CRM générique ni u
 - [ ] Vertical prioritaire (sport déjà dans le nom du repo vs “tous coachs”) ?
 - [ ] Queue diff vs Teachable / Kajabi / Systeme.io / Notion-CRM ?
 - [x] Coaching v1 : packs + assign (pas booking) — voir `04-decisions.md`
+- [x] Community Circle-like (multi-spaces / org, feeds, DM peers) — direction figée 2026-10-15 ; règles offer→space V1 live
 - [ ] Ce qu’on **coupe** encore hors storefront/coaching ?
 - [ ] Ce qu’on **ajoute** par rapport à l’existant (ex. payouts coach) ?
 

@@ -79,11 +79,11 @@ Flux guest → compte : checkout pose `buyer_email` (+ `user_id` si compte exist
 |-------|----------------|
 | `business_units` | BU org ; **`owner_member_id`**, **`default_commission_rate/fixed`**, **`settlement_basis`** (`of_revenue`\|`of_residual`), **`payout_delay_months`** |
 | `bu_owner_settlements` | Settlement mensuel BU Owner (période, basis, revenue/team/basis/amount cents, `due_at`, `pending`\|`paid`, `paid_by`) ; RLS view_all/view_own + mark_paid |
-| `enrollments` | Achat / accès ; `user_id` nullable ; `buyer_email` ; `expires_at` ; Stripe IDs nullable (manuel OK) ; **`stripe_checkout_session_id`** (idempotence checkout Stripe) |
-| `enrollment_products` | **Snapshot** produits de l’offre au moment de l’INSERT enrollment |
-| `coaching_assignments` | Coach assigné sur un `enrollment_product_id` (1 coach ; coms delivery à l’assign ; change/remove tant que 0 session + 0 paid). **`created_at`** (re-set si change de coach) ; “new” Overview = ≤3j. Source `scripts/coaching-assignments-created-at.sql`. |
-| `coaching_sessions` | Tracking séances |
-| `course_lesson_progress` | Progression leçons |
+| `enrollments` | Achat / accès ; `user_id` nullable ; `buyer_email` ; `expires_at` ; status check `active\|paused\|expired\|cancelled` (+ `completed` legacy, plus écrit) ; Stripe IDs nullable (manuel OK) ; **`stripe_checkout_session_id`**. Unique vivant = `(offer_id, user_id)` où `active\|paused`. |
+| `enrollment_products` | **Snapshot** produits de l’offre au moment de l’INSERT enrollment. **`completed_at`** = delivery done **par ligne** (leçons course ou séances coaching). Trigger `sync_enrollment_product_completion`. Script : `enrollment-product-completed-at.sql`. |
+| `coaching_assignments` | Coach assigné sur un `enrollment_product_id` (1 coach ; coms delivery à l’assign ; change/remove tant que 0 session + 0 paid). **`created_at`** (re-set si change de coach) ; “new” Overview = ≤3j. **`coach_user_id` / `coach_email`** dénormés (trigger assign + sync member) pour lecture client sans exposer `organization_members` (commissions). Scripts : `coaching-assignments-created-at.sql`, `coaching-assignments-coach-contact.sql`. |
+| `coaching_sessions` | Tracking séances + **`notes`** (HTML TipTap). INSERT : cap `sessions.create` **ou** client own pack ; quota = `offers.sessions_count` (bloqué en service). UPDATE : cap create/complete **ou** client own pack. DELETE : `coaching.assign` **ou** `sessions.create` (coach). Trigger → `sync_enrollment_product_completion`. Script : `coaching-sessions-notes-rls.sql`. |
+| `course_lesson_progress` | Progression leçons. Trigger → `sync_enrollment_product_completion`. |
 | `coached_invoices` | Factures côté coached |
 | `commissions` | Argent via **`organization_sale_id`**. Acquisition CRM : `lead_id` + `attribution_id` (sales/ambassador). Delivery : `beneficiary_member_id`. BU Owner = table `bu_owner_settlements` (pas de ligne com deal). |
 | `leads` | + `organization_sale_id` (Activate) ; `enrollment_id` optionnel (delivery) |
@@ -110,8 +110,8 @@ Flux guest → compte : checkout pose `buyer_email` (+ `user_id` si compte exist
 
 | Vue | Notes |
 |-----|--------|
-| `v_coached_products` | Accès **portail** coached. **`security_invoker=true`**. Filtre status vivant + expiry. `completion_total` coaching ← `offers.sessions_count`. |
-| `v_coaching_packs` | Accès **ops** `/dashboard/coaching`. Même grain que ci-dessus, **sans** filtre status/expiry (historique). Display client : `profiles.full_name` → `buyer_name` → `buyer_email`. `security_invoker=true` ; pas `anon`. |
+| `v_coached_products` | Accès **portail** coached. **`security_invoker=true`**. Filtre enrollment `active\|paused` + expiry. Expose **`product_completed_at`**. `completion_total` coaching ← `offers.sessions_count`. |
+| `v_coaching_packs` | Accès **ops** `/dashboard/coaching`. Même grain, **sans** filtre status/expiry (historique). + **`product_completed_at`**. Display client : `profiles.full_name` → `buyer_name` → `buyer_email`. `security_invoker=true` ; pas `anon`. |
 | `v_organization_clients` | Clients org (agrégats enrollments ; `client_email` ← `buyer_email` ; noms ← `profiles`) |
 | `v_organization_members` | Membres enrichis (`om.email` + `profiles.full_name`) |
 | `active_students` | Étudiants actifs |
@@ -134,12 +134,13 @@ Flux guest → compte : checkout pose `buyer_email` (+ `user_id` si compte exist
 | `enrollment_products_fill()` | Trigger : copie `offer_products` → `enrollment_products` à l’INSERT enrollment. |
 | `dashboard_overview(org, viewer_mode?)` | Overview Home jsonb : `member` (défaut) \| `org` (gate `analytics.view` + scope org) \| `bu` (si `is_bu_owner`, pas de cap). Member : recent leads + `ambassador_links` (top 5 by clicks) + coaching si data ; `new_coaching_assignments` (created_at ≤3j). Org/BU : sales + recent leads + top products + `top_forms` (top 5 by leads 30j). Source `scripts/dashboard-overview.sql`. Cleanup cap obsolete : `scripts/remove-overview-view-org.sql`. |
 | `is_org_owner` / `is_org_member` / `is_org_enrolled` | Helpers RLS (évite récursion policies). |
+| `is_community_org_member(org)` | True si **space member** actif **ou** **`organization_members` actif**. Branding + DM sender. Script : `scripts/organizations-select-community-members.sql` (+ update org-members). |
 | `has_org_capability(org, cap)` | Enforcement : owner **ou** matrix rôle invite **ou** (`is_bu_owner` ∧ row `role=bu_owner` allowed). Settings lit la table. Branché dans RLS dashboard (step 6). |
 | `can_update_crm_lead(org)` | OR des caps lead mutate (`update_status` / `edit` / `assign_sales` / `manage_attributions` / `activate_commissions`). |
 | `crm_leads_page(...)` | Liste CRM filtrée + paginée (SECURITY INVOKER) ; tri **`created_at DESC`** (arrivée) ; members via owner/attributions ; champs perso via `EXISTS` `lead_field_values`. |
 | `crm_sales_analytics(..., p_preset?, p_viewer_mode?)` | Payload jsonb analytics ; `p_viewer_mode` org\|head (auto si null) ; `p_preset` 7d/30d/month/**quarter**/year/custom. KPIs `head_*` (settlements) + `team_*` exposés en **org et head** ; accrued période / paid `paid_at`. Source `scripts/crm-sales-analytics-viewer-modes.sql`. |
 | `crm_marketing_analytics(org, from, to, bu_id?)` | Analytics Marketing : leads form/share-link, CA lié, KPIs `lost` (`status=lost`), tables links / ambassadors / forms / channels. Clicks = lifetime. Gate `analytics.view`. Source `scripts/crm-marketing-analytics.sql`. |
-| `settle_bu_owner_month(year, month, org_id?)` | SECURITY DEFINER : 1 settlement / BU active avec owner / mois civil (skip si existe). Residual = CA − acquisition (`sold_at`) − delivery coach (`created_at`, BU via offre pack). `team_costs_cents` = somme des deux. `due_at` = 1er mois suivant + `payout_delay_months`. |
+| `settle_bu_owner_month(year, month, org_id?)` | SECURITY DEFINER : 1 settlement / BU active avec owner / mois civil (skip si existe). Residual = CA − acquisition (`sold_at`) − delivery coach (`created_at`, BU via offre pack). `team_costs_cents` = somme des deux. `due_at` = 1er mois suivant + `payout_delay_months`. Cron pg_cron `settle-bu-owner-previous-month` : `40 3 1 * *` (1er, 03:40 UTC) → mois précédent, toutes orgs. Script : `scripts/settle-bu-owner-cron.sql`. |
 | `bu_owner_grants_capability(org, cap)` | Lookup matrix `bu_owner` (plus de liste hardcodée). |
 | `org_permission_scope(org)` | `org` \| `bu` \| `own` (owner/admin → org ; sinon BU owner → bu ; sinon own). |
 | `lead_is_own` / `lead_visible_to_caller` / `lead_in_scope` | Leads : `view_own` **ou** (`view` ∧ scope org/bu/own). Own = `owner_id` / created_by / attributions / share link. |
@@ -198,3 +199,77 @@ Pas de `pg_cron` / job d’auto-expiry enrollment constaté (2026-07-23).
 - Snapshot trigger INSERT-only (OK tant que composition non mutée après vente).
 - Colonnes legacy encore présentes sur `product_coaching` (à dropper plus tard).
 - Migrations repo absentes → évolution DB via MCP + note ici.
+
+---
+
+## Community (shell appliqué 2026-10-15)
+
+Script : `scripts/community-shell.sql`. Caps + tables + RLS + RPCs live.  
+Membership rules : `scripts/community-space-membership-rules.sql` (2026-10-15).
+
+### Live
+
+| Objet | Rôle |
+|-------|------|
+| `community_spaces` | Org-scoped ; slug unique / org ; `archived_at` |
+| `community_space_members` | `(space_id, user_id)` ; role `member\|moderator\|admin` ; source `manual\|enrollment_sync\|staff` ; `left_at` |
+| `community_space_membership_rules` | Offer → space ; unique `(space_id, offer_id)` ; `remove_on_expire` (default true). **Empty rules** = all living enrollments (`active`/`paused`) |
+| `community_feeds` | Seed à create : **Announcements** (`admins`) + **General** (`all`). CRUD app : insert/update + soft `archived_at` (RLS `community.manage`). Slug unique `(space_id, slug)` via slugify client |
+| Caps | `community.manage` / `moderate` / `view_stats` (constraint + seed matrix). Staff access = caps, **pas** auto membership rows |
+| RPC `create_community_space(org, name, desc?, sync?, offer_rules jsonb?)` | Cap manage ; seed feeds ; creator admin (`staff`) ; insert rules ; optional sync |
+| RPC `sync_community_space_members_from_enrollments(space)` | Cap manage ; upsert `enrollment_sync` ; soft-leave sync rows hors éligibilité ; respecte `remove_on_expire=false` |
+| RPC `add_community_space_member(space, user)` | Cap manage ; org member actif **ou** enrollment vivant ; source `manual` |
+| RPC `remove_community_space_member(space, user)` | Cap manage ; soft `left_at` (option A : sync peut re-ajouter si encore éligible) |
+| Trigger `enrollments_sync_community_spaces` | AFTER insert/update status\|user_id\|offer_id → sync all spaces de l’org |
+| `is_community_space_member(space)` | Helper RLS |
+| `is_community_org_member(org)` | Helper RLS org-level (any active space membership **ou** org member) |
+
+### RLS
+
+- Spaces / feeds / members SELECT : cap manage\|moderate\|view_stats **ou** membre actif (`left_at` null).
+- Writes spaces/feeds/members : `community.manage`.
+- `organizations` SELECT : owner ∪ `is_org_member` ∪ `is_org_enrolled` ∪ **`is_community_org_member`** (logo/branding pour membres space sans enrollment).
+
+### Posts (V1, 2026-10-15)
+
+| Objet | Rôle |
+|-------|------|
+| `community_posts` | Soft `deleted_at` ; SELECT laisse auteur/staff voir soft-deleted (sinon UPDATE RLS échoue) ; feed filtre `deleted_at` null en app |
+| `can_post_to_community_feed(feed)` | Member + (`who_can_post=all` ∪ space staff ∪ org manage/moderate) |
+| `is_community_space_staff(space)` | Space role admin\|moderator ∪ org manage\|moderate |
+| Script | `scripts/community-posts.sql` |
+
+### Likes + comments (2026-10-15)
+
+| Objet | Rôle |
+|-------|------|
+| `community_post_likes` | PK `(post_id, user_id)` ; insert/delete own ; SELECT member/cap |
+| `community_post_comments` | Flat thread ; soft `deleted_at` ; body ≤ 2000 ; delete = auteur ∪ staff |
+| RPC `community_posts_engagement(ids, user?)` | `like_count`, `comment_count`, `liked_by_me` pour une page de posts |
+| Feed fetch | Cursor `(created_at, id)` pages ~20 ; comments cursor ASC par post |
+| Script | `scripts/community-post-likes-comments.sql` |
+
+### Directory (2026-10-15)
+
+- RPC `org_access_directory_page(org, q?, origin?, limit, offset)` : SECURITY DEFINER + `community.manage` ; union staff / enrollment / community ; `origins text[]`. Script `scripts/org-access-directory.sql`.
+- Space peers : pagination + search `profiles.full_name` via `community_space_members` (RLS membre).
+- `profiles` : policies insert/update own (`scripts/profiles-update-own.sql`).
+
+### DM (2026-10-15)
+
+| Objet | Rôle |
+|-------|------|
+| `community_conversations` | 1:1 via `pair_key` unique / org |
+| `community_conversation_participants` | 2 users / conv |
+| `community_messages` | body + soft `deleted_at` ; Realtime publication |
+| `get_or_create_community_dm(org, other)` | Cap/membership check + upsert pair |
+| Script | `scripts/community-dm.sql` |
+
+### Pas encore
+
+- Nested comment replies ; Realtime feed.
+
+### Hors schéma community
+
+- CRM / Unipile messagerie prospects.
+- Programs = enrollments existants.

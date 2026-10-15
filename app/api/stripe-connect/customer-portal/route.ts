@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
-  const returnUrl = `${baseUrl.replace(/\/$/, "")}/coached/profile`
+  const returnUrl = `${baseUrl.replace(/\/$/, "")}/profile`
 
   try {
     const session = await stripe.billingPortal.sessions.create(

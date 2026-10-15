@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "sonner"
+import { externalHref } from "@/lib/coached"
 import type { CreateCoachingSessionPayload } from "@/lib/services/coaching"
 import type { CoachingEnrollmentProduct } from "@/lib/services/coaching"
 
@@ -103,7 +104,7 @@ export function CreateSessionDialog({
         scheduled_at: new Date(scheduledAt).toISOString(),
         duration_minutes: durationMinutes,
         delivery_mode: deliveryMode || null,
-        meeting_url: meetingUrl || null,
+        meeting_url: externalHref(meetingUrl || null),
         location: location || null,
         session_number: null,
       })

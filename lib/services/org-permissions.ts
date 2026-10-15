@@ -8,6 +8,10 @@ import {
   type PermissionScope,
   resolvePermissionScope,
 } from "@/lib/permissions/capabilities"
+import {
+  parseOrganizationMode,
+  type OrganizationMode,
+} from "@/lib/permissions/org-capabilities"
 
 export type MatrixRole = "admin" | "sales" | "ambassador" | "coach" | "staff" | "bu_owner"
 
@@ -180,4 +184,83 @@ export async function updateOrganizationRolePermission(
     .eq("capability", args.capability)
 
   if (error) throw error
+}
+
+/** Staff membership in an org (not community-only). Null = student / community member only. */
+export type MyOrgStaffMembership = {
+  organizationId: number
+  memberId: number | null
+  memberRole: string
+  orgMode: OrganizationMode
+}
+
+/**
+ * Resolve dashboard-style staff context for any org id.
+ * Community space members without an `organization_members` row (and not owner)
+ * get `null` → no staff capabilities.
+ */
+export async function fetchMyOrgStaffMembership(
+  supabase: SupabaseClient,
+  args: { organizationId: number; userId: string }
+): Promise<MyOrgStaffMembership | null> {
+  const { organizationId, userId } = args
+
+  const [orgResult, memberResult] = await Promise.all([
+    supabase
+      .from("organizations")
+      .select("id, mode, owner_id")
+      .eq("id", organizationId)
+      .is("deleted_at", null)
+      .maybeSingle(),
+    supabase
+      .from("organization_members")
+      .select("id, role")
+      .eq("organization_id", organizationId)
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .maybeSingle(),
+  ])
+
+  if (orgResult.error) throw orgResult.error
+  if (memberResult.error) throw memberResult.error
+
+  const org = orgResult.data
+  if (!org) return null
+
+  const orgMode = parseOrganizationMode(org.mode)
+  const membership = memberResult.data
+
+  if (org.owner_id === userId) {
+    return {
+      organizationId,
+      memberId: membership?.id ?? null,
+      memberRole: "owner",
+      orgMode,
+    }
+  }
+
+  if (!membership || typeof membership.role !== "string") {
+    return null
+  }
+
+  return {
+    organizationId,
+    memberId: membership.id,
+    memberRole: membership.role,
+    orgMode,
+  }
+}
+
+/** Server / API UX gate via SQL `has_org_capability`. */
+export async function fetchHasOrgCapability(
+  supabase: SupabaseClient,
+  organizationId: number,
+  capability: OrgCapability
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("has_org_capability", {
+    p_organization_id: organizationId,
+    p_capability: capability,
+  })
+  if (error) throw error
+  return data === true
 }

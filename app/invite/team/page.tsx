@@ -119,7 +119,7 @@ export default function InviteTeamAcceptPage() {
                   variant="outline"
                   className="w-full"
                   onClick={() =>
-                    router.push(`/coached-signup?next=/invite/team?token=${encodeURIComponent(token)}`)
+                    router.push(`/signup?next=/invite/team?token=${encodeURIComponent(token)}`)
                   }
                 >
                   Create an account

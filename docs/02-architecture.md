@@ -10,7 +10,8 @@ Référence détaillée routes / entités : `APP_OVERVIEW.md`.
 /create-organization      → onboarding org
 /dashboard/*              → back-office org
 /org/[slug]               → page publique brandée + /buy/[offerId]
-/coached-* + /coached/*   → portail client
+app.* / {slug}.app.*      → portail membre (/home, /courses, /coaching, /s, …)
+/coached-landing          → landing hub (rewrite / sur app.*)
 API webhooks Stripe       → app/api/webhooks/stripe-connect
 API webhooks Resend       → app/api/webhooks/resend (campagnes delivery)
                             (dev: ngrok → voir docs/01-tech-stack.md ; prod: URL réelle)

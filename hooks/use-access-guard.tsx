@@ -16,12 +16,12 @@ export function useCoachedAccessGuard() {
   const pathname = usePathname()
   const { user, isLoading: authLoading } = useAuth()
 
-  const fallbackNext = "/coached"
+  const fallbackNext = "/home"
   const next = pathname && pathname !== "/" ? pathname : fallbackNext
 
   useEffect(() => {
     if (!authLoading && !user) {
-      const target = `/coached-login?next=${encodeURIComponent(next)}`
+      const target = `/login?next=${encodeURIComponent(next)}`
       router.replace(target)
     }
   }, [authLoading, user, next, router])
@@ -108,7 +108,7 @@ export function useCoachAccessGuard(options: UseCoachAccessGuardOptions = {}) {
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Button variant="outline" asChild>
-            <Link href="/coached">Open student area</Link>
+            <Link href="/home">Open student area</Link>
           </Button>
           <Button asChild>
             <Link href="/create-organization">Create an organization</Link>

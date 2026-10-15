@@ -102,7 +102,7 @@ Capabilities are enforced in UX (`useOrgCapabilities().can` / `scope`) and RLS (
 
 ### Coached experience
 
-- Auth: `/coached-signup`, `/coached-login`.
+- Auth: `/login`, `/signup` (host-aware: member on `app.*`, coach on apex).
 - Home `/coached`; course and coaching detail under `/coached/[slug]/...`.
 - Portal data via `v_coached_products` (living enrollments only).
 
@@ -116,7 +116,7 @@ Capabilities are enforced in UX (`useOrgCapabilities().can` / `scope`) and RLS (
 |-------|------|
 | `/` | Marketing / entry (coach-facing) |
 | `/signup`, `/login`, `/login/forgot-password`, `/login/reset-password` | Coach auth |
-| `/coached-signup`, `/coached-login` | Coached auth |
+| `/login`, `/signup` | Auth (member on `app.*`) |
 | `/create-organization` | Org onboarding |
 | `/invite/team` | Accept team invite |
 | `/auth/callback` | Auth callback (incl. guest purchase link) |

@@ -149,3 +149,57 @@ export const crmMarketingAnalyticsSchema = z.object({
 })
 
 export type CrmMarketingAnalytics = z.infer<typeof crmMarketingAnalyticsSchema>
+
+export const marketingCampaignAnalyticsKpisSchema = z.object({
+  campaigns: z.coerce.number(),
+  recipients: z.coerce.number(),
+  sent: z.coerce.number(),
+  delivered: z.coerce.number(),
+  opened: z.coerce.number(),
+  clicked: z.coerce.number(),
+  bounced: z.coerce.number(),
+  complained: z.coerce.number(),
+  unsubscribed: z.coerce.number(),
+  delivered_rate: z.coerce.number(),
+  open_rate: z.coerce.number(),
+  click_rate: z.coerce.number(),
+  click_to_open_rate: z.coerce.number(),
+  bounce_rate: z.coerce.number(),
+  unsubscribe_rate: z.coerce.number(),
+  complaint_rate: z.coerce.number(),
+})
+
+export const marketingCampaignAnalyticsRowSchema = z.object({
+  campaign_id: z.coerce.number(),
+  name: z.string(),
+  from_name: z.string(),
+  from_email: z.string(),
+  subject: z.string(),
+  sent_at: z.string().nullable(),
+  recipients: z.coerce.number(),
+  sent: z.coerce.number(),
+  delivered: z.coerce.number(),
+  non_delivered: z.coerce.number(),
+  opened: z.coerce.number(),
+  clicked: z.coerce.number(),
+  bounced: z.coerce.number(),
+  complained: z.coerce.number(),
+  unsubscribed: z.coerce.number(),
+  delivered_rate: z.coerce.number(),
+  non_delivered_rate: z.coerce.number(),
+  open_rate: z.coerce.number(),
+  click_rate: z.coerce.number(),
+  click_to_open_rate: z.coerce.number(),
+  bounce_rate: z.coerce.number(),
+  unsubscribe_rate: z.coerce.number(),
+  complaint_rate: z.coerce.number(),
+})
+
+export const crmMarketingCampaignAnalyticsSchema = z.object({
+  kpis: marketingCampaignAnalyticsKpisSchema,
+  campaigns: z.array(marketingCampaignAnalyticsRowSchema),
+})
+
+export type CrmMarketingCampaignAnalytics = z.infer<
+  typeof crmMarketingCampaignAnalyticsSchema
+>

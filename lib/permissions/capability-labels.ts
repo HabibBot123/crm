@@ -105,6 +105,15 @@ export const CAPABILITY_GROUPS: CapabilityGroup[] = [
     items: [{ capability: "campaigns.manage", label: "Manage campaigns" }],
   },
   {
+    id: "community",
+    label: "Community",
+    items: [
+      { capability: "community.manage", label: "Manage spaces & members" },
+      { capability: "community.moderate", label: "Moderate community" },
+      { capability: "community.view_stats", label: "View community stats" },
+    ],
+  },
+  {
     id: "org",
     label: "Organization",
     items: [{ capability: "org.settings", label: "Organization settings" }],

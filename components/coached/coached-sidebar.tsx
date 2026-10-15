@@ -1,101 +1,101 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import {
-  Home,
-  Users,
   BookOpen,
-  User,
+  Calendar,
   ChevronLeft,
   ChevronRight,
-  LogOut,
+  Home,
+  Layers,
+  MessageSquare,
+  User,
 } from "lucide-react"
+import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
+import { useCoachedHost } from "@/hooks/use-coached-host"
+import { getInitials } from "@/components/dashboard/user-avatar"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
-import { useState } from "react"
+import { OrgSwitcher } from "@/components/coached/org-switcher"
+import { displayNameFromUser } from "@/lib/user-display"
+import { isCoachedNavActive } from "@/lib/coached"
 
-const navItems = [
-  { label: "Home", href: "/coached", icon: Home },
-  { label: "Organizations", href: "/coached/coaches", icon: Users },
-  { label: "Programs", href: "/coached/courses", icon: BookOpen },
-  { label: "Profile", href: "/coached/profile", icon: User },
+const hubNavItems = [
+  { label: "Home", href: "/home", icon: Home },
+  { label: "Account", href: "/profile", icon: User },
 ]
 
-function getUserDisplayName(user: { user_metadata?: Record<string, unknown>; email?: string | null } | null): string {
-  if (!user) return "User"
-  const name =
-    (user.user_metadata?.full_name as string) ??
-    (user.user_metadata?.name as string) ??
-    (user.email?.split("@")[0] ?? "User")
-  return name
-}
+const orgNavBase = [
+  { label: "Home", href: "/home", icon: Home },
+  { label: "Spaces", href: "/s", icon: Layers },
+  { label: "Courses", href: "/courses", icon: BookOpen },
+  { label: "Coaching", href: "/coaching", icon: Calendar },
+  { label: "Messages", href: "/messages", icon: MessageSquare },
+  { label: "Account", href: "/profile", icon: User },
+]
 
 export function CoachedSidebar() {
   const pathname = usePathname()
-  const router = useRouter()
-  const { user, signOut } = useAuth()
+  const { user } = useAuth()
+  const { isOrgApp } = useCoachedHost()
   const [collapsed, setCollapsed] = useState(false)
 
-  const displayName = getUserDisplayName(user)
-  const email = user?.email ?? ""
-  const initial = displayName.charAt(0).toUpperCase() || "?"
-
-  const handleSignOut = async () => {
-    await signOut()
-    router.push("/")
-  }
+  const fullName = displayNameFromUser(user)
+  const email = user?.email ?? null
+  const userInitial = getInitials(fullName, email)
+  const navItems = isOrgApp ? orgNavBase : hubNavItems
 
   return (
     <>
       <div
         className={cn(
           "hidden flex-shrink-0 lg:block lg:transition-all lg:duration-200",
-          collapsed ? "lg:w-16" : "lg:w-64"
+          collapsed ? "lg:w-16" : "lg:w-60"
         )}
         aria-hidden
       />
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-30 hidden h-screen flex-col border-r border-sidebar-border bg-sidebar lg:flex lg:transition-all lg:duration-200",
-          collapsed ? "lg:w-16" : "lg:w-64"
+          collapsed ? "lg:w-16" : "lg:w-60"
         )}
       >
-        <div className="flex h-16 min-w-0 items-center justify-between gap-2 border-b border-sidebar-border px-3">
-          {!collapsed && (
-            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden pl-3">
-              <span
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-[10px] font-bold text-sidebar-primary-foreground"
-                aria-hidden
-              >
-                {initial}
-              </span>
-              <div className="min-w-0 flex-1 overflow-hidden">
-                <div className="flex flex-col gap-0.5 truncate py-2">
-                  <span className="truncate text-sm font-medium text-sidebar-foreground">
-                    {displayName}
-                  </span>
-                  {email ? (
-                    <span className="truncate text-xs text-sidebar-foreground/70">
-                      {email}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-            </div>
+        <div
+          className={cn(
+            "flex min-h-14 min-w-0 border-b border-sidebar-border px-2 py-2",
+            collapsed && isOrgApp
+              ? "flex-col items-center gap-1"
+              : "items-center justify-between gap-1"
           )}
+        >
+          {isOrgApp ? (
+            <div className={cn("min-w-0", !collapsed && "flex-1")}>
+              <OrgSwitcher collapsed={collapsed} />
+            </div>
+          ) : !collapsed ? (
+            <Link href="/home" className="flex items-center gap-2 px-1">
+              <span className="flex h-6 w-6 items-center justify-center rounded bg-primary text-[10px] font-bold text-primary-foreground">
+                C
+              </span>
+              <span className="font-display text-sm font-semibold text-sidebar-foreground">
+                CoachStack
+              </span>
+            </Link>
+          ) : null}
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 shrink-0 text-sidebar-foreground"
+            className="h-7 w-7 shrink-0 text-sidebar-foreground/40 hover:bg-sidebar-accent hover:text-sidebar-foreground"
             onClick={() => setCollapsed(!collapsed)}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? (
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-3.5 w-3.5" />
             ) : (
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-3.5 w-3.5" />
             )}
           </Button>
         </div>
@@ -103,9 +103,7 @@ export function CoachedSidebar() {
         <nav className="flex-1 overflow-y-auto p-3">
           <ul className="space-y-1">
             {navItems.map((item) => {
-              const isActive =
-                pathname === item.href ||
-                (item.href !== "/coached" && pathname.startsWith(item.href))
+              const isActive = isCoachedNavActive(pathname, item.href)
               return (
                 <li key={item.href}>
                   <Link
@@ -127,22 +125,38 @@ export function CoachedSidebar() {
           </ul>
         </nav>
 
-        <div className="border-t border-sidebar-border p-3">
-          <div className="flex items-center justify-between">
-            {!collapsed && <ThemeToggle />}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleSignOut}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
-                collapsed && "justify-center px-2"
-              )}
-              title={collapsed ? "Sign out" : undefined}
-            >
-              <LogOut className="h-4 w-4 shrink-0" />
-              {!collapsed && <span>Sign out</span>}
-            </Button>
+        <div className="border-t border-sidebar-border p-2">
+          <div className="flex items-center gap-1">
+            {user ? (
+              <Link
+                href="/profile"
+                title={[fullName, email].filter(Boolean).join(" · ") || "Account"}
+                className={cn(
+                  "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-sidebar-accent",
+                  pathname === "/profile" && "bg-sidebar-accent",
+                  collapsed && "justify-center"
+                )}
+              >
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold text-primary">
+                  {userInitial}
+                </span>
+                {!collapsed && (fullName || email) ? (
+                  <div className="min-w-0 flex-1 overflow-hidden">
+                    <p className="truncate text-xs font-medium text-sidebar-foreground">
+                      {fullName || email}
+                    </p>
+                    {fullName && email ? (
+                      <p className="truncate text-[10px] text-sidebar-foreground/50">
+                        {email}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </Link>
+            ) : null}
+            <span className="shrink-0">
+              <ThemeToggle />
+            </span>
           </div>
         </div>
       </aside>

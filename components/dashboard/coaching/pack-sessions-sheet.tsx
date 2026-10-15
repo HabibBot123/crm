@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { StatusBadge } from "@/components/dashboard/status-badge"
 import { LoadingRows } from "@/components/dashboard/loading-rows"
+import { externalHref } from "@/lib/coached"
 import type { CoachingEnrollmentProduct, CoachingSessionRow } from "@/lib/services/coaching"
 
 function SectionLabel({ children }: { children: ReactNode }) {
@@ -87,9 +88,17 @@ export function PackSessionsSheet({
     (pack.enrollment_status === "active" || pack.enrollment_status === "paused")
   const waitingSignup =
     enrollmentLiving && pack.coach_full_name != null && pack.user_id == null
+  const quotaReached =
+    pack != null &&
+    (pack.product_completed_at != null ||
+      (pack.completion_total != null &&
+        pack.completion_total > 0 &&
+        ((pack.completion_completed ?? 0) >= pack.completion_total ||
+          sessions.length >= pack.completion_total)))
   const canLog =
     canCreateSession &&
     enrollmentLiving &&
+    !quotaReached &&
     pack.coach_full_name != null &&
     pack.user_id != null
 
@@ -115,7 +124,13 @@ export function PackSessionsSheet({
                   <p className="text-sm text-muted-foreground">{headerMeta}</p>
                 ) : null}
                 <div className="flex flex-wrap items-center gap-2">
-                  <StatusBadge status={pack.enrollment_status} />
+                  <StatusBadge
+                    status={
+                      pack.product_completed_at != null
+                        ? "completed"
+                        : pack.enrollment_status
+                    }
+                  />
                   {waitingSignup ? (
                     <StatusBadge
                       status="waiting_signup"
@@ -209,18 +224,24 @@ export function PackSessionsSheet({
                                   ? ` · ${session.coach_display}`
                                   : ""}
                               </p>
-                              {session.meeting_url ? (
-                                <a
-                                  href={session.meeting_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <Video className="h-3 w-3" />
-                                  Video link
-                                </a>
-                              ) : null}
+                              {(() => {
+                                const meetingHref = externalHref(
+                                  session.meeting_url
+                                )
+                                if (!meetingHref) return null
+                                return (
+                                  <a
+                                    href={meetingHref}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <Video className="h-3 w-3" />
+                                    Video link
+                                  </a>
+                                )
+                              })()}
                               {session.location ? (
                                 <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
                                   <MapPin className="h-3 w-3" />

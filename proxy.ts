@@ -1,81 +1,94 @@
 import { NextRequest, NextResponse } from "next/server"
 import { updateSession } from "@/lib/supabase/middleware"
+import {
+  buildAppHubOrigin,
+  isLocalDevHost,
+  parseCoachedHost,
+  requestPublicUrl,
+} from "@/lib/coached-host"
 
-const RESERVED_SUBDOMAINS = ["www", "dashboard", "api", "admin"]
-
-function getSubdomain(host: string): string | null {
-  const parts = host.split(".")
-  if (parts.length < 2) return null
-
-  const [subdomainWithPort, ...rest] = parts
-  const subdomain = subdomainWithPort?.split(":")[0]?.toLowerCase() ?? ""
-  if (!subdomain || RESERVED_SUBDOMAINS.includes(subdomain)) return null
-
-  const base = rest.join(".").toLowerCase()
-
-  // Local dev: slug.localhost or slug.localhost:3000
-  if (base === "localhost") return subdomain
-
-  // Production: slug.domain.tld or slug.app.domain.tld — accept any multi-part base
-  if (rest.length >= 1) return subdomain
-
-  return null
-}
-
-const COACHED_PATHS_PREFIX = "/coached"
-const COACHED_PATHS_EXACT = ["/coached-landing", "/coached-login", "/coached-signup", "/coached"]
-
-function isCoachedPath(pathname: string): boolean {
-  if (COACHED_PATHS_EXACT.includes(pathname)) return true
-  return pathname === COACHED_PATHS_PREFIX || pathname.startsWith(COACHED_PATHS_PREFIX + "/")
-}
-
-function buildAppHost(host: string, subdomain: string | null): string {
-  const [hostname, ...portParts] = host.split(":")
-  const port = portParts.length ? ":" + portParts.join(":") : ""
-  const base = hostname.replace(/^www\./, "")
-  return "app." + base + port
+function isMemberPath(pathname: string): boolean {
+  return (
+    pathname === "/home" ||
+    pathname.startsWith("/home/") ||
+    pathname === "/courses" ||
+    pathname.startsWith("/courses/") ||
+    pathname === "/coaching" ||
+    pathname.startsWith("/coaching/") ||
+    pathname === "/s" ||
+    pathname.startsWith("/s/") ||
+    pathname === "/members" ||
+    pathname.startsWith("/members/") ||
+    pathname === "/messages" ||
+    pathname.startsWith("/messages/") ||
+    pathname === "/profile" ||
+    pathname.startsWith("/profile/")
+  )
 }
 
 export async function proxy(request: NextRequest) {
   const host = request.headers.get("host") ?? ""
   const pathname = request.nextUrl.pathname
-  const subdomain = getSubdomain(host)
+  const hostCtx = parseCoachedHost(host)
+  const local = isLocalDevHost(host)
+  const proto =
+    request.headers.get("x-forwarded-proto") ??
+    request.nextUrl.protocol.replace(":", "")
 
-  // Coached pages are only served on app.* — redirect from main domain to app subdomain
-  if (subdomain !== "app" && isCoachedPath(pathname)) {
-    const proto = request.headers.get("x-forwarded-proto") ?? request.nextUrl.protocol.replace(":", "")
-    const appHost = buildAppHost(host, subdomain)
-    const url = request.nextUrl.clone()
-    url.protocol = proto === "https" ? "https:" : "http:"
-    url.host = appHost
-    return NextResponse.redirect(url.toString())
+  // OAuth / magic-link on Site URL root
+  if (pathname === "/" && request.nextUrl.searchParams.has("code")) {
+    return NextResponse.redirect(
+      requestPublicUrl(request, "/auth/callback", request.nextUrl.search)
+    )
   }
 
-  // Special subdomain for coached clients: app.* → coached landing
-  if (subdomain === "app" && pathname === "/") {
-    const url = request.nextUrl.clone()
-    url.pathname = "/coached-landing"
-    return NextResponse.rewrite(url)
+  // Member pages: only cross-host redirect in prod
+  if (
+    isMemberPath(pathname) &&
+    !local &&
+    hostCtx.kind !== "app-hub" &&
+    hostCtx.kind !== "app-org"
+  ) {
+    const targetOrigin = buildAppHubOrigin({
+      protocol: proto,
+      currentHost: host,
+    })
+    return NextResponse.redirect(
+      `${targetOrigin}${pathname}${request.nextUrl.search}`
+    )
   }
 
-  // Public org page for other slugs: slug.domain.tld → /org/[slug]
-  if (subdomain && pathname === "/") {
-    const url = request.nextUrl.clone()
-    url.pathname = `/org/${subdomain}`
-    return NextResponse.rewrite(url)
+  if (hostCtx.kind === "app-org") {
+    if (pathname === "/") {
+      return NextResponse.redirect(requestPublicUrl(request, "/home"))
+    }
+    return await updateSession(request)
   }
 
-  // slug.myapp.com/buy/[offerId] → rewrite to /org/[slug]/buy/[offerId] (URL stays /buy/id)
-  const buyMatch = subdomain && pathname.match(/^\/buy\/([^/]+)\/?$/)
-  if (buyMatch) {
-    const offerId = buyMatch[1]
-    const url = request.nextUrl.clone()
-    url.pathname = `/org/${subdomain}/buy/${offerId}`
-    return NextResponse.rewrite(url)
+  if (hostCtx.kind === "app-hub") {
+    if (pathname === "/" && !local) {
+      const url = request.nextUrl.clone()
+      url.pathname = "/coached-landing"
+      return NextResponse.rewrite(url)
+    }
+    return await updateSession(request)
   }
 
-  // Provider / worker callbacks: no session refresh (must stay fast + public)
+  if (hostCtx.kind === "store") {
+    if (pathname === "/") {
+      const url = request.nextUrl.clone()
+      url.pathname = `/org/${hostCtx.orgSlug}`
+      return NextResponse.rewrite(url)
+    }
+    const buyMatch = pathname.match(/^\/buy\/([^/]+)\/?$/)
+    if (buyMatch) {
+      const offerId = buyMatch[1]
+      const url = request.nextUrl.clone()
+      url.pathname = `/org/${hostCtx.orgSlug}/buy/${offerId}`
+      return NextResponse.rewrite(url)
+    }
+  }
+
   if (
     pathname.startsWith("/api/webhooks/") ||
     pathname.startsWith("/api/inngest")
@@ -83,7 +96,6 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Default: keep existing Supabase session middleware for the app
   return await updateSession(request)
 }
 

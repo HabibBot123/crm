@@ -7,6 +7,22 @@ export function formatProductDate(iso: string | null): string {
   })
 }
 
+/** Badge status for a product line: delivery completed_at wins over active. */
+export function deliveryStatus(
+  enrollmentStatus: string,
+  productCompletedAt: string | null | undefined
+): string {
+  if (
+    enrollmentStatus === "expired" ||
+    enrollmentStatus === "cancelled" ||
+    enrollmentStatus === "paused"
+  ) {
+    return enrollmentStatus
+  }
+  if (productCompletedAt) return "completed"
+  return "active"
+}
+
 export function productTypeLabel(type: string): string {
   return type === "coaching" ? "Coaching" : "Course"
 }
@@ -22,13 +38,19 @@ export function productTypeBadgeClassName(type: string): string {
 /** Deep link to a purchased program line (enrollment product), not bare product_id. */
 export function programHref(p: {
   product_type: string
-  organization_slug: string
   enrollment_product_id: number
 }): string {
   if (p.product_type === "coaching") {
-    return `/coached/${p.organization_slug}/coaching/${p.enrollment_product_id}`
+    return `/coaching/${p.enrollment_product_id}`
   }
-  return `/coached/${p.organization_slug}/courses/${p.enrollment_product_id}`
+  return `/courses/${p.enrollment_product_id}`
+}
+
+/** Active state for member org nav. */
+export function isCoachedNavActive(pathname: string, href: string): boolean {
+  if (pathname === href) return true
+  if (href === "/home") return false
+  return pathname.startsWith(`${href}/`)
 }
 
 export function formatSessionDateTime(iso: string): string {
@@ -47,5 +69,15 @@ export function formatDuration(minutes: number): string {
   const h = Math.floor(minutes / 60)
   const m = minutes % 60
   return m ? `${h}h ${m}m` : `${h}h`
+}
+
+/** Absolute URL for external links (meeting). Bare hosts like `test.fr` become relative otherwise. */
+export function externalHref(url: string | null | undefined): string | null {
+  if (url == null) return null
+  const trimmed = url.trim()
+  if (!trimmed) return null
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return trimmed
+  if (trimmed.startsWith("//")) return `https:${trimmed}`
+  return `https://${trimmed}`
 }
 

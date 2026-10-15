@@ -103,3 +103,8 @@ export function useCurrentOrganization() {
   }
   return context
 }
+
+/** Safe outside dashboard (member app). Returns null when no OrganizationProvider. */
+export function useOptionalCurrentOrganization(): OrganizationContextType | null {
+  return useContext(OrganizationContext) ?? null
+}

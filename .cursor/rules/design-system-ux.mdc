@@ -84,7 +84,7 @@ Files: `components/ui/button.tsx`, `input.tsx`, `select.tsx`, `tabs.tsx`, `input
 | Page container | `<div className="space-y-4 p-6 lg:p-8">` |
 | Page title | Always `PageHeader` (`title` + optional `subtitle` + optional `back`). Actions = `children` (not an `action` prop). |
 | Content sections (data, lists, metrics) | `SectionCard` (flat, thin border, no shadow) |
-| Settings / account pages | 2-column layout: left nav (`w-48 shrink-0`) + right content inside `SectionCard` |
+| Settings / account pages (section switcher) | Parent: `flex flex-col gap-4 md:flex-row md:gap-8`. Nav via shared `NavList` (`components/dashboard/nav-list.tsx`): **`< md`** = full-width `Select` ; **`md+`** = left rail (`w-48`). Content: `min-w-0 flex-1` (+ `SectionCard` when needed). Same pattern for Account, Offers/Products editors, Forms hub/editor, Campaigns editor. |
 | Metric strips | Flat label + value inside one `SectionCard` (`grid gap-6 …`). No `StatCard`, no nested metric cards. Mirror Overview. |
 
 ### Nested surfaces (avoid white-on-white)

@@ -2,32 +2,65 @@
 
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Eye, EyeOff, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAuth } from "@/hooks/use-auth"
+import { useCoachedHost } from "@/hooks/use-coached-host"
 import { toast } from "sonner"
 
 export default function SignupPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { supabase } = useAuth()
-  const next = searchParams.get("next") ?? "/create-organization"
-  const signupSource = "coach"
+  const { supabase, user, isLoading } = useAuth()
+  const { isMemberHost, ready } = useCoachedHost()
+
+  const defaultNext = isMemberHost ? "/home" : "/create-organization"
+  const next = searchParams.get("next") ?? defaultNext
+  const signupSource = isMemberHost ? "coached" : "coach"
+
   const [showPassword, setShowPassword] = useState(false)
   const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+
+  async function uploadAvatarIfPossible(file: File | null) {
+    if (!file) return
+    const formData = new FormData()
+    formData.set("file", file)
+    const res = await fetch("/api/profile/upload-avatar", {
+      method: "POST",
+      body: formData,
+    })
+    if (!res.ok) {
+      const data: unknown = await res.json().catch(() => ({}))
+      const message =
+        data &&
+        typeof data === "object" &&
+        "error" in data &&
+        typeof data.error === "string"
+          ? data.error
+          : "Could not upload photo"
+      toast.error(message)
+    }
+  }
+
+  useEffect(() => {
+    if (!isLoading && user && isMemberHost) {
+      router.replace(next)
+    }
+  }, [isLoading, user, isMemberHost, next, router])
 
   async function handleEmailSignup(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     const callbackUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}&signup_source=${signupSource}`
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -35,12 +68,26 @@ export default function SignupPage() {
         emailRedirectTo: callbackUrl,
       },
     })
-    setLoading(false)
     if (error) {
+      setLoading(false)
       toast.error(error.message)
       return
     }
-    toast.success("Check your email to verify your account")
+    if (data.session && avatarFile) {
+      await uploadAvatarIfPossible(avatarFile)
+    }
+    setLoading(false)
+    if (data.session) {
+      toast.success("Account created")
+      router.push(next)
+      router.refresh()
+      return
+    }
+    toast.success(
+      avatarFile
+        ? "Check your email to verify. You can add your photo in Profile after signing in."
+        : "Check your email to verify your account"
+    )
     router.push("/login")
     router.refresh()
   }
@@ -62,40 +109,87 @@ export default function SignupPage() {
     }
   }
 
+  const panelTitle = isMemberHost
+    ? "Create your student account"
+    : "Start building your empire"
+  const panelBody = isMemberHost
+    ? "Join your coach, access your programs, and track your progress in one place."
+    : "Join 2,000+ coaches who use CoachStack to sell courses, manage clients, and grow their business."
+  const bullets = isMemberHost
+    ? [
+        "Secure login to access your purchases",
+        "Your data stays private between you and your coach",
+        "Works for coaching, courses, and memberships",
+      ]
+    : ["Free plan available", "No credit card required", "Set up in 5 minutes"]
+  const formTitle = isMemberHost
+    ? "Sign up to access your coaching"
+    : "Create your account"
+  const footerNote = isMemberHost
+    ? "By creating an account you agree to the terms and privacy policy shared by your coach."
+    : null
+
   return (
     <div className="flex min-h-screen">
       <div className="hidden w-1/2 bg-primary/5 lg:flex lg:flex-col lg:justify-between lg:p-12">
         <Link href="/" className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">C</span>
-          <span className="text-lg font-bold text-foreground font-display">CoachStack</span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
+            C
+          </span>
+          <span className="text-lg font-bold text-foreground font-display">
+            CoachStack
+          </span>
         </Link>
         <div>
-          <h2 className="text-3xl font-bold text-foreground font-display">Start building your empire</h2>
-          <p className="mt-3 text-muted-foreground leading-relaxed">
-            Join 2,000+ coaches who use CoachStack to sell courses, manage clients, and grow their business.
+          <h2 className="font-display text-3xl font-bold text-foreground">
+            {ready ? panelTitle : "Create your account"}
+          </h2>
+          <p className="mt-3 leading-relaxed text-muted-foreground">
+            {ready ? panelBody : null}
           </p>
-          <ul className="mt-8 space-y-3">
-            {["Free plan available", "No credit card required", "Set up in 5 minutes"].map((item) => (
-              <li key={item} className="flex items-center gap-3 text-sm text-foreground">
-                <Check className="h-4 w-4 text-success" />
-                {item}
-              </li>
-            ))}
-          </ul>
+          {ready ? (
+            <ul className="mt-8 space-y-3">
+              {bullets.map((item) => (
+                <li
+                  key={item}
+                  className="flex items-center gap-3 text-sm text-foreground"
+                >
+                  <Check className="h-4 w-4 text-success" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
-        <p className="text-sm text-muted-foreground">Trusted by top coaches worldwide</p>
+        <p className="text-sm text-muted-foreground">
+          {isMemberHost
+            ? "Powered by CoachStack and Stripe"
+            : "Trusted by top coaches worldwide"}
+        </p>
       </div>
 
       <div className="flex flex-1 flex-col items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm">
           <div className="mb-8 text-center lg:text-left">
             <div className="mb-6 flex items-center justify-center gap-2.5 lg:hidden">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">C</span>
-              <span className="text-lg font-bold text-foreground font-display">CoachStack</span>
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
+                C
+              </span>
+              <span className="text-lg font-bold text-foreground font-display">
+                CoachStack
+              </span>
             </div>
-            <h1 className="text-2xl font-bold text-foreground font-display">Create your account</h1>
+            <h1 className="font-display text-2xl font-bold text-foreground">
+              {ready ? formTitle : "Create your account"}
+            </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Already have an account? <Link href="/login" className="font-medium text-primary hover:underline">Sign in</Link>
+              Already have an account?{" "}
+              <Link
+                href={`/login${next !== defaultNext ? `?next=${encodeURIComponent(next)}` : ""}`}
+                className="font-medium text-primary hover:underline"
+              >
+                Sign in
+              </Link>
             </p>
           </div>
 
@@ -108,10 +202,22 @@ export default function SignupPage() {
               disabled={googleLoading}
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                <path
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
+                  fill="#4285F4"
+                />
+                <path
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  fill="#34A853"
+                />
+                <path
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                  fill="#FBBC05"
+                />
+                <path
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                  fill="#EA4335"
+                />
               </svg>
               {googleLoading ? "Redirecting…" : "Continue with Google"}
             </Button>
@@ -132,6 +238,16 @@ export default function SignupPage() {
                 placeholder="John Smith"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="avatar">Photo (optional)</Label>
+              <Input
+                id="avatar"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                onChange={(e) => setAvatarFile(e.target.files?.[0] ?? null)}
               />
             </div>
 
@@ -164,7 +280,11 @@ export default function SignupPage() {
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
                 </button>
               </div>
             </div>
@@ -174,9 +294,19 @@ export default function SignupPage() {
             </Button>
 
             <p className="text-center text-xs text-muted-foreground">
-              By creating an account you agree to our{" "}
-              <a href="#" className="text-primary hover:underline">Terms</a> and{" "}
-              <a href="#" className="text-primary hover:underline">Privacy Policy</a>.
+              {footerNote ?? (
+                <>
+                  By creating an account you agree to our{" "}
+                  <a href="#" className="text-primary hover:underline">
+                    Terms
+                  </a>{" "}
+                  and{" "}
+                  <a href="#" className="text-primary hover:underline">
+                    Privacy Policy
+                  </a>
+                  .
+                </>
+              )}
             </p>
           </form>
         </div>

@@ -5,6 +5,204 @@ Règle : 1 entrée = 1 thème livré (pas chaque polish UI).
 
 ---
 
+## 2026-10-15 — Cron settlement BU (déjà live)
+
+- pg_cron `settle-bu-owner-previous-month` déjà actif (`40 3 1 * *`). Docs 03/06 + script `scripts/settle-bu-owner-cron.sql`.
+
+## 2026-10-15 — Docs : coaching pack + directory Message done
+
+- Coaching pack workspace + Directory space Message marqués done (`docs/03`).
+
+## 2026-10-15 — Account/Security UI partagée
+
+- `AccountProfileCard` + `SecuritySection` (Signed in with ; reset password seulement si provider email).
+- `/profile` (member) et `/dashboard/account` partagent la même UI Profile + Security.
+
+## 2026-10-15 — Marketing Campaigns stats enrichies
+
+- Résumé type Brevo (campaigns, recipients, opens/clicks/unsub + rates, bounce, CTO, complaints).
+- Table campagne : from/subject/date + delivered/failed/bounce/open/click/CTO/unsub/spam. Pas de Δ% (envoi unique). → `docs/04`.
+
+## 2026-10-15 — Marketing analytics : lens Campaigns
+
+- KPI partagés en haut (Revenue / Leads / Converted / Conv %). Switch Inbound | Campaigns sous les KPI.
+- Campaigns : delivery KPI + table campagnes envoyées dans la période. Cap `campaigns.manage`. → `docs/03` / `04`.
+
+## 2026-10-15 — useOrgCoachingInbox (Home + Coaching)
+
+- Hook unique `asClient` + `asCoach` ; rows partagés. Home affiche aussi les packs as coach.
+
+## 2026-10-15 — Member routes /courses/[id] /coaching/[id]
+
+- Retiré `/programs/{slug}/…`. Details sous `/courses/[id]` et `/coaching/[id]` (org = host). Pas de redirect legacy.
+
+## 2026-10-15 — Course player UI align shell
+
+- Player cours : plus de full-bleed/FAB ; PageHeader + progress compact ; sidebar nested type Spaces ; Contents header mobile ; LessonNav densifié.
+
+## 2026-10-15 — Password reset via auth/callback
+
+- `resetPasswordForEmail` redirectTo → `/auth/callback?next=/login/reset-password` (profile, account, forgot). PKCE code exchange avant le formulaire.
+
+## 2026-10-15 — Profile page UI align + inline name
+
+- `/profile` : SectionCard / PageHeader ; crayon inline full name ; retire Edit dialog, coach workspace, email/push toggles.
+
+## 2026-10-15 — Space settings page + feeds in left nav
+
+- Shell `/s` PC : feeds nested sous le space actif dans la nav gauche (pas tabs au-dessus des posts).
+- `/s/[slug]/settings` : space + rules + CRUD feeds. Edit → page settings.
+
+## 2026-10-15 — Community dashboard tabs + space members UX
+
+- Dashboard Community : tabs Spaces | Members (annuaire org) ; Open/Edit/Archive ; plus Sync/Members sheet.
+- Space members app : back, remove icon + confirm dialog. Nav `/members` retirée de l’app membre.
+
+## 2026-10-15 — Feed likes + comments + cursor pagination
+
+- Tables `community_post_likes` / `community_post_comments` + RPC engagement.
+- Feed : pages cursor 20 + Load older ; comments expand + load more. → `docs/03` `06`.
+
+## 2026-10-15 — Add space member by email lookup
+
+- Plus de dump clients/team 100. Look up email → propose team/client avec compte ; no_account / not_found explicites.
+
+## 2026-10-15 — Member app: space rules + members manage
+
+- Create/Edit space (app membre) : offer rules + `remove_on_expire`.
+- `/s/…/members` : add/remove si `community.manage`. Shared `SpaceOfferRulesFields`.
+
+## 2026-10-15 — Drop legacy `/coached*` routes
+
+- Retiré redirects proxy + dossiers `app/coached`, `coached-login`, `coached-signup`. `/coached-landing` gardé (rewrite hub).
+
+## 2026-10-15 — Offer → space membership rules V1
+
+- Table `community_space_membership_rules` + sync/create/add/remove RPCs + enrollment trigger.
+- Empty rules = all living enrollments ; `remove_on_expire` ; manual soft-remove (option A) ; staff via caps.
+- Dashboard : create dialog offers ; Members sheet add/remove. → `docs/03` `04` `06`.
+
+## 2026-10-15 — Delivery completed at product level
+
+- `enrollment_products.completed_at` (plus enrollment.status=completed pour delivery). Sync par ligne course/coaching. UI badges via `deliveryStatus()`. → `docs/06`.
+
+## 2026-10-15 — Delivery completed (course + coaching)
+
+- (supersédé) sync enrollment-level. Remplacé par product-level.
+
+## 2026-10-15 — Quota séances → enrollment completed
+
+- Trigger : `completed_at` count ≥ `offers.sessions_count` → `enrollments.status=completed` (revert si undo).
+- `v_coached_products` garde `completed` visible (accès historique). Add session bloqué au quota. Edit séance : coach + client. → `docs/06`.
+
+## 2026-10-15 — Sessions edit / note / complete / delete
+
+- `notes` HTML sur `coaching_sessions` ; client UPDATE own pack ; coach DELETE via `sessions.create`.
+- UI pack : edit (client+coach), note TipTap + complete (les deux), delete (coach). → `docs/06`.
+
+## 2026-10-15 — Coaching pack tabs Sessions | Chat
+
+- Detail pack : onglets (plus split 2 colonnes). Chat polish partagé. → `docs/04`.
+
+## 2026-10-15 — Coach contact dénorm + bandeau pack
+
+- `coaching_assignments.coach_user_id` / `coach_email` (trigger) : client lit le contact sans SELECT `organization_members`.
+- Detail coaching : bandeau interlocuteur (avatar, mail, pack, dates). → `docs/06`.
+
+## 2026-10-15 — Courses / Coaching membre + org member commu
+
+- Nav : Courses + Coaching (plus Programs). Detail pack = séances bilatérales + chat DM embarqué.
+- `is_community_org_member` += `organization_members` actifs (pas d’obligation space pour staff). → `docs/03` `04` `06`.
+
+## 2026-10-15 — Delete staff UI + DM V1
+
+- Feed : delete visible si auteur **ou** `is_community_space_staff`.
+- DM 1:1 : tables + RPC + `/messages` + Realtime ; Message depuis cards. → `docs/03` `06`.
+
+## 2026-10-15 — Suite community + coaching UX
+
+- Roadmap : rules → stats ; puis coaching membre (chat + séances). → `docs/03` `04`.
+
+## 2026-10-15 — Directories + avatar Bunny
+
+- Avatar Bunny : API `/api/profile/upload-avatar` ; signup + `/profile` + account.
+- Space members : cards + search + pagination.
+- Org `/members` admin : RPC directory + table ; nav Members si `community.manage`. → `docs/03` `04` `06`.
+
+## 2026-10-15 — Fix soft-delete posts RLS
+
+- Cause : SELECT exigeait `deleted_at is null` → UPDATE soft-delete refusé.
+- SELECT : membre voit non-deleted ; auteur/staff voient aussi soft-deleted. → `docs/06`.
+
+## 2026-10-15 — Hub auto-org (localStorage)
+
+- Dernière org en `coachstack-last-coached-org-slug` ; `/home` hub redirect ; `?pick=1` = picker.
+- Programs retiré du nav hub ; `/programs` hub → org. → `docs/04`.
+
+## 2026-10-15 — Fix redirect login → localhost
+
+- Cause : `request.url` / `nextUrl` = `localhost` alors que Host = `app.lvh.me`.
+- Fix : `requestPublicOrigin` / `requestPublicUrl` dans auth callback + proxy + middleware session. → `docs/04`.
+
+## 2026-10-15 — Edit space + UI `/s`
+
+- Titre space + sous-titre org retirés (nav + header suffisent) ; description seule.
+- Edit name/description si `community.manage` (slug inchangé). → `docs/03`.
+
+## 2026-10-15 — Spaces shell type Settings
+
+- `/s` : NavList spaces (Select mobile) + feed pleine largeur ; query `?space=` ; `/s/[slug]` redirect.
+- Posts V1 inchangés. → `docs/03`.
+
+## 2026-10-15 — Spaces UI + posts feed V1
+
+- DB `community_posts` + helpers post/staff. → `docs/06`.
+
+## 2026-10-15 — RLS org SELECT pour membres community
+
+- `is_community_org_member(org)` + policy `organizations_select_related` élargie (branding/logo sans enrollment). Script `organizations-select-community-members.sql`. → `docs/06`.
+
+## 2026-10-15 — Org switcher marque (logo + sheet mobile)
+
+- Trigger logo / initiale + nom ; dropdown desktop, bottom sheet mobile ; 1 org = lien brand sans menu.
+- Branding (`logo_url`, `primary_color`) dans `fetchCoachedCommunityOrgs`. Header mobile visible. → `docs/03`.
+
+## 2026-10-15 — Auth host-aware : fin `coached-login`
+
+- `/login` + `/signup` selon host (`isMemberAppHost`) ; pages `coached-login` / `coached-signup` supprimées (redirect proxy).
+- Cookie org retiré ; local membre = `*.lvh.me` only. → `docs/04`.
+
+## 2026-10-15 — Local `app.lvh.me` validé (session hub↔org)
+
+- Login hub → org sans re-login (`Domain=.lvh.me`). Plain `localhost` = coach.
+
+## 2026-10-15 — Strip `/coached` paths + no org-level members table
+
+- Routes membre : `/home` `/programs` `/s` `/members` `/messages` `/profile` ; redirects legacy `/coached/*`.
+- Pas de `community_members` V1 (space members + enrollment suffisent). → `docs/04`.
+
+## 2026-10-15 — Local coached: cookie org (pas subdomain) [supersédé si expérience OK]
+
+- Bug: session `localhost` ≠ `*.app.localhost` → login loop + `/?code=` hors callback.
+- Fix alors: rester sur `localhost:3000`, org via cookie. → expérience hosts ci-dessus.
+
+## 2026-10-15 — Hosts app membre + shell Circle
+
+- Store `{slug}.coachstack.co` ; hub `app.*` ; membre `{slug}.app.*`. Proxy + switcher + programs org-scoped.
+- Commu = membership (expire ≠ kick) ; `/coached/o/` retiré → `/coached/s/…`. → `docs/04`.
+
+## 2026-10-15 — Community shell V1 (spaces)
+
+- DB : `community_spaces` / `members` / `feeds` + caps `community.*` + RPCs create/sync. Script `community-shell.sql`.
+- Dashboard `/dashboard/community` ; coached `/coached/o/[org]/s/[space]` (feed/messages placeholders, programs, members).
+- Suite : posts feed, DM Realtime, rules offer→space. → `docs/03` / `04` / `06`.
+
+## 2026-10-15 — Vision Community Circle-like (coached)
+
+- Pivot : org → **N spaces** ; multi-feeds ; peers visibles ; DM all-to-all ; shell first.
+- Tech DM V1 = **Supabase Realtime + tables** (pas vendor chat).
+- Enter/exit = **rules org-configurable** ; caps **`community.*`** ; seed feeds. → `docs/00` / `03` / `04`.
+
 ## 2026-10-15 — Sending domain : tracking open/click par défaut
 
 - Create domaine Resend : `openTracking` / `clickTracking` + subdomain `links`. DNS Tracking dans la table existante. Pas de backfill. → `docs/04`.

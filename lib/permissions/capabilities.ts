@@ -33,6 +33,9 @@ export const ORG_CAPABILITIES = [
   "bu.manage",
   "org.settings",
   "campaigns.manage",
+  "community.manage",
+  "community.moderate",
+  "community.view_stats",
 ] as const
 
 export type OrgCapability = (typeof ORG_CAPABILITIES)[number]

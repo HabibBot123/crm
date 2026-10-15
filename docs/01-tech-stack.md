@@ -37,7 +37,10 @@ Détecté depuis `package.json` + conventions repo (état pré-pause).
 ## Infra / domaines (figé)
 
 - Domaine final : **`coachstack.co`**
-- Espace coached : **`app.coachstack.co`** (CNAME Cloudflare → Vercel ; cookie Auth cross-subdomain à valider en prod — voir `todo.txt`)
+- Store org : **`{slug}.coachstack.co`**
+- Hub coached : **`app.coachstack.co`**
+- App membre org : **`{slug}.app.coachstack.co`** (wildcard `*.app.coachstack.co` ; cookie Auth `.coachstack.co` — voir `todo.txt` / `docs/04`)
+- Dev : rester sur **`localhost:3000`** (org via cookie) ; subdomains locaux cassent la session Auth
 
 ## Secrets
 

@@ -91,7 +91,7 @@ export default function SettingsPage() {
     <div className="space-y-4 p-6 lg:p-8">
       <PageHeader title="Settings" />
 
-      <div className="flex gap-8">
+      <div className="flex flex-col gap-4 md:flex-row md:gap-8">
         <NavList
           items={nav}
           value={section === "permissions" && !isOwner ? "domain" : section}

@@ -1,40 +1,46 @@
 "use client"
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { CircleDot, FileText, Link2, ListFilter } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { NavList, type NavListItem } from "@/components/dashboard/nav-list"
 
-const hubItems = [
-  { href: "/dashboard/crm/forms", label: "Forms", icon: FileText, exact: true },
-  { href: "/dashboard/crm/forms/fields", label: "Fields", icon: ListFilter, exact: false },
-  { href: "/dashboard/crm/forms/statuses", label: "Statuses", icon: CircleDot, exact: false },
-  { href: "/dashboard/crm/forms/links", label: "Share links", icon: Link2, exact: false },
+type HubSection =
+  | "/dashboard/crm/forms"
+  | "/dashboard/crm/forms/fields"
+  | "/dashboard/crm/forms/statuses"
+  | "/dashboard/crm/forms/links"
+
+const hubItems: NavListItem<HubSection>[] = [
+  { id: "/dashboard/crm/forms", label: "Forms", icon: FileText },
+  { id: "/dashboard/crm/forms/fields", label: "Fields", icon: ListFilter },
+  { id: "/dashboard/crm/forms/statuses", label: "Statuses", icon: CircleDot },
+  { id: "/dashboard/crm/forms/links", label: "Share links", icon: Link2 },
 ]
+
+function resolveHubSection(pathname: string): HubSection {
+  const ranked = [...hubItems].sort((a, b) => b.id.length - a.id.length)
+  for (const item of ranked) {
+    if (item.id === "/dashboard/crm/forms") {
+      if (pathname === item.id) return item.id
+      continue
+    }
+    if (pathname.startsWith(item.id)) return item.id
+  }
+  return "/dashboard/crm/forms"
+}
 
 export function CrmFormsHubNav() {
   const pathname = usePathname()
+  const router = useRouter()
+  const value = resolveHubSection(pathname)
 
   return (
-    <nav className="w-44 shrink-0 space-y-1">
-      {hubItems.map(({ href, label, icon: Icon, exact }) => {
-        const isActive = exact ? pathname === href : pathname.startsWith(href)
-        return (
-          <Link
-            key={href}
-            href={href}
-            className={cn(
-              "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors",
-              isActive
-                ? "bg-accent font-medium text-foreground"
-                : "text-muted-foreground hover:bg-accent hover:text-foreground"
-            )}
-          >
-            <Icon className="h-4 w-4 shrink-0" />
-            {label}
-          </Link>
-        )
-      })}
-    </nav>
+    <NavList
+      items={hubItems}
+      value={value}
+      onChange={(href) => {
+        router.push(href)
+      }}
+    />
   )
 }

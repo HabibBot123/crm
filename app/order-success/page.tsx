@@ -1,14 +1,15 @@
 "use client"
 
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { CheckCircle, ArrowRight, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { formatAmountFromCents } from "@/lib/utils"
+import { useCoachedHost } from "@/hooks/use-coached-host"
 
 export default function OrderSuccessPage() {
   const searchParams = useSearchParams()
-  const router = useRouter()
+  const { hubHref } = useCoachedHost()
 
   const product = searchParams.get("product") ?? "your purchase"
   const coach = searchParams.get("coach")
@@ -74,7 +75,7 @@ export default function OrderSuccessPage() {
         </div>
 
         <div className="mt-6 space-y-3">
-          <Link href="/coached-signup" className="block">
+          <Link href={hubHref("/signup")} className="block">
             <Button className="w-full gap-2">
               Go to signup
               <ArrowRight className="h-4 w-4" />

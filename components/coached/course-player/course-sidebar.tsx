@@ -1,18 +1,15 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Check, List } from "lucide-react"
+import { Check, ChevronDown, Layers } from "lucide-react"
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion"
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import { Button } from "@/components/ui/button"
-import { useIsMobile } from "@/components/ui/use-mobile"
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
-import type { CoachedCourseModule, CoachedCourseModuleItem } from "@/lib/services/coached"
+import type { CoachedCourseModule } from "@/lib/services/coached"
 
 type CourseSidebarProps = {
   modules: CoachedCourseModule[]
@@ -20,6 +17,16 @@ type CourseSidebarProps = {
   activeModuleId: number | null
   activeItemId: number | null
   onSelectLesson: (moduleId: number, itemId: number) => void
+  /** Controlled mobile sheet (no FAB). */
+  sheetOpen?: boolean
+  onSheetOpenChange?: (open: boolean) => void
+}
+
+function lessonTitle(
+  item: CoachedCourseModule["product_module_items"][number],
+  index: number
+): string {
+  return item.title || item.content_items?.name || `Lesson ${index + 1}`
 }
 
 function SidebarContent({
@@ -28,131 +35,152 @@ function SidebarContent({
   activeModuleId,
   activeItemId,
   onSelectLesson,
-}: CourseSidebarProps) {
-  const [openModules, setOpenModules] = useState<string[]>([])
+  onLessonPicked,
+}: CourseSidebarProps & { onLessonPicked?: () => void }) {
+  const [openModules, setOpenModules] = useState<Set<number>>(new Set())
 
   useEffect(() => {
     if (activeModuleId == null) return
-    const id = String(activeModuleId)
-    setOpenModules((prev) =>
-      prev.includes(id) ? prev : [...prev, id]
-    )
+    setOpenModules((prev) => {
+      if (prev.has(activeModuleId)) return prev
+      const next = new Set(prev)
+      next.add(activeModuleId)
+      return next
+    })
   }, [activeModuleId])
 
-  return (
-    <Accordion
-      type="multiple"
-      value={openModules}
-      onValueChange={(value) => {
-        const next = Array.isArray(value)
-          ? value
-          : value
-          ? [value]
-          : []
-        setOpenModules(next)
-      }}
-      className="w-full"
-    >
-      {modules.map((mod) => (
-        <AccordionItem key={mod.id} value={String(mod.id)}>
-          <AccordionTrigger className="py-3 text-left text-sm font-medium min-h-[44px]">
-            {mod.title}
-            <span className="text-muted-foreground font-normal ml-1">
-              ({mod.product_module_items.filter((i) => progress.has(i.id)).length}/
-              {mod.product_module_items.length})
-            </span>
-          </AccordionTrigger>
-          <AccordionContent>
-            <ul className="space-y-0.5 pb-2">
-              {mod.product_module_items.map((item) => {
-                const isActive =
-                  activeModuleId === mod.id && activeItemId === item.id
-                const isComplete = progress.has(item.id)
-                const title =
-                  item.title ||
-                  item.content_items?.name ||
-                  `Lesson ${item.position + 1}`
-                return (
-                  <li key={item.id}>
-                    <button
-                      type="button"
-                      onClick={() => onSelectLesson(mod.id, item.id)}
-                      className={cn(
-                        "flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm transition-colors min-h-[44px]",
-                        isActive
-                          ? "bg-primary/10 text-primary font-medium"
-                          : "text-foreground hover:bg-muted",
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs",
-                          isComplete
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-muted-foreground/40",
-                        )}
-                      >
-                        {isComplete ? (
-                          <Check className="h-3 w-3" />
-                        ) : (
-                          <span className="text-[10px] font-medium">
-                            {item.position + 1}
-                          </span>
-                        )}
-                      </span>
-                      <span className="truncate">{title}</span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          </AccordionContent>
-        </AccordionItem>
-      ))}
-    </Accordion>
-  )
-}
-
-export function CourseSidebar(props: CourseSidebarProps) {
-  const isMobile = useIsMobile()
-
-  if (isMobile) {
-    return (
-      <Sheet>
-        <SheetTrigger asChild>
-          <Button
-            variant="outline"
-            size="icon"
-            className="fixed z-40 h-12 w-12 min-h-[48px] min-w-[48px] rounded-full shadow-lg md:hidden touch-manipulation right-[max(1rem,env(safe-area-inset-right))] bottom-[max(5.5rem,calc(5.5rem+env(safe-area-inset-bottom)))]"
-            aria-label="Open course contents"
-          >
-            <List className="h-5 w-5" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent
-          side="bottom"
-          className="h-[85vh] max-h-[85dvh] overflow-hidden flex flex-col rounded-t-2xl pt-6 pb-[env(safe-area-inset-bottom)]"
-          showCloseButton
-        >
-          <SheetHeader className="px-5 pb-4 pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))]">
-            <SheetTitle className="text-left">Course contents</SheetTitle>
-          </SheetHeader>
-          <div className="flex-1 overflow-y-auto overflow-x-hidden px-5 pb-4 pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))]">
-            <SidebarContent {...props} />
-          </div>
-        </SheetContent>
-      </Sheet>
-    )
+  function toggleModule(moduleId: number) {
+    setOpenModules((prev) => {
+      const next = new Set(prev)
+      if (next.has(moduleId)) next.delete(moduleId)
+      else next.add(moduleId)
+      return next
+    })
   }
 
   return (
-    <aside className="w-[280px] shrink-0 border-r border-border bg-card/50 overflow-y-auto">
-      <div className="p-4">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2 py-2">
+    <nav className="space-y-1" aria-label="Course contents">
+      {modules.map((mod) => {
+        const isOpen = openModules.has(mod.id)
+        const done = mod.product_module_items.filter((i) =>
+          progress.has(i.id)
+        ).length
+        const total = mod.product_module_items.length
+        const moduleActive = activeModuleId === mod.id
+
+        return (
+          <div key={mod.id} className="space-y-0.5">
+            <button
+              type="button"
+              title={mod.title}
+              onClick={() => toggleModule(mod.id)}
+              className={cn(
+                "flex w-full min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                moduleActive
+                  ? "bg-accent font-medium text-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              )}
+            >
+              <Layers className="h-4 w-4 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">{mod.title}</span>
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                {done}/{total}
+              </span>
+              <ChevronDown
+                className={cn(
+                  "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
+                  isOpen ? "rotate-0" : "-rotate-90"
+                )}
+              />
+            </button>
+
+            {isOpen ? (
+              <ul className="space-y-0.5 pb-1 pl-3">
+                {mod.product_module_items.map((item, index) => {
+                  const isActive =
+                    activeModuleId === mod.id && activeItemId === item.id
+                  const isComplete = progress.has(item.id)
+                  const title = lessonTitle(item, index)
+                  return (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        title={title}
+                        onClick={() => {
+                          onSelectLesson(mod.id, item.id)
+                          onLessonPicked?.()
+                        }}
+                        className={cn(
+                          "flex w-full min-w-0 items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm transition-colors",
+                          isActive
+                            ? "font-medium text-foreground"
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-medium",
+                            isComplete
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border text-muted-foreground"
+                          )}
+                        >
+                          {isComplete ? (
+                            <Check className="h-3 w-3" />
+                          ) : (
+                            index + 1
+                          )}
+                        </span>
+                        <span className="truncate">{title}</span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : null}
+          </div>
+        )
+      })}
+    </nav>
+  )
+}
+
+export function CourseSidebar({
+  sheetOpen,
+  onSheetOpenChange,
+  ...contentProps
+}: CourseSidebarProps) {
+  const controlled =
+    typeof sheetOpen === "boolean" && typeof onSheetOpenChange === "function"
+
+  return (
+    <>
+      <aside className="hidden w-56 shrink-0 md:block">
+        <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Contents
-        </h2>
-        <SidebarContent {...props} />
-      </div>
-    </aside>
+        </p>
+        <SidebarContent {...contentProps} />
+      </aside>
+
+      {controlled ? (
+        <Sheet open={sheetOpen} onOpenChange={onSheetOpenChange}>
+          <SheetContent
+            side="bottom"
+            className="flex h-[85vh] max-h-[85dvh] flex-col overflow-hidden rounded-t-2xl pt-6 pb-[env(safe-area-inset-bottom)]"
+            showCloseButton
+          >
+            <SheetHeader className="px-5 pb-4">
+              <SheetTitle className="text-left">Contents</SheetTitle>
+            </SheetHeader>
+            <div className="flex-1 overflow-y-auto px-5 pb-4">
+              <SidebarContent
+                {...contentProps}
+                onLessonPicked={() => onSheetOpenChange(false)}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
+      ) : null}
+    </>
   )
 }

@@ -1,8 +1,12 @@
 import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
+import { authCookieDomain } from '@/lib/coached-host'
 
 export async function createClient() {
   const cookieStore = await cookies()
+  const host = (await headers()).get('host') ?? ''
+  const domain = authCookieDomain(host)
+
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -14,13 +18,26 @@ export async function createClient() {
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              cookieStore.set(
+                name,
+                value,
+                domain ? { ...options, domain } : options
+              )
             )
           } catch {
             // Called from Server Component; ignore.
           }
         },
       },
+      ...(domain
+        ? {
+            cookieOptions: {
+              domain,
+              path: '/',
+              sameSite: 'lax' as const,
+            },
+          }
+        : {}),
     }
   )
 }

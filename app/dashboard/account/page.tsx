@@ -4,8 +4,6 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   User as UserIcon,
-  Mail,
-  Shield,
   KeyRound,
   LogOut,
   Building2,
@@ -15,14 +13,17 @@ import {
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { useAuth } from "@/hooks/use-auth"
+import { useMyProfile } from "@/hooks/use-profile"
 import { useCurrentOrganization } from "@/components/providers/organization-provider"
+import { AccountProfileCard } from "@/components/profile/account-profile-card"
+import { SecuritySection } from "@/components/profile/security-section"
 import { SectionCard } from "@/components/dashboard/section-card"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { NavList } from "@/components/dashboard/nav-list"
 import type { NavListItem } from "@/components/dashboard/nav-list"
 import { cn } from "@/lib/utils"
-import { toast } from "sonner"
 import { teamMemberRoleLabel } from "@/lib/permissions/roles"
+import { displayNameFromUser } from "@/lib/user-display"
 
 type Section = "profile" | "security" | "organizations"
 
@@ -32,46 +33,30 @@ const nav: NavListItem<Section>[] = [
   { id: "organizations", label: "Organizations", icon: Building2 },
 ]
 
-function formatProvider(provider: string): string {
-  const map: Record<string, string> = {
-    email: "Email",
-    google: "Google",
-    github: "GitHub",
-    apple: "Apple",
-  }
-  return map[provider] ?? provider.charAt(0).toUpperCase() + provider.slice(1)
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
 }
 
 export default function AccountPage() {
   const router = useRouter()
-  const { user, supabase, signOut } = useAuth()
+  const { user, signOut } = useAuth()
+  const profileQuery = useMyProfile()
   const { organizations, currentOrganization, setCurrentOrganizationId } =
     useCurrentOrganization()
   const [section, setSection] = useState<Section>("profile")
-  const [sendingReset, setSendingReset] = useState(false)
 
-  const fullName = (user?.user_metadata?.full_name as string | undefined)?.trim() ?? null
+  const fullName =
+    profileQuery.data?.full_name?.trim() ||
+    displayNameFromUser(user) ||
+    user?.email?.split("@")[0] ||
+    ""
   const email = user?.email ?? null
-  const primaryProvider =
-    user?.app_metadata?.provider ?? user?.identities?.[0]?.provider ?? "email"
-  const providers: string[] =
-    (user?.app_metadata?.providers as string[] | undefined)?.filter(Boolean) ??
-    (primaryProvider ? [primaryProvider] : [])
-  const isEmailProvider = providers.includes("email")
-
-  async function handleSendPasswordReset() {
-    if (!email) return
-    setSendingReset(true)
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/login/reset-password`,
-    })
-    setSendingReset(false)
-    if (error) {
-      toast.error(error.message)
-      return
-    }
-    toast.success("Check your email for the password reset link")
-  }
+  const avatarUrl = profileQuery.data?.avatar_url ?? null
+  const memberSince = user?.created_at ? formatDate(user.created_at) : null
 
   async function handleSignOut() {
     await signOut()
@@ -95,73 +80,34 @@ export default function AccountPage() {
     <div className="space-y-4 p-6 lg:p-8">
       <PageHeader title="Account" subtitle="Your profile and sign-in details" />
 
-      <div className="flex gap-8">
-        <NavList
-          items={nav}
-          value={section}
-          onChange={setSection}
-          footer={
-            <button
-              onClick={handleSignOut}
-              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
-            >
-              <LogOut className="h-4 w-4 shrink-0" />
-              Sign out
-            </button>
-          }
-        />
+      <div className="flex flex-col gap-4 md:flex-row md:gap-8">
+        <NavList items={nav} value={section} onChange={setSection} />
 
-        {/* Right content */}
-        <div className="min-w-0 flex-1 max-w-lg">
-          {section === "profile" && (
-            <SectionCard title="Profile" subtitle="Information associated with your account">
-              <div className="space-y-4">
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-muted-foreground">Name</span>
-                  <p className="text-sm text-foreground">{fullName || "—"}</p>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-muted-foreground">Email</span>
-                  <p className="flex items-center gap-2 text-sm text-foreground">
-                    <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-                    {email || "—"}
-                  </p>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-muted-foreground">Signed in with</span>
-                  <p className="flex flex-wrap items-center gap-2 text-sm text-foreground">
-                    <Shield className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    {providers.length > 0
-                      ? providers.map((p) => formatProvider(p)).join(", ")
-                      : formatProvider(primaryProvider)}
-                  </p>
-                </div>
-              </div>
-            </SectionCard>
-          )}
+        <div className="min-w-0 flex-1 space-y-4">
+          {section === "profile" ? (
+            <>
+              <AccountProfileCard
+                displayName={fullName}
+                email={email}
+                avatarUrl={avatarUrl}
+                memberSince={memberSince}
+              />
+              <button
+                type="button"
+                onClick={() => void handleSignOut()}
+                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
+              >
+                <LogOut className="h-4 w-4 shrink-0" />
+                Sign out
+              </button>
+            </>
+          ) : null}
 
-          {section === "security" && (
-            <SectionCard
-              title="Password"
-              subtitle={
-                isEmailProvider
-                  ? "Change your password via a secure link sent to your email"
-                  : `You sign in with ${providers.map((p) => formatProvider(p)).join(" and ") || formatProvider(primaryProvider)}. Password is managed by your provider.`
-              }
-            >
-              {isEmailProvider && (
-                <Button
-                  variant="secondary"
-                  onClick={handleSendPasswordReset}
-                  disabled={sendingReset}
-                >
-                  {sendingReset ? "Sending…" : "Send password reset email"}
-                </Button>
-              )}
-            </SectionCard>
-          )}
+          {section === "security" ? (
+            <SecuritySection email={email} />
+          ) : null}
 
-          {section === "organizations" && (
+          {section === "organizations" ? (
             <SectionCard
               title="Organizations"
               subtitle="Switch between your organizations"
@@ -175,7 +121,9 @@ export default function AccountPage() {
               }
             >
               {organizations.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No organizations found.</p>
+                <p className="text-sm text-muted-foreground">
+                  No organizations found.
+                </p>
               ) : (
                 <ul className="space-y-1">
                   {organizations.map((org) => {
@@ -217,7 +165,7 @@ export default function AccountPage() {
                 </ul>
               )}
             </SectionCard>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

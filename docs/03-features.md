@@ -28,7 +28,7 @@ Statuts :
 | Team invites / members | done | `/dashboard/team`, `/invite/team` ; rôle `owner` non assignable via change role |
 | Transfer org ownership | todo | Flow dédié : sync `organizations.owner_id` + rôles membres (pas via select rôle) |
 | Coaching packs + assign coach | done | `/dashboard/coaching` table + sheet ; FilterRefine (coach + status) ; historique via `v_coaching_packs` |
-| Coaching sessions (create/complete) | partial | Tracking optionnel ; pas de booking avancé |
+| Coaching sessions (create/complete) | partial | Create + complete + note ; quota `sessions_count` → status `completed` ; pas de booking avancé |
 | Coach payouts by volume | todo | Après assign ; pas en v1 |
 | Enrollment auto-expire job | done | `expire_due_enrollments()` + cron 03:15 UTC ; base = `expires_at` only ; rachat = expire-then-insert |
 | Manual sub + link Stripe txn | todo | Étendre enrollment manuel : abonnements off-platform / rattacher une transaction Stripe existante |
@@ -36,7 +36,7 @@ Statuts :
 | Org mode Solo vs Team | partial | `organizations.mode` ; hide/gate UX ; Upgrade CTA stub (billing todo) |
 | Solo → Team upgrade billing | todo | CTA “Upgrade to Team” (TeamPlanGate) — pas encore branché |
 | Org role permissions (owner matrix) | done | Matrix Settings + UX `can()` + RLS + scope ; sidebar/mobile filtrés ; pages sans cap → No access — `docs/04` |
-| Account + settings | done | `/dashboard/account`, `/settings` |
+| Account + settings | done | `/dashboard/account` : même UI Profile/Security que `/profile` (Signed in with ; reset si email) ; `/settings` |
 
 ## CRM inbound (forms / leads)
 
@@ -58,7 +58,7 @@ Statuts :
 | Record sale depuis lead CRM | partial | Create / Link / **Sale only** ; sale = tréso + `base_amount` installment — `docs/04` |
 | Page Sales (dashboard) | done | `/dashboard/sales` ; cap `sales.view` ; enrollment + lead + coms |
 | Analytics Sales/CRM | done | `/dashboard/analytics` ; cap `analytics.view` ; modes org / BU Owner ; presets 7d/30d/Month/Quarter/Year ; RPC `crm_sales_analytics` ; P&L/Cash ; `docs/04` |
-| Analytics Marketing | done | Switch Sales/Marketing sur `/dashboard/analytics` ; RPC `crm_marketing_analytics` ; links / ambassadors / forms — `docs/04` |
+| Analytics Marketing | done | Switch Sales/Marketing ; KPI partagés (Revenue/Leads/Conv) puis lens Inbound \| Campaigns ; inbound = RPC `crm_marketing_analytics` ; campaigns = sent in period + delivery funnel (`campaign_delivery_stats`) — `docs/04` |
 | Overview Home (member / org / bu) | done | `/dashboard` : défaut Member ; Organization = `analytics.view` ; Business unit = statut BU owner ; KPIs 30j + attention — `docs/04` |
 | Analytics Products / packs | todo later | Best sellers / mix packs (sorti de Sales analytics) |
 | Devise org (1 currency) | todo later | 1 devise / org ; Checkout + sales + coms + analytics + settlements dans cette devise ; reject Stripe ≠ org — `docs/04` |
@@ -84,18 +84,37 @@ Statuts :
 | Short URL `/c/[coach]/[product]` | done | |
 | Order success / checkout pages | done | |
 
-## Espace coached
+## Espace coached / Community (Circle-like)
+
+Direction produit : `docs/04` (2026-10-15). Build order : **shell org→space d’abord**, puis feeds / DM / stats.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Auth coached | done | `/coached-signup`, `/coached-login` |
-| Home programmes + orgs | done | `/coached` |
-| Course detail + progress | done | `/coached/[slug]/courses/[enrollment_product_id]` |
-| Coaching program detail | done | `/coached/[slug]/coaching/[enrollment_product_id]` |
-| Organizations list | done | `/coached/coaches` (route legacy; UI = orgs) |
+| Auth membre | done | `/login` + `/signup` sur host `app.*` (coach = mêmes paths sur `localhost`) |
+| Org switcher (logo) | done | Trigger marque ; sheet mobile / dropdown desktop ; hub cards logo |
+| Home programmes + orgs (flat) | done | `/home` ; shell org + spaces |
+| Courses list + detail | done | Nav `/courses` ; player `/courses/[id]` : PageHeader + nav curriculum (style Spaces) + Contents sheet mobile |
+| Coaching list (client + coach) | done | `/coaching` + Home via `useOrgCoachingInbox` (client enrollments ∪ assignments coach) |
+| Coaching pack workspace | done | Detail `/coaching/[id]` : onglets Sessions + Chat DM embarqué ; create/edit séances client/coach |
+| Organizations list | done | Switcher org / hub (plus `/coached/coaches`) |
 | Discover coaches | deferred | retiré jusqu’à vrai catalog |
-| Profile coached | done | `/coached/profile` (+ soft link coach workspace) |
-| Sous-domaine dédié `app.coachstack.co` | todo | Domaine figé ; reste DNS/CNAME + Vercel + cookies (voir `todo.txt`) |
+| Profile coached (+ avatar) | done | `/profile` : NavList Profile/Security/Billing ; `AccountProfileCard` + `SecuritySection` partagés avec dashboard ; reset password seulement si signed-in with email |
+| Hosts `app.*` + `{slug}.app.*` | partial | Proxy parse OK ; DNS wildcard `*.app.coachstack.co` + cookies encore todo |
+| Shell org → multi-spaces | partial | Host `{slug}.app.*` ; hub auto-org ; paths `/home` `/courses` `/coaching` `/s/…` ; dashboard Community |
+| Membership rules offer→space | done | Create/Edit (dashboard + app membre) ; `remove_on_expire` ; empty = all living ; add/remove sur `/s/…/members` + dashboard sheet |
+| Multi-feeds / space | done | Shell `/s` : feeds nested sous le space actif (nav PC) ; seed Announcements/General ; CRUD sur `/s/…/settings` |
+| Space settings (member) | done | `/s/[slug]/settings` (`community.manage`) : name/desc + offer rules + add/edit/archive feeds |
+| Posts feed V1 | done | `community_posts` ; composer + liste ; soft delete auteur **ou** staff ; cursor “Load older” |
+| Post likes + comments | done | Like toggle ; comments flat paginés par post ; soft delete auteur/staff |
+| Caps `community.*` | done | manage / moderate / view_stats + matrix Settings |
+| Directory org (admin) | done | Dashboard Community → Members ; RPC `org_access_directory_page` ; cap `community.manage` |
+| Directory space (peers) | done | `/s/…/members` cards + search + pagination ; Message → DM (`/messages?c=`) |
+| Profile avatar (Bunny) | done | Upload signup (si session) + `/profile` + dashboard account → `profiles.avatar_url` |
+| DM peer-to-peer | done | `/messages` 1:1 ; Realtime INSERT ; open depuis Member card |
+| Community threads / salon | todo | Après shell + feed |
+| Admin manage (posts, modération) | partial | CRUD spaces OK ; delete post staff UI OK |
+| Stats suivi formations (admin space) | todo | Progress cours, sessions coaching, activité |
+| Coaching membre (chat + séances) | done | Detail : chat DM embarqué + create/edit session client/coach |
 
 ## Qualité / ops (backlog historique)
 
@@ -113,13 +132,13 @@ Cible produit figée dans `docs/04`. Projet pas live : mock data wipeable.
 |------|--------|--------|
 | Schema `bu_owner_settlements` | done | RLS view_all/view_own + mark_paid |
 | Config **par BU** | done | `%`, `settlement_basis`, `payout_delay_months` ; Settings Business units |
-| Job settlement | done (manual/RPC) | `settle_bu_owner_month` ; cron pg_cron encore todo |
+| Job settlement | done | `settle_bu_owner_month` + cron `settle-bu-owner-previous-month` (1er du mois 03:40 UTC) |
 | Payouts UX | done | Nav **Payouts** ; tabs Team / BU Owners ; expand calcul settlement |
 | Analytics org + BU Owner | done | RPC lit settlements ; UI settlement/team |
 | Retirer Stripe auto + Activate Head | done | Wipe legacy ; Activate team-only |
 | Seed / wipe mock | done | Offers org1 liées BU ; backfill fév–sept 2026 |
 | Slot plan `head` Settings Commissions | done | UI retirée ; JSON legacy conservé |
-| Cron mensuel auto | todo | Appeler `settle_bu_owner_month` au 1er du mois |
+| Cron mensuel auto | done | pg_cron `settle-bu-owner-previous-month` ; mois précédent ; script `scripts/settle-bu-owner-cron.sql` |
 
 ## Vision reprise (vide jusqu’à discussion)
 

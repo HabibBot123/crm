@@ -36,6 +36,13 @@ export function getLogicalTypeFromMime(mimeType: string | null): LogicalContentT
   return MIME_TO_LOGICAL_TYPE[mimeType] ?? null
 }
 
+export function formatContentTypeLabel(type: string): string {
+  if (type === "pdf") return "PDF"
+  if (type === "powerpoint") return "PowerPoint"
+  if (type.length === 0) return type
+  return type.charAt(0).toUpperCase() + type.slice(1)
+}
+
 export const contentTypeIcon: Record<LogicalContentType, LucideIcon> = {
   video: Play,
   pdf: FileText,

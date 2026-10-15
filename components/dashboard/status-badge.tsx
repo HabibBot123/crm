@@ -16,6 +16,7 @@ interface StatusConfig {
 
 const defaultConfigs: Record<string, StatusConfig> = {
   active:    { label: "Active",    variant: "success"     },
+  completed: { label: "Completed", variant: "info"        },
   published: { label: "Published", variant: "success"     },
   draft:     { label: "Draft",     variant: "warning"     },
   archived:  { label: "Archived",  variant: "muted"       },

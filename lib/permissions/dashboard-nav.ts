@@ -15,6 +15,7 @@ import {
   Receipt,
   BarChart3,
   Megaphone,
+  Layers,
 } from "lucide-react"
 import type { OrgCapability } from "@/lib/permissions/capabilities"
 
@@ -121,6 +122,19 @@ export const DASHBOARD_NAV_GROUPS: DashboardNavGroup[] = [
         href: "/dashboard/coaching",
         icon: MessageCircle,
         isVisible: (ctx) => gated(ctx, (can) => can("coaching.view")),
+      },
+      {
+        label: "Community",
+        href: "/dashboard/community",
+        icon: Layers,
+        isVisible: (ctx) =>
+          gated(
+            ctx,
+            (can) =>
+              can("community.manage") ||
+              can("community.moderate") ||
+              can("community.view_stats")
+          ),
       },
     ],
   },

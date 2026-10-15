@@ -1,13 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendWelcomeEmail } from '@/lib/email/workflows/send-welcome-email'
+import { requestPublicOrigin } from '@/lib/coached-host'
 import { NextResponse } from 'next/server'
 
-const SIGNUP_SOURCES = ['coach', 'coached'] as const
-type SignupSource = (typeof SIGNUP_SOURCES)[number]
+type SignupSource = 'coach' | 'coached'
 
 function isSignupSource(value: string | null): value is SignupSource {
-  return value !== null && SIGNUP_SOURCES.includes(value as SignupSource)
+  return value === 'coach' || value === 'coached'
 }
 
 /** Allow only relative paths to prevent open redirect. */
@@ -19,7 +19,8 @@ function safeNext(next: string | null): string {
 }
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
+  const { searchParams } = new URL(request.url)
+  const origin = requestPublicOrigin(request)
   const code = searchParams.get('code')
   const next = safeNext(searchParams.get('next'))
   const signupSourceParam = searchParams.get('signup_source')
@@ -27,6 +28,10 @@ export async function GET(request: Request) {
   if (code) {
     const supabase = await createClient()
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+
+    if (error) {
+      console.error('auth/callback exchangeCodeForSession:', error.message)
+    }
 
     if (!error && data.user?.email) {
       const admin = createAdminClient()
@@ -67,7 +72,11 @@ export async function GET(request: Request) {
 
       return NextResponse.redirect(`${origin}${next}`)
     }
+  } else {
+    console.error('auth/callback: missing code (likely Site URL fallback / redirect not allowlisted)')
   }
 
-  return NextResponse.redirect(`${origin}/login?error=auth_callback_error`)
+  return NextResponse.redirect(
+    `${origin}/login?error=auth_callback_error&next=${encodeURIComponent(next)}`
+  )
 }

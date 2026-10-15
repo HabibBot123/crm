@@ -4,12 +4,14 @@ import { useQueries } from "@tanstack/react-query"
 import { useAuth } from "@/hooks/use-auth"
 import {
   fetchCrmMarketingAnalytics,
+  fetchCrmMarketingCampaignAnalytics,
   fetchCrmSalesAnalytics,
   type AnalyticsPreset,
 } from "@/lib/services/analytics"
 import type {
   AnalyticsViewerMode,
   CrmMarketingAnalytics,
+  CrmMarketingCampaignAnalytics,
   CrmSalesAnalytics,
 } from "@/schemas/analytics.schema"
 
@@ -168,6 +170,81 @@ export function useCrmMarketingAnalytics(
             from: options.previousFrom,
             to: options.previousTo,
             businessUnitId: options.businessUnitId,
+          })
+        },
+        enabled: compareEnabled,
+      },
+    ],
+  })
+
+  return {
+    data: currentQuery.data ?? null,
+    previous: previousQuery.data ?? null,
+    isLoading:
+      currentQuery.isLoading || (compareEnabled && previousQuery.isLoading),
+    error: currentQuery.error ?? previousQuery.error ?? null,
+  }
+}
+
+export function useCrmMarketingCampaignAnalytics(
+  organizationId: number | null,
+  options: {
+    from: string
+    to: string
+    previousFrom?: string
+    previousTo?: string
+    enabled?: boolean
+  }
+) {
+  const { supabase } = useAuth()
+  const enabled =
+    !!organizationId &&
+    options.enabled !== false &&
+    options.from.length > 0 &&
+    options.to.length > 0
+
+  const compareEnabled =
+    enabled &&
+    !!options.previousFrom &&
+    !!options.previousTo &&
+    options.previousFrom.length > 0 &&
+    options.previousTo.length > 0
+
+  const [currentQuery, previousQuery] = useQueries({
+    queries: [
+      {
+        queryKey: [
+          "crm-marketing-campaign-analytics",
+          organizationId,
+          options.from,
+          options.to,
+        ],
+        queryFn: (): Promise<CrmMarketingCampaignAnalytics> => {
+          if (!organizationId) throw new Error("organizationId is required")
+          return fetchCrmMarketingCampaignAnalytics(supabase, {
+            organizationId,
+            from: options.from,
+            to: options.to,
+          })
+        },
+        enabled,
+      },
+      {
+        queryKey: [
+          "crm-marketing-campaign-analytics",
+          organizationId,
+          options.previousFrom ?? "",
+          options.previousTo ?? "",
+        ],
+        queryFn: (): Promise<CrmMarketingCampaignAnalytics> => {
+          if (!organizationId) throw new Error("organizationId is required")
+          if (!options.previousFrom || !options.previousTo) {
+            throw new Error("previous range is required")
+          }
+          return fetchCrmMarketingCampaignAnalytics(supabase, {
+            organizationId,
+            from: options.previousFrom,
+            to: options.previousTo,
           })
         },
         enabled: compareEnabled,
